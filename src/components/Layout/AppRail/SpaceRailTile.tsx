@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SpaceAttention } from '@/hooks/useSpaceAttention';
 import { cn } from '@/lib/utils';
 import type { TFunction } from 'i18next';
@@ -35,6 +35,7 @@ import { useTranslation } from 'react-i18next';
 import {
   APP_RAIL_CONTROL_SELECTED_CLASS,
   APP_RAIL_CONTROL_STATE_CLASS,
+  APP_RAIL_TOOLTIP_CLASS,
   AppRailItem,
 } from './AppRailButton';
 
@@ -106,6 +107,7 @@ export function SpaceRailTile({
       variant="ghost"
       size="md"
       buttonContent="icon-only"
+      buttonRadius="shell"
       aria-label={accessibleName}
       aria-current={selected ? 'page' : undefined}
       aria-haspopup={menu ? 'menu' : undefined}
@@ -161,7 +163,7 @@ export function SpaceRailTile({
 
   return (
     <AppRailItem selected={selected}>
-      <TooltipSimple
+      <SidebarRowTooltip
         content={
           <ShortcutTooltipContent
             label={name}
@@ -169,14 +171,13 @@ export function SpaceRailTile({
             shortcutId={shortcutId}
           />
         }
-        compact={!statusText}
-        side="right"
+        className={statusText ? undefined : APP_RAIL_TOOLTIP_CLASS}
         align="center"
         variant="instant"
         enabled={!menuOpen}
       >
         {tile}
-      </TooltipSimple>
+      </SidebarRowTooltip>
       {menu ? (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>

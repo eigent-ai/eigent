@@ -36,14 +36,17 @@ vi.mock('@/components/ChatBox/BottomBox/BoxFooter', () => ({
   BoxFooter: ({
     disabled,
     modelSelectDisabled = disabled,
+    spaceId,
   }: {
     disabled?: boolean;
     modelSelectDisabled?: boolean;
+    spaceId?: string | null;
   }) => (
     <div
       data-testid="project-setup-footer"
       data-disabled={String(!!disabled)}
       data-model-disabled={String(!!modelSelectDisabled)}
+      data-space-id={spaceId ?? ''}
     />
   ),
 }));
@@ -840,5 +843,103 @@ describe('BottomBox structure', () => {
       'This task has finished, so these controls are no longer available.'
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('docks by default and opens its banner above the composer', () => {
+    render(
+      <BottomBox
+        state="input"
+        inputProps={{}}
+        usageLimitBanner={{ message: 'Out of credits' }}
+        {...footerProps}
+      />
+    );
+    const box = document.querySelector('[data-bottom-box]');
+    expect(box).toHaveAttribute('data-bottom-box-layout', 'docked');
+    expect(box).toHaveClass('z-50');
+    expect(box).not.toHaveClass('shadow-ds-elevation-card');
+    expect(document.querySelector('[data-bottom-box-overlay]')).toHaveAttribute(
+      'data-bottom-box-overlay',
+      'above'
+    );
+    expect(document.querySelector('[data-bottom-box-overlay]')).toHaveClass(
+      'bottom-full'
+    );
+  });
+
+  it('places an inline composer in page content, styled the same, with panels below', () => {
+    render(
+      <BottomBox
+        layout="inline"
+        state="input"
+        inputProps={{}}
+        usageLimitBanner={{ message: 'Out of credits' }}
+        footerSpaceId="space-research"
+        {...footerProps}
+      />
+    );
+    const box = document.querySelector('[data-bottom-box]');
+    expect(box).toHaveAttribute('data-bottom-box-layout', 'inline');
+    // Below the page's sticky tabs; only the input card has a border, as on
+    // every other page.
+    expect(box).toHaveClass('z-10');
+    expect(box).not.toHaveClass('border', 'shadow-ds-elevation-card');
+    const overlay = document.querySelector('[data-bottom-box-overlay]');
+    expect(overlay).toHaveAttribute('data-bottom-box-overlay', 'below');
+    expect(overlay).toHaveClass('top-full');
+    expect(screen.getByText('Out of credits')).toBeInTheDocument();
+    // The footer edits the page's Space, not whichever Space is active.
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-space-id',
+      'space-research'
+    );
+  });
+
+  it('follows a width change at once and animates only height changes', () => {
+    let notify: (() => void) | undefined;
+    const OriginalObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) {
+        notify = callback;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const size = { width: 600, height: 120 };
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        return (
+          this.hasAttribute('data-bottom-box-main-content')
+            ? { ...size, top: 0, left: 0, right: size.width, bottom: 0 }
+            : { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }
+        ) as DOMRect;
+      });
+
+    try {
+      const { container } = render(
+        <BottomBox state="input" inputProps={{}} {...footerProps} />
+      );
+      const main = container.querySelector('[data-bottom-box-main]');
+      // Nothing inside is scaled: only BoxMain's height is ever animated.
+      expect(
+        container.querySelector('[data-bottom-box-main-content]')
+      ).toBeInTheDocument();
+
+      // A panel opens and the column narrows: BoxMain follows at once.
+      size.width = 420;
+      size.height = 140;
+      act(() => notify?.());
+      expect(main).toHaveAttribute('data-height-motion', 'follow');
+
+      // Its own content grows at the same width: the height animates.
+      size.height = 180;
+      act(() => notify?.());
+      expect(main).toHaveAttribute('data-height-motion', 'animate');
+    } finally {
+      rect.mockRestore();
+      globalThis.ResizeObserver = OriginalObserver;
+    }
   });
 });

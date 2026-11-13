@@ -85,6 +85,21 @@ export function SidebarSection({
   );
 }
 
+/**
+ * An invisible copy of the app rail's divider under Home. Placed between a
+ * sidebar's one-tab-tall top row and New session, with the rail's 4px gap on
+ * each side, it puts New session level with the rail's first Space tile.
+ */
+export function SidebarRailSpacer() {
+  return (
+    <span
+      aria-hidden
+      data-sidebar-rail-spacer
+      className="my-ds-2 w-full shrink-0 border-x-0 border-y-0 border-t-ds-hairline border-solid border-transparent"
+    />
+  );
+}
+
 /** Hairline divider between sidebar sections. */
 export function SidebarSeparator({ className }: { className?: string }) {
   return (

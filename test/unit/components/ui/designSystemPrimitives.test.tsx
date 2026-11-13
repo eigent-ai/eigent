@@ -36,6 +36,22 @@ describe('design-system primitive foregrounds', () => {
     );
   });
 
+  it('gives shell navigation controls the bounded shell-control radius', () => {
+    render(
+      <Button
+        variant="ghost"
+        size="md"
+        buttonContent="icon-only"
+        buttonRadius="shell"
+        aria-label="Home"
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveClass(
+      '!rounded-ds-shell-control'
+    );
+  });
+
   it('uses the success indicator foreground for an enabled switch thumb', () => {
     const { container } = render(<Switch defaultChecked />);
     const thumb = container.querySelector('[data-state="checked"] > span');

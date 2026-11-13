@@ -14,7 +14,7 @@
 
 import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 
@@ -28,6 +28,8 @@ export interface SidebarAccordionSectionProps {
    * or keyboard focus, and stay while one of their menus is open.
    */
   actions?: ReactNode;
+  /** Controls after `actions` that stay visible, such as a section's add button. */
+  persistentActions?: ReactNode;
 }
 
 /**
@@ -40,8 +42,10 @@ export function SidebarAccordionSection({
   defaultExpanded = true,
   className,
   actions,
+  persistentActions,
 }: SidebarAccordionSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const reduceMotion = useReducedMotion();
 
   return (
     <div className={cn('mt-3 flex flex-col', className)}>
@@ -66,20 +70,39 @@ export function SidebarAccordionSection({
             aria-hidden
           />
         </button>
-        {actions ? (
-          <div
-            data-section-header-actions
-            className="flex shrink-0 items-center gap-ds-2 pr-ds-6 opacity-0 transition-opacity duration-150 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100 has-[[data-state=open]]:opacity-100"
-          >
-            {actions}
+        {actions || persistentActions ? (
+          <div className="flex shrink-0 items-center gap-ds-2 pr-ds-6">
+            {actions ? (
+              <div
+                data-section-header-actions
+                className="flex items-center gap-ds-2 opacity-0 transition-opacity duration-150 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100 has-[[data-state=open]]:opacity-100"
+              >
+                {actions}
+              </div>
+            ) : null}
+            {persistentActions ? (
+              <div
+                data-section-header-persistent-actions
+                className="flex items-center gap-ds-2"
+              >
+                {persistentActions}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
 
       <motion.div
         initial={false}
-        animate={{ height: expanded ? 'auto' : 0 }}
-        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+        animate={{
+          height: expanded ? 'auto' : 0,
+          opacity: expanded ? 1 : 0,
+        }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.18, ease: [0.4, 0, 0.2, 1] }
+        }
         style={{ overflow: 'hidden' }}
       >
         <div className="flex flex-col gap-0.5 pt-0.5">{children}</div>

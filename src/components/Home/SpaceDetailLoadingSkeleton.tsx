@@ -17,7 +17,9 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { HomeHubItemKind } from './components/HomeHubItemShared';
 import { HOME_HUB_LIST_GRID_CLASS } from './components/HomeHubItemShared';
-import HomeHubListTable from './components/HomeHubListTable';
+import HomeHubListTable, {
+  useHomeHubListRowInsetClass,
+} from './components/HomeHubListTable';
 import type { SpaceDetailTab } from './SpaceDetailTabsNav';
 
 const LIST_SKELETON_WIDTHS: Record<
@@ -43,6 +45,7 @@ export function SpaceDetailListSkeleton({
       : kind === 'task'
         ? t('layout.tasks', { defaultValue: 'Tasks' })
         : t('layout.automations', { defaultValue: 'Automations' });
+  const rowInsetClass = useHomeHubListRowInsetClass();
   return (
     <div
       role="status"
@@ -59,7 +62,8 @@ export function SpaceDetailListSkeleton({
             key={rowIndex}
             data-space-detail-skeleton-row
             className={cn(
-              'grid min-h-14 items-center gap-x-4 rounded-xl bg-ds-neutral-default-default px-3 py-2.5',
+              'grid min-h-14 items-center gap-x-4 rounded-xl bg-ds-neutral-default-default py-2.5',
+              rowInsetClass,
               HOME_HUB_LIST_GRID_CLASS[kind]
             )}
           >

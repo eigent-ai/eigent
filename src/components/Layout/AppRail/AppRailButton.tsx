@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
@@ -30,6 +30,9 @@ export const APP_RAIL_CONTROL_STATE_CLASS = [
 ].join(' ');
 
 export const APP_RAIL_CONTROL_SELECTED_CLASS = '!bg-ds-neutral-subtle-default';
+
+/** A one-line rail tooltip, as compact as the rail's old ones. */
+export const APP_RAIL_TOOLTIP_CLASS = 'py-0';
 
 /**
  * One rail row: a centred control plus the 2px selection bar on the rail's
@@ -75,10 +78,9 @@ export function AppRailButton({
 }: AppRailButtonProps) {
   return (
     <AppRailItem selected={selected}>
-      <TooltipSimple
+      <SidebarRowTooltip
         content={tooltip ?? label}
-        compact
-        side="right"
+        className={APP_RAIL_TOOLTIP_CLASS}
         align="center"
         variant="instant"
       >
@@ -87,6 +89,7 @@ export function AppRailButton({
           variant="ghost"
           size="md"
           buttonContent="icon-only"
+          buttonRadius="shell"
           aria-label={label}
           aria-current={selected ? 'page' : undefined}
           className={cn(
@@ -97,7 +100,7 @@ export function AppRailButton({
         >
           {children}
         </Button>
-      </TooltipSimple>
+      </SidebarRowTooltip>
     </AppRailItem>
   );
 }

@@ -63,6 +63,8 @@ type HomeHubItemActivation = {
 type HomeHubListLayout = {
   gridClass: string;
   hiddenColumns: readonly string[];
+  /** Inline padding of the header row and every list row. */
+  rowInsetClass?: string;
 };
 
 const HomeHubItemActivationContext =
@@ -895,7 +897,8 @@ export function HomeHubItemShell({
             'relative flex h-auto w-full min-w-0 flex-col items-start overflow-hidden',
           layout === 'list' &&
             cn(
-              'grid w-full items-center gap-x-4 rounded-ds-field border border-x border-y border-solid border-transparent bg-transparent px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-hairline-subtle-default hover:bg-ds-neutral-default-hover',
+              'grid w-full items-center gap-x-4 rounded-ds-field border border-x border-y border-solid border-transparent bg-transparent py-2.5 text-left transition-colors duration-150 hover:border-ds-hairline-subtle-default hover:bg-ds-neutral-default-hover',
+              listLayout?.rowInsetClass ?? 'px-3',
               listLayout?.gridClass ??
                 (kind ? HOME_HUB_LIST_GRID_CLASS[kind] : undefined)
             ),

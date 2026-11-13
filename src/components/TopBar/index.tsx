@@ -97,7 +97,9 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
     <div
       className={cn(
         'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
-        platform === 'darwin' && 'pr-2'
+        // Support is a 28px ghost button: 10px puts its 16px icon 16px from
+        // the edge, in line with the page headers' end.
+        platform === 'darwin' && 'pr-ds-10'
       )}
       style={{ paddingLeft: topBarLeadingInset }}
       id="titlebar"
@@ -141,8 +143,9 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
                   variant="ghost"
                   size="sm"
                   buttonContent="icon-only"
+                  buttonRadius="shell"
                   className={cn(
-                    'no-drag rounded-full',
+                    'no-drag',
                     TOP_BAR_CONTROL_STATE_CLASS,
                     'aria-pressed:!bg-transparent'
                   )}
@@ -171,10 +174,8 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
                       variant="ghost"
                       size="sm"
                       buttonContent="icon-only"
-                      className={cn(
-                        'no-drag rounded-full',
-                        TOP_BAR_CONTROL_STATE_CLASS
-                      )}
+                      buttonRadius="shell"
+                      className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
                       disabled={!canGoBack}
                       onClick={goBack}
                       aria-label={t('layout.back')}
@@ -196,10 +197,8 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
                       variant="ghost"
                       size="sm"
                       buttonContent="icon-only"
-                      className={cn(
-                        'no-drag rounded-full',
-                        TOP_BAR_CONTROL_STATE_CLASS
-                      )}
+                      buttonRadius="shell"
+                      className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
                       disabled={!canGoForward}
                       onClick={goForward}
                       aria-label={t('layout.forward')}
@@ -231,13 +230,11 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
               type="button"
               variant="ghost"
               size="sm"
-              className={cn(
-                'no-drag rounded-full',
-                TOP_BAR_CONTROL_STATE_CLASS
-              )}
+              className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
               aria-label={t('layout.support')}
               onClick={() => executeAppCommand(APP_COMMAND.reportBug)}
               buttonContent="icon-only"
+              buttonRadius="shell"
             >
               <DsIcon icon={CircleHelp} aria-hidden />
             </Button>

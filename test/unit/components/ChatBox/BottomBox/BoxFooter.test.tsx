@@ -28,8 +28,18 @@ vi.mock('@/components/Workspace/ProjectModeToggle', () => ({
 }));
 
 vi.mock('@/components/ChatBox/BottomBox/ApprovalModeSelect', () => ({
-  ApprovalModeSelect: ({ disabled }: { disabled?: boolean }) => (
-    <button data-testid="approval-mode-select" disabled={disabled} />
+  ApprovalModeSelect: ({
+    disabled,
+    spaceId,
+  }: {
+    disabled?: boolean;
+    spaceId?: string | null;
+  }) => (
+    <button
+      data-testid="approval-mode-select"
+      data-space-id={spaceId ?? ''}
+      disabled={disabled}
+    />
   ),
 }));
 
@@ -40,12 +50,14 @@ vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
     disabled,
     readOnly,
     projectId,
+    spaceId,
   }: {
     thinkingEffort?: string;
     onThinkingEffortChange?: (effort: string | undefined) => void;
     disabled?: boolean;
     readOnly?: boolean;
     projectId?: string | null;
+    spaceId?: string | null;
   }) => (
     <>
       <button
@@ -55,6 +67,7 @@ vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
         data-inherited={String(thinkingEffort === undefined)}
         data-readonly={String(Boolean(readOnly))}
         data-project-id={projectId ?? ''}
+        data-space-id={spaceId ?? ''}
         disabled={disabled}
         onClick={() => onThinkingEffortChange?.('high')}
       />
@@ -174,5 +187,23 @@ describe('BoxFooter', () => {
       'false'
     );
     expect(screen.getByTestId('approval-mode-select')).toBeDisabled();
+  });
+
+  it("edits a Space page's own access and model without a project", () => {
+    render(
+      <BoxFooter
+        sessionMode={SessionMode.SINGLE_AGENT}
+        interactive
+        spaceId="space-research"
+      />
+    );
+    expect(screen.getByTestId('approval-mode-select')).toHaveAttribute(
+      'data-space-id',
+      'space-research'
+    );
+    expect(screen.getByTestId('model-thinking-select')).toHaveAttribute(
+      'data-space-id',
+      'space-research'
+    );
   });
 });

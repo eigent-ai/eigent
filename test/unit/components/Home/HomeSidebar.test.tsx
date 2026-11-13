@@ -22,6 +22,7 @@ import { presentationForKind } from '@/lib/sessionNavLead';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import {
   pinnedSpaceOwnerKey,
   useSpaceStore,
@@ -235,7 +236,7 @@ describe('HomeSidebar', () => {
     });
   });
 
-  it('starts with New session and All Spaces, with New Space in the Spaces header', async () => {
+  it('starts with New session, All Spaces, and Connectors, with New Space in the Spaces header', async () => {
     const user = userEvent.setup();
     renderSidebar();
 
@@ -257,7 +258,11 @@ describe('HomeSidebar', () => {
     const newSpace = within(sidebar()).getByRole('button', {
       name: 'New Space',
     });
-    expect(newSpace.closest('[data-section-header-actions]')).not.toBeNull();
+    // New Space stays visible; the view menu shows only on hover or focus.
+    expect(
+      newSpace.closest('[data-section-header-persistent-actions]')
+    ).not.toBeNull();
+    expect(newSpace.closest('[data-section-header-actions]')).toBeNull();
     await user.click(newSpace);
     expect(
       screen.getByRole('dialog', { name: 'Create a new Space' })
@@ -275,12 +280,40 @@ describe('HomeSidebar', () => {
     expect(brand).toHaveClass('h-8');
     expect(brand.querySelector('img')).not.toBeNull();
     expect(within(brand).queryByRole('button')).toBeNull();
-    // First in the sidebar, so New session lines up with the Space sidebar.
+    // First in the sidebar, then the rail-divider spacer, then New session,
+    // so New session lines up with the rail's first Space tile.
+    const spacer = brand.nextElementSibling as HTMLElement;
+    expect(spacer).toHaveAttribute('data-sidebar-rail-spacer');
+    expect(spacer).toHaveAttribute('aria-hidden', 'true');
     expect(
-      brand.compareDocumentPosition(
+      spacer.compareDocumentPosition(
         within(sidebar()).getByRole('button', { name: 'New session' })
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it('opens Connectors in Settings from the row under All Spaces', async () => {
+    const user = userEvent.setup();
+    useSettingsStore.setState({ isOpen: false, activeSection: 'models' });
+    renderSidebar();
+
+    const allSpaces = within(sidebar()).getByRole('button', {
+      name: 'All Spaces',
+    });
+    const connectors = within(sidebar()).getByRole('button', {
+      name: 'Connectors',
+    });
+    expect(
+      allSpaces.compareDocumentPosition(connectors) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(connectors).not.toHaveAttribute('aria-current');
+
+    await user.click(connectors);
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: true,
+      activeSection: 'connectors',
+    });
   });
 
   it('sorts Spaces by creation time from the Spaces header menu', async () => {
@@ -378,7 +411,12 @@ describe('HomeSidebar', () => {
       'group-hover/session-item:hidden'
     );
     expect(dot('Competitor scan')).toHaveClass(
-      '!text-ds-icon-information-default-default'
+      '!text-ds-icon-information-default-default',
+      'motion-safe:animate-status-pulse'
+    );
+    // Only running work pulses.
+    expect(dot('Weekly report')).not.toHaveClass(
+      'motion-safe:animate-status-pulse'
     );
     // No status, no dot.
     expect(dot('Pricing notes')).toBeNull();
@@ -629,11 +667,17 @@ describe('HomeSidebar', () => {
       'text-ds-text-base',
       'text-ds-ink-subtle-default'
     );
-    const nestedRows = research.lastElementChild as HTMLElement;
+    // The fold animates the group's height, so the 2px gap above the rows
+    // sits inside it and closes with the rows.
+    const group = research.querySelector(
+      '[data-home-space-sessions]'
+    ) as HTMLElement;
+    expect(group).toHaveClass('overflow-hidden');
+    const nestedRows = group.firstElementChild as HTMLElement;
     expect(nestedRows).toContainElement(sessionRow);
     expect(nestedRows).not.toHaveClass('pl-ds-12');
-    expect(nestedRows).toHaveClass('gap-0.5');
-    expect(research).toHaveClass('gap-0.5');
+    expect(nestedRows).toHaveClass('gap-0.5', 'pt-0.5');
+    expect(research).not.toHaveClass('gap-0.5');
     expect(
       within(sidebar()).getByRole('button', { name: 'Ops, 1 running' })
     ).toBeInTheDocument();
@@ -674,17 +718,25 @@ describe('HomeSidebar', () => {
     expect(fold).toHaveAttribute('aria-expanded', 'true');
     // The icon shows the Space's letter until hover or keyboard focus.
     expect(fold).toHaveTextContent('R');
-    expect(fold.querySelector('.lucide-chevron-down')).not.toBeNull();
+    // One chevron, turned down while the group is open.
+    expect(fold.querySelector('.lucide-chevron-right')).toHaveClass(
+      'rotate-90'
+    );
 
     await user.click(fold);
     const unfold = within(sidebar()).getByRole('button', {
       name: 'Unfold Research',
     });
     expect(unfold).toHaveAttribute('aria-expanded', 'false');
-    expect(unfold.querySelector('.lucide-chevron-right')).not.toBeNull();
-    expect(
-      within(sidebar()).queryByRole('button', { name: 'Weekly report' })
-    ).not.toBeInTheDocument();
+    expect(unfold.querySelector('.lucide-chevron-right')).not.toHaveClass(
+      'rotate-90'
+    );
+    // The rows fade and the group closes before they leave.
+    await waitFor(() =>
+      expect(
+        within(sidebar()).queryByRole('button', { name: 'Weekly report' })
+      ).not.toBeInTheDocument()
+    );
     expect(usePageTabStore.getState().homeFoldedSpaceIds).toEqual([
       'space-research',
     ]);

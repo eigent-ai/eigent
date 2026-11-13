@@ -12,8 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
-import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import {
   pinSpaceOrChoose,
   usePinnedSpaceIds,
@@ -38,25 +36,6 @@ import { useSpaceStore } from '@/store/spaceStore';
 import { ChevronDown, Folder } from 'lucide-react';
 import { forwardRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-/**
- * Mounted only while open: creating a Space reads the whole Session store,
- * which the Space sidebar shouldn't redraw for.
- */
-function SpaceMenuNewSpaceDialog({ onClose }: { onClose: () => void }) {
-  const { createBlankSpace, createSpaceFromFolder } =
-    useNewSpaceCreation('space_menu');
-  return (
-    <NewSpaceDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      onStartFromScratch={createBlankSpace}
-      onUseLocalFolder={createSpaceFromFolder}
-    />
-  );
-}
 
 interface SpaceHeaderMenuProps {
   spaceId: string;
@@ -89,7 +68,6 @@ export const SpaceHeaderMenu = forwardRef<
   const userId = useAuthStore((state) => state.user_id);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   // Save points act on the active Space's folder, so they show only for it.
@@ -140,9 +118,6 @@ export const SpaceHeaderMenu = forwardRef<
         spaceId={renameOpen ? spaceId : null}
         onClose={() => setRenameOpen(false)}
       />
-      {newSpaceOpen ? (
-        <SpaceMenuNewSpaceDialog onClose={() => setNewSpaceOpen(false)} />
-      ) : null}
       <SpaceSwitchDropdown
         contentSideOffset={6}
         onOpenChange={(open) => {
@@ -181,7 +156,7 @@ export const SpaceHeaderMenu = forwardRef<
               aria-label={name}
             >
               <DsIcon icon={Folder} className="shrink-0" aria-hidden />
-              <span className="min-w-0 truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
+              <span className="min-w-0 truncate !text-ds-text-base font-semibold text-ds-ink-default-default">
                 {name}
               </span>
               <DsIcon
@@ -205,7 +180,6 @@ export const SpaceHeaderMenu = forwardRef<
         onOpenMemorySettings={
           inSidebar ? undefined : () => openSpaceHomeTab(spaceId, 'memory')
         }
-        onCreateSpace={inSidebar ? () => setNewSpaceOpen(true) : undefined}
         onDeleteSpace={canDelete ? () => setDeleteOpen(true) : undefined}
         pinMenu={{
           pinned,

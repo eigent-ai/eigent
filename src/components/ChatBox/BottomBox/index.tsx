@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { cn } from '@/lib/utils';
 import { type SessionModeType } from '@/types/constants';
 import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
@@ -95,6 +96,40 @@ function QueueReveal({
   );
 }
 
+/**
+ * BoxMain's natural height, and whether its latest change came with a width
+ * change. A width change means the column resized (a panel opened, the window
+ * moved): BoxMain follows it at once, so the composer never lags behind or
+ * overflows its column. Only height changes of its own animate.
+ */
+function useBoxMainHeight() {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [measure, setMeasure] = useState<{
+    height?: number;
+    resized: boolean;
+  }>({ resized: false });
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    let width = content.getBoundingClientRect().width;
+    const read = () => {
+      const rect = content.getBoundingClientRect();
+      const resized = rect.width !== width;
+      width = rect.width;
+      setMeasure((current) =>
+        current.height === rect.height && current.resized === resized
+          ? current
+          : { height: rect.height, resized }
+      );
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  return { contentRef, ...measure };
+}
+
 interface BottomBoxCommonProps {
   // General state
   state: BottomBoxState;
@@ -130,6 +165,18 @@ interface BottomBoxCommonProps {
   resourcePickersEnabled?: boolean;
   /** First control in the footer, for example New session's Space chip. */
   footerLeading?: ReactNode;
+  /**
+   * Without `modelSelectProjectId`, the Space whose access and default model
+   * the footer edits. Defaults to the active Space.
+   */
+  footerSpaceId?: string | null;
+  /**
+   * `docked` (default): the composer at the foot of a chat surface, with
+   * picker panels and banners opening above it.
+   * `inline`: the same composer placed in page content, such as a Space's
+   * page. It looks the same and opens its panels below, into the page.
+   */
+  layout?: 'docked' | 'inline';
 
   // Loading states
   loading?: boolean;
@@ -168,6 +215,8 @@ export default function BottomBox({
   modelSelectDisabled,
   resourcePickersEnabled = true,
   footerLeading,
+  footerSpaceId,
+  layout = 'docked',
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -312,11 +361,28 @@ export default function BottomBox({
     : VARIANT_ENTER_TRANSITION;
   const enterOffset = shouldReduceMotion ? 0 : 6;
   const overlayOffset = shouldReduceMotion ? 0 : 4;
+  const inline = layout === 'inline';
+  const {
+    contentRef: boxMainContentRef,
+    height: boxMainHeight,
+    resized: boxMainResized,
+  } = useBoxMainHeight();
+  // Clip only while the height moves, so focus rings stay visible at rest.
+  const [boxMainMoving, setBoxMainMoving] = useState(false);
 
   return (
     <div
       data-bottom-box
-      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-ds-24 bg-ds-neutral-subtle-default'}`}
+      data-bottom-box-layout={layout}
+      className={cn(
+        'relative flex w-full flex-col',
+        // Inline, the card sits under the page's sticky tabs, so it must not
+        // lift above them while it scrolls past.
+        inline ? 'z-10' : 'z-50',
+        showQueuedBox
+          ? 'gap-0'
+          : 'gap-1 rounded-ds-24 bg-ds-neutral-subtle-default'
+      )}
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
@@ -336,8 +402,12 @@ export default function BottomBox({
       {hasOverlay && (
         <motion.div
           key={activePickerPanel ?? 'usage-limit'}
-          className="pointer-events-auto absolute inset-x-0 bottom-full z-[60] mb-1 flex flex-col gap-1"
-          initial={{ opacity: 0, y: overlayOffset }}
+          data-bottom-box-overlay={inline ? 'below' : 'above'}
+          className={cn(
+            'pointer-events-auto absolute inset-x-0 z-[60] flex flex-col gap-1',
+            inline ? 'top-full mt-1' : 'bottom-full mb-1'
+          )}
+          initial={{ opacity: 0, y: inline ? -overlayOffset : overlayOffset }}
           animate={{ opacity: 1, y: 0 }}
           transition={enterTransition}
         >
@@ -361,106 +431,127 @@ export default function BottomBox({
       )}
 
       {/* BoxMain */}
+      {/* Width always follows the column; only height animates, from a
+          measurement, so nothing inside is scaled or stretched. */}
       <motion.div
-        layout={instantLayout ? false : 'size'}
         data-bottom-box-main
         data-layout-motion={instantLayout ? 'instant' : 'smooth'}
-        className={`relative z-[1] flex w-full flex-col rounded-ds-24 ${backgroundClass}`}
+        data-height-motion={
+          instantLayout || boxMainResized ? 'follow' : 'animate'
+        }
+        className={cn(
+          'relative z-[1] flex w-full flex-col rounded-ds-24',
+          backgroundClass,
+          boxMainMoving && 'overflow-clip'
+        )}
+        initial={false}
+        animate={{ height: boxMainHeight ?? 'auto' }}
         transition={{
-          layout: instantLayout ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
+          height:
+            instantLayout || boxMainResized
+              ? INSTANT_TRANSITION
+              : LAYOUT_TRANSITION,
         }}
+        onAnimationStart={() => setBoxMainMoving(true)}
+        onAnimationComplete={() => setBoxMainMoving(false)}
       >
-        {/* BoxHeader — context/question display only. */}
-        {state === 'confirm' && (
-          <BoxHeaderConfirm
-            subtitle={subtitle}
-            onStartTask={onStartTask}
-            onEdit={onEdit}
-            loading={loading}
-            autoStartDeadline={autoStartDeadline}
-          />
-        )}
-        {state === 'save' && (
-          <BoxHeaderSave
-            subtitle={subtitle}
-            onSave={onSavePlan}
-            onEdit={onEdit}
-            loading={loading}
-          />
-        )}
-        <motion.div
-          key={normalizedVariant.kind}
-          ref={variantRegionRef}
-          layout={!shouldReduceMotion}
-          data-bottom-box-variant-transition
-          data-variant={normalizedVariant.kind}
-          className="w-full"
-          role={normalizedVariant.kind === 'input' ? undefined : 'region'}
-          aria-label={
-            normalizedVariant.kind === 'input'
-              ? undefined
-              : t('chat.control-region-label')
-          }
-          aria-live={
-            normalizedVariant.kind === 'approval' ? 'assertive' : 'polite'
-          }
-          initial={{ opacity: 0, y: enterOffset }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={enterTransition}
+        <div
+          ref={boxMainContentRef}
+          data-bottom-box-main-content
+          className="flex w-full flex-col"
         >
-          {externalHeader && (
-            <BoxHeaderDisplay
-              {...externalHeader}
-              className="px-3"
-              descriptionAsTitle={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
-              descriptionAsMarkdown={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
-              showQuestionIcon={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
+          {/* BoxHeader — context/question display only. */}
+          {state === 'confirm' && (
+            <BoxHeaderConfirm
+              subtitle={subtitle}
+              onStartTask={onStartTask}
+              onEdit={onEdit}
+              loading={loading}
+              autoStartDeadline={autoStartDeadline}
             />
           )}
-
-          {/* InputBox — controlled router selected by event-derived variant. */}
-          <ControlInputRouter
-            variant={normalizedVariant}
-            inputProps={inputProps}
-            connectorPanelOpen={activePickerPanel === 'connector'}
-            onToggleConnectorPanel={
-              resourcePickersEnabled
-                ? () => togglePanel('connector')
-                : undefined
+          {state === 'save' && (
+            <BoxHeaderSave
+              subtitle={subtitle}
+              onSave={onSavePlan}
+              onEdit={onEdit}
+              loading={loading}
+            />
+          )}
+          <motion.div
+            key={normalizedVariant.kind}
+            ref={variantRegionRef}
+            data-bottom-box-variant-transition
+            data-variant={normalizedVariant.kind}
+            className="w-full"
+            role={normalizedVariant.kind === 'input' ? undefined : 'region'}
+            aria-label={
+              normalizedVariant.kind === 'input'
+                ? undefined
+                : t('chat.control-region-label')
             }
-            skillPanelOpen={activePickerPanel === 'skill'}
-            onToggleSkillPanel={
-              resourcePickersEnabled ? () => togglePanel('skill') : undefined
+            aria-live={
+              normalizedVariant.kind === 'approval' ? 'assertive' : 'polite'
             }
-          />
-        </motion.div>
+            initial={{ opacity: 0, y: enterOffset }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={enterTransition}
+          >
+            {externalHeader && (
+              <BoxHeaderDisplay
+                {...externalHeader}
+                className="px-3"
+                descriptionAsTitle={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+                descriptionAsMarkdown={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+                showQuestionIcon={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+              />
+            )}
 
-        {showFooter ? (
-          <div data-bottom-box-footer>
-            <BoxFooter
-              sessionMode={sessionMode!}
-              onSessionModeChange={onSessionModeChange}
-              projectId={modelSelectProjectId}
-              leading={footerLeading}
-              interactive={sessionModeSelectInteractive}
-              disabled={variantDisabled}
-              modelSelectDisabled={
-                normalizedVariant.kind === 'input'
-                  ? modelSelectDisabled
+            {/* InputBox — controlled router selected by event-derived variant. */}
+            <ControlInputRouter
+              variant={normalizedVariant}
+              inputProps={inputProps}
+              connectorPanelOpen={activePickerPanel === 'connector'}
+              onToggleConnectorPanel={
+                resourcePickersEnabled
+                  ? () => togglePanel('connector')
                   : undefined
               }
+              skillPanelOpen={activePickerPanel === 'skill'}
+              onToggleSkillPanel={
+                resourcePickersEnabled ? () => togglePanel('skill') : undefined
+              }
             />
-          </div>
-        ) : null}
+          </motion.div>
+
+          {showFooter ? (
+            <div data-bottom-box-footer>
+              <BoxFooter
+                sessionMode={sessionMode!}
+                onSessionModeChange={onSessionModeChange}
+                projectId={modelSelectProjectId}
+                spaceId={footerSpaceId}
+                leading={footerLeading}
+                interactive={sessionModeSelectInteractive}
+                disabled={variantDisabled}
+                modelSelectDisabled={
+                  normalizedVariant.kind === 'input'
+                    ? modelSelectDisabled
+                    : undefined
+                }
+              />
+            </div>
+          ) : null}
+        </div>
 
         {noModelOverlay &&
         onSelectModel &&

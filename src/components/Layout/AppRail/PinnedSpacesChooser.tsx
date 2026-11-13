@@ -12,32 +12,37 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
+import { SidebarRowTooltip } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import {
   MAX_PINNED_SPACES,
   useSpaceStore,
   type Space,
 } from '@/store/spaceStore';
 import { Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import { GripVertical, MoreHorizontal } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { GripVertical, Plus, Search } from 'lucide-react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   APP_RAIL_CONTROL_SELECTED_CLASS,
   APP_RAIL_CONTROL_STATE_CLASS,
+  APP_RAIL_TOOLTIP_CLASS,
   AppRailItem,
 } from './AppRailButton';
 import {
@@ -151,7 +156,7 @@ function PinnedChooserRow({
       onDragEnd={() => onDraggingChange(false)}
       data-pinned-space-row={space.id}
       className={cn(
-        'flex min-w-0 items-center rounded-ds-menu-row',
+        'group/pinned-row flex min-w-0 items-center rounded-ds-menu-row',
         dragging && 'bg-ds-neutral-default-default shadow-ds-elevation-drag'
       )}
     >
@@ -170,7 +175,14 @@ function PinnedChooserRow({
         variant="ghost"
         size="xs"
         buttonContent="icon-only"
-        className="shrink-0 cursor-grab touch-none active:cursor-grabbing"
+        data-pinned-space-handle
+        // The handle shows on hover, on keyboard focus, while dragging, and
+        // always where there is no hover. It keeps its space, so rows never
+        // shift when it appears.
+        className={cn(
+          'shrink-0 cursor-grab touch-none opacity-0 transition-opacity duration-150 group-hover/pinned-row:opacity-100 focus-visible:opacity-100 active:cursor-grabbing pointer-coarse:opacity-100',
+          dragging && 'opacity-100'
+        )}
         aria-label={t('layout.pinned-space-move', {
           name,
           position: index + 1,
@@ -195,9 +207,9 @@ function PinnedChooserRow({
 }
 
 /**
- * "Choose pinned Spaces": every Space with a checkbox, pins first in their
- * order. Up to 5 can be ticked; the rest are disabled until one is cleared.
- * Choices apply at once.
+ * The rail's add button: New Space first, then "Pinned Spaces", every Space
+ * with a checkbox, pins first in their order. Up to the pin limit can be
+ * ticked; the rest are disabled until one is cleared. Choices apply at once.
  */
 export function PinnedSpacesChooser() {
   const { t } = useTranslation();
@@ -214,8 +226,27 @@ export function PinnedSpacesChooser() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const instructionsId = useId();
-  const label = t('layout.choose-pinned-spaces');
+  const label = t('layout.add-or-pin-spaces');
+  const newSpaceLabel = t('layout.new-space');
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const { createBlankSpace, createSpaceFromFolder } =
+    useNewSpaceCreation('app_rail');
+  // A Space made from the rail opens in the Space view, like its tiles.
+  const createInSpaceView = (create: () => Promise<boolean>) => {
+    usePageTabStore.getState().setShellPlace('space');
+    return create();
+  };
   const full = pinnedIds.length >= MAX_PINNED_SPACES;
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const needle = query.trim().toLowerCase();
+  // Reordering a filtered list would drop the hidden pins, so a search shows
+  // matches without drag handles.
+  const filtering = needle.length > 0;
+  const matches = (space: Space) =>
+    !filtering || nameOf(space).toLowerCase().includes(needle);
+
+  const nameOf = (space: Space) => getActiveSpaceTriggerLabel(space.name, t);
 
   const unpinnedSpaces = useMemo(() => {
     const pinned = new Set(pinnedIds);
@@ -224,7 +255,10 @@ export function PinnedSpacesChooser() {
     );
   }, [activeSpaceId, pinnedIds, projectsBySpaceId, spaces]);
 
-  const nameOf = (space: Space) => getActiveSpaceTriggerLabel(space.name, t);
+  const visiblePinned = pinnedIds
+    .map((spaceId) => spaces[spaceId])
+    .filter((space): space is Space => Boolean(space) && matches(space));
+  const visibleUnpinned = unpinnedSpaces.filter(matches);
 
   const move = (space: Space, toIndex: number) => {
     moveSpacePin(space.id, toIndex);
@@ -239,11 +273,22 @@ export function PinnedSpacesChooser() {
 
   return (
     <AppRailItem>
-      <Popover open={open} onOpenChange={setOpen}>
-        <TooltipSimple
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={() => createInSpaceView(createBlankSpace)}
+        onUseLocalFolder={() => createInSpaceView(createSpaceFromFolder)}
+      />
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) setQuery('');
+          setOpen(next);
+        }}
+      >
+        <SidebarRowTooltip
           content={label}
-          compact
-          side="right"
+          className={APP_RAIL_TOOLTIP_CLASS}
           align="center"
           variant="instant"
           enabled={!open}
@@ -254,23 +299,78 @@ export function PinnedSpacesChooser() {
               variant="ghost"
               size="md"
               buttonContent="icon-only"
+              buttonRadius="shell"
               aria-label={label}
               className={cn(
                 APP_RAIL_CONTROL_STATE_CLASS,
                 open && APP_RAIL_CONTROL_SELECTED_CLASS
               )}
             >
-              <DsIcon icon={MoreHorizontal} aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
             </Button>
           </PopoverTrigger>
-        </TooltipSimple>
+        </SidebarRowTooltip>
         <PopoverContent
           side="right"
           align="start"
           sideOffset={8}
-          className="w-72 p-ds-4"
+          className="flex w-72 flex-col p-ds-4"
           aria-label={label}
+          // Searching is the likeliest next step, so it gets focus.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            searchRef.current?.focus();
+          }}
+          // Escape clears a search first, then closes as usual.
+          onEscapeKeyDown={(event) => {
+            if (!query) return;
+            event.preventDefault();
+            setQuery('');
+          }}
         >
+          <button
+            type="button"
+            data-pinned-spaces-new-space
+            className={cn(
+              ROW_CLASS,
+              'w-full cursor-pointer border-0 border-x-0 border-y-0 bg-transparent text-left text-ds-ink-default-default outline-none hover:bg-ds-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus'
+            )}
+            onClick={() => {
+              setOpen(false);
+              setNewSpaceDialogOpen(true);
+            }}
+          >
+            {/* An action, not a list item: its plus shares the checkbox
+                column, and its label follows like any menu action. */}
+            <span
+              aria-hidden
+              className="flex size-ds-icon-md shrink-0 items-center justify-center text-ds-ink-muted-default"
+            >
+              <DsIcon icon={Plus} />
+            </span>
+            <DsText as="span" role="base" className="min-w-0 flex-1 truncate">
+              {newSpaceLabel}
+            </DsText>
+          </button>
+          <div
+            aria-hidden
+            className="mx-ds-8 my-ds-4 border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default"
+          />
+          <div className="px-ds-4 pt-ds-2 pb-ds-4">
+            <Input
+              ref={searchRef}
+              size="sm"
+              value={query}
+              placeholder={t('layout.search-spaces')}
+              aria-label={t('layout.search-spaces')}
+              leadingIcon={
+                <DsIcon icon={Search} className="text-ds-ink-muted-default" />
+              }
+              className="w-full"
+              data-pinned-spaces-search
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
           <div className="flex items-center justify-between gap-ds-8 px-ds-8 py-ds-6">
             <DsText
               as="h2"
@@ -292,8 +392,39 @@ export function PinnedSpacesChooser() {
               })}
             </DsText>
           </div>
-          <div className="scrollbar-always-visible max-h-80 overflow-y-auto">
-            {pinnedIds.length > 0 ? (
+          {/* A fixed height, so the menu holds still while a search narrows
+              the list. */}
+          <div
+            data-pinned-spaces-list
+            className="scrollbar-always-visible h-80 overflow-y-auto"
+          >
+            {filtering ? (
+              visiblePinned.length > 0 ? (
+                <ul
+                  className="m-0 flex list-none flex-col p-0"
+                  aria-label={t('layout.pinned-spaces')}
+                >
+                  {visiblePinned.map((space) => (
+                    <li
+                      key={space.id}
+                      data-pinned-space-row={space.id}
+                      className="flex min-w-0"
+                    >
+                      <ChooserRowLabel
+                        space={space}
+                        name={nameOf(space)}
+                        checked
+                        disabled={false}
+                        activeSpaceId={activeSpaceId}
+                        onCheckedChange={(checked) => {
+                          if (!checked) unpinSpace(space.id);
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null
+            ) : pinnedIds.length > 0 ? (
               <Reorder.Group
                 as="ul"
                 axis="y"
@@ -325,12 +456,12 @@ export function PinnedSpacesChooser() {
                 })}
               </Reorder.Group>
             ) : null}
-            {unpinnedSpaces.length > 0 ? (
+            {visibleUnpinned.length > 0 ? (
               <ul
                 className="m-0 flex list-none flex-col p-0"
                 aria-label={t('layout.other-spaces')}
               >
-                {unpinnedSpaces.map((space) => (
+                {visibleUnpinned.map((space) => (
                   <li key={space.id} className="flex min-w-0">
                     <ChooserRowLabel
                       space={space}
@@ -346,6 +477,18 @@ export function PinnedSpacesChooser() {
                 ))}
               </ul>
             ) : null}
+            {filtering &&
+            visiblePinned.length === 0 &&
+            visibleUnpinned.length === 0 ? (
+              <DsText
+                as="p"
+                role="base"
+                data-pinned-spaces-empty
+                className="m-0 px-ds-8 py-ds-12 text-ds-ink-muted-default"
+              >
+                {t('layout.search-no-results')}
+              </DsText>
+            ) : null}
           </div>
           <DsText
             as="p"
@@ -353,7 +496,9 @@ export function PinnedSpacesChooser() {
             id={instructionsId}
             className="m-0 px-ds-8 py-ds-6 text-ds-ink-muted-default"
           >
-            {t('layout.pinned-spaces-hint')}
+            {filtering
+              ? t('layout.pinned-spaces-hint-filtered')
+              : t('layout.pinned-spaces-hint')}
           </DsText>
           <span className="sr-only" aria-live="polite">
             {announcement}

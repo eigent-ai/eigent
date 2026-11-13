@@ -136,8 +136,9 @@ interface ContextMenuPoint {
 
 /**
  * A nested row's status: the lead's colour, as a dot. An unread Session with
- * no other status shows the information colour. With an End button on the
- * row, the button takes the dot's place on hover and focus.
+ * no other status shows the information colour, and a running one pulses
+ * (still, with reduced motion). With an End button on the row, the button
+ * takes the dot's place on hover and focus.
  */
 function SessionStatusDot({
   session,
@@ -161,6 +162,7 @@ function SessionStatusDot({
       className={cn(
         'ml-ds-8 size-2 shrink-0 rounded-full bg-current',
         colorClass,
+        kind === 'running' && 'motion-safe:animate-status-pulse',
         coveredOnHover &&
           'group-focus-within/session-item:hidden group-hover/session-item:hidden'
       )}

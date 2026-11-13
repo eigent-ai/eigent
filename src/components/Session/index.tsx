@@ -44,7 +44,7 @@ import {
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   useCallback,
   useEffect,
@@ -55,7 +55,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PreviewColumn } from './layout/PreviewColumn';
+import { PREVIEW_ENTRANCE_TWEEN, PreviewColumn } from './layout/PreviewColumn';
 import { getSessionColumnLayout, SUMMARY_WIDTH } from './layout/sessionColumns';
 import { usePreviewEntrance } from './layout/usePreviewEntrance';
 import {
@@ -588,6 +588,7 @@ function SessionContent({
             onPopoverOpenChange: setSummaryPopoverOpen,
             popoverBoundary: chatSideElement,
           }}
+          atWindowEdge={!showPreview}
           className={showPreview ? 'pr-ds-4' : undefined}
           trailingActions={headerActions}
         />
@@ -605,15 +606,31 @@ function SessionContent({
               <ChatBox />
             )}
           </div>
-          {showSummary ? (
-            <div
-              data-session-side-panel
-              style={{ width: SUMMARY_WIDTH }}
-              className="flex min-h-0 shrink-0 flex-col overflow-hidden"
-            >
-              {sessionSidePanel}
-            </div>
-          ) : null}
+          {/* Activity opens and closes by width, like Preview, so the chat
+              column and its composer resize smoothly beside it. Its content
+              keeps its full width, so it never reflows mid-animation. */}
+          <AnimatePresence initial={false}>
+            {showSummary ? (
+              <motion.div
+                key="session-side-panel"
+                data-session-side-panel
+                className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+                initial={{ width: 0 }}
+                animate={{ width: SUMMARY_WIDTH }}
+                exit={{ width: 0 }}
+                transition={
+                  shouldReduceMotion ? { duration: 0 } : PREVIEW_ENTRANCE_TWEEN
+                }
+              >
+                <div
+                  className="flex min-h-0 flex-1 flex-col"
+                  style={{ width: SUMMARY_WIDTH }}
+                >
+                  {sessionSidePanel}
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </div>
       {showPreview ? (
@@ -621,6 +638,9 @@ function SessionContent({
           key={`${scopeId}:${previewOpening?.requestId ?? 0}`}
           immediateOpening={previewEntrance.immediateOpening}
           immediateGeometry={previewEntrance.immediateGeometry}
+          settledWidth={
+            paneWidth !== null ? paneWidth - visibleChatSideWidth : null
+          }
           onEntranceComplete={previewEntrance.finishEntrance}
           resizeHandle={{
             isResizing: previewResize.isResizing,

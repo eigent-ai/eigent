@@ -18,6 +18,7 @@ import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
   NavTab,
   SidebarNavGroup,
+  SidebarRailSpacer,
   SidebarSection,
   SidebarSeparator,
   SidebarShell,
@@ -482,11 +483,13 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
       <SessionControlDialogs />
       <SidebarShell className={className} ariaLabel={t('layout.workspace-tab')}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
-          <SidebarSection>
-            <SidebarNavGroup>
-              {/* The Space's name opens its menu; the button opens its
-                  settings on the Workspace page. */}
-              {activeSpaceId ? (
+          {/* The name row is one tab tall and level with Home on the rail;
+              the spacer then puts New session level with the first tile. */}
+          <SidebarSection className="gap-ds-4">
+            {/* The Space's name opens its menu; the button opens its
+                settings on the Workspace page. */}
+            {activeSpaceId ? (
+              <>
                 <div
                   data-sidebar-row
                   className="flex h-8 w-full min-w-0 items-center gap-ds-2"
@@ -526,7 +529,10 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
                     </Button>
                   </SidebarRowTooltip>
                 </div>
-              ) : null}
+                <SidebarRailSpacer />
+              </>
+            ) : null}
+            <SidebarNavGroup>
               <NavTab
                 active={newSessionShown}
                 onClick={handleNewSession}

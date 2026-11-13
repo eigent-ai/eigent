@@ -36,6 +36,7 @@ export {
 } from './SidebarScrollArea';
 export {
   SidebarNavGroup,
+  SidebarRailSpacer,
   SidebarSection,
   SidebarSeparator,
   SidebarShell,

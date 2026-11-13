@@ -25,8 +25,12 @@ import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
 export const APP_SHELL_RAIL_WIDTH_PX = 48;
 /** Fixed sidebar width. The sidebar is no longer resizable. */
 export const APP_SHELL_SIDEBAR_WIDTH_PX = 240;
-/** Sidebar tabs sit inside the rail's shared `p-1` inset. */
-export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 4;
+/**
+ * The sidebar shell's inline padding (`px-ds-8`). The top bar ends its
+ * sidebar controls this far inside the sidebar edge, so Forward lines up with
+ * the sidebar's own trailing buttons, such as Space settings.
+ */
+export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 8;
 /** Gap between the rail and the content pane. */
 export const APP_SHELL_COLUMN_GAP_PX = 2;
 
