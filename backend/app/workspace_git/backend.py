@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import re
@@ -50,6 +51,57 @@ _UNSAFE_INHERITED_GIT_ENV = {
     "SSH_ASKPASS",
 }
 _ADVANCED_COMMAND_SLOTS = threading.BoundedSemaphore(4)
+
+# `git worktree add` writes a new worktree's metadata in several steps, and
+# any Git command that reads every worktree's metadata (`git worktree ...`,
+# or a walk over `--all`) exits with an error when it reads one of those
+# files half-written. Two Sessions that start in the same Space at the same
+# moment would otherwise hit that, so such commands run one at a time per
+# repository. The locks are never removed: one small lock per repository.
+_WORKTREE_METADATA_LOCKS: dict[str, threading.Lock] = {}
+_WORKTREE_METADATA_LOCKS_GUARD = threading.Lock()
+
+
+def _reads_every_worktree(args: tuple[str, ...]) -> bool:
+    return args[0] == "worktree" or "--all" in args
+
+
+def _worktree_metadata_key(cwd: Path) -> str:
+    """Name the repository whose worktree metadata a command in `cwd` reads.
+
+    The main checkout and each of its linked worktrees map to the same key,
+    read from the filesystem so no extra Git process is needed. Anything
+    unreadable falls back to the folder itself, which is still a valid lock.
+    """
+
+    root = cwd.expanduser().resolve()
+    marker = root / ".git"
+    try:
+        if marker.is_dir():
+            return str(marker.resolve())
+        if marker.is_file():
+            # A linked worktree: `.git` names <common dir>/worktrees/<id>,
+            # whose `commondir` file points back at the common directory.
+            content = marker.read_text(encoding="utf-8", errors="replace")
+            if content.startswith("gitdir:"):
+                metadata = (root / content[len("gitdir:") :].strip()).resolve()
+                common = metadata / "commondir"
+                if common.is_file():
+                    relative = common.read_text(
+                        encoding="utf-8", errors="replace"
+                    ).strip()
+                    if relative:
+                        return str((metadata / relative).resolve())
+                return str(metadata)
+    except OSError:
+        pass
+    return str(root)
+
+
+def _worktree_metadata_lock(cwd: Path) -> threading.Lock:
+    key = _worktree_metadata_key(cwd)
+    with _WORKTREE_METADATA_LOCKS_GUARD:
+        return _WORKTREE_METADATA_LOCKS.setdefault(key, threading.Lock())
 
 
 class GitBackendError(RuntimeError):
@@ -1775,17 +1827,23 @@ class GitBackend:
         command_input: str | bytes | None = input_text
         if preserve_newlines and input_text is not None:
             command_input = input_text.encode(encoding or "utf-8")
+        guard: contextlib.AbstractContextManager = (
+            _worktree_metadata_lock(cwd)
+            if _reads_every_worktree(args)
+            else contextlib.nullcontext()
+        )
         try:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=not preserve_newlines,
-                encoding=None if preserve_newlines else encoding,
-                input=command_input,
-                timeout=self.timeout_seconds,
-                env=environment,
-            )
+            with guard:
+                completed = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=not preserve_newlines,
+                    encoding=None if preserve_newlines else encoding,
+                    input=command_input,
+                    timeout=self.timeout_seconds,
+                    env=environment,
+                )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise GitBackendError(
                 f"failed to execute typed Git operation: {args[0]}"
