@@ -735,33 +735,133 @@ body {
   will-change: transform;
 }
 
-/* Session loading: the user's accent, 2% at the leading edge, fading to 0%. */
-.session-loading-scan {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to right,
-    transparent,
-    color-mix(in srgb, var(--ds-accent-default-default) 2%, transparent)
-  );
-  animation-name: session-loading-scan;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  will-change: transform;
+/*
+ * Session loading: a ring of light in the user's accent flows up from below
+ * the content area, sweeps past the top on a fast ease-out, and disappears;
+ * after a short pause the next one starts. The ring's centre sits below the
+ * bottom edge and it is wider than the area, so its arc spans the whole
+ * bottom. Each ring band steps the accent lighter and a little further round
+ * the hue wheel, palest at the leading edge. Dark mode adds light with
+ * `screen`; light mode tints the page faintly. `--halo-elapsed` lets a
+ * handover join the cycle mid-way.
+ */
+.session-loading-halo-frame {
+  --halo-cycle: 3100ms;
+  container-type: size;
 }
 
+.session-loading-halo {
+  --halo-accent: var(--ds-accent-default-default);
+  --halo-strength: 0.6;
+  /* How far below the bottom edge the ring's centre sits. */
+  --halo-depth: 35cqw;
+  /* Big enough that the ring's inner edge clears the top corners at the end. */
+  --halo-radius: calc(hypot(50cqw, calc(100cqh + var(--halo-depth))) / 0.5);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--halo-depth));
+  width: calc(2 * var(--halo-radius));
+  height: calc(2 * var(--halo-radius));
+  margin-top: calc(-1 * var(--halo-radius));
+  margin-left: calc(-1 * var(--halo-radius));
+  border-radius: 50%;
+  background: radial-gradient(
+    circle closest-side,
+    transparent 50%,
+    oklch(from var(--halo-accent) l c h / calc(0.22 * var(--halo-strength))) 62%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.08) c calc(h + 18) /
+          calc(0.32 * var(--halo-strength))
+      )
+      76%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.15) calc(c * 0.85) calc(h + 36) /
+          calc(0.38 * var(--halo-strength))
+      )
+      88%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.22) calc(c * 0.4) calc(h + 50) /
+          calc(0.3 * var(--halo-strength))
+      )
+      95%,
+    transparent 100%
+  );
+  animation:
+    session-loading-halo-travel var(--halo-cycle) linear infinite,
+    session-loading-halo-fade var(--halo-cycle) linear infinite;
+  animation-delay: calc(-1 * var(--halo-elapsed, 0ms));
+  will-change: transform, opacity;
+}
+
+[data-theme='dark'] .session-loading-halo {
+  --halo-strength: 1;
+  mix-blend-mode: screen;
+}
+
+/* The Eigent mark brightens as the ring passes it and dims as it leaves. */
+.session-loading-halo-logo {
+  animation: session-loading-halo-logo var(--halo-cycle) ease-in-out infinite;
+  animation-delay: calc(-1 * var(--halo-elapsed, 0ms));
+}
+
+.session-loading-halo-logo-dark,
+[data-theme='dark'] .session-loading-halo-logo-light {
+  display: none;
+}
+
+[data-theme='dark'] .session-loading-halo-logo-dark {
+  display: block;
+}
+
+/* Reduced motion: no ring, the mark holds still. */
 @media (prefers-reduced-motion: reduce) {
-  .session-loading-scan {
+  .session-loading-halo {
+    display: none;
+  }
+
+  .session-loading-halo-logo {
     animation: none;
   }
 }
 
-@keyframes session-loading-scan {
-  from {
-    transform: translateX(-100%);
+/*
+ * 0–1.6s the ring travels from below the bottom edge to past the top, fast
+ * at first and easing out; it fades over the second half of that trip; then
+ * 1.5s of pause before the next ring.
+ */
+@keyframes session-loading-halo-travel {
+  0% {
+    transform: scale(0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   }
-  to {
-    transform: translateX(100%);
+  51.6%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes session-loading-halo-fade {
+  0%,
+  22% {
+    opacity: 1;
+    animation-timing-function: ease-in;
+  }
+  51.6%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes session-loading-halo-logo {
+  0%,
+  45%,
+  100% {
+    opacity: 0.55;
+    scale: 0.96;
+  }
+  10% {
+    opacity: 1;
+    scale: 1;
   }
 }
 

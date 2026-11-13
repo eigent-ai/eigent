@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionLoadingScan } from '@/components/ChatBox/SessionLoadingScan';
+import { SessionLoadingHalo } from '@/components/ChatBox/SessionLoadingHalo';
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
@@ -671,7 +671,7 @@ export function EventNativeProjectTimeline({
 
   return (
     <div
-      // At least the panel's height, so the loading scan fills an empty one.
+      // At least the panel's height, so the loading halo fills an empty one.
       className="relative z-10 min-h-full w-full"
       data-chat-timeline-source="durable-events"
     >
@@ -773,7 +773,7 @@ export function EventNativeProjectTimeline({
         ) : null}
         {floatingControl}
       </div>
-      <SessionLoadingScan
+      <SessionLoadingHalo
         active={historyLoading}
         label={
           hydration.status === 'retrying'
