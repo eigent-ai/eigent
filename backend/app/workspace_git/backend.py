@@ -53,17 +53,30 @@ _UNSAFE_INHERITED_GIT_ENV = {
 _ADVANCED_COMMAND_SLOTS = threading.BoundedSemaphore(4)
 
 # `git worktree add` writes a new worktree's metadata in several steps, and
-# any Git command that reads every worktree's metadata (`git worktree ...`,
-# or a walk over `--all`) exits with an error when it reads one of those
-# files half-written. Two Sessions that start in the same Space at the same
-# moment would otherwise hit that, so such commands run one at a time per
-# repository. The locks are never removed: one small lock per repository.
+# any Git command that reads every worktree's metadata exits with an error
+# when it reads one of those files half-written. Two Sessions that start in
+# the same Space at the same moment would otherwise hit that, so such commands
+# run one at a time per repository. The locks are never removed: one small
+# lock per repository.
 _WORKTREE_METADATA_LOCKS: dict[str, threading.Lock] = {}
 _WORKTREE_METADATA_LOCKS_GUARD = threading.Lock()
+# These look at every worktree to see which branches are checked out.
+_WORKTREE_READING_COMMANDS = frozenset(
+    {"branch", "checkout", "gc", "prune", "switch", "worktree"}
+)
+# These walk every worktree's HEAD or reflog when given one of the options.
+_HISTORY_WALK_COMMANDS = frozenset(
+    {"log", "reflog", "rev-list", "shortlog", "show"}
+)
+_EVERY_WORKTREE_WALK_OPTIONS = frozenset({"--all", "--reflog"})
 
 
 def _reads_every_worktree(args: tuple[str, ...]) -> bool:
-    return args[0] == "worktree" or "--all" in args
+    if args[0] in _WORKTREE_READING_COMMANDS:
+        return True
+    return args[0] in _HISTORY_WALK_COMMANDS and any(
+        value in _EVERY_WORKTREE_WALK_OPTIONS for value in args[1:]
+    )
 
 
 def _worktree_metadata_key(cwd: Path) -> str:
@@ -102,6 +115,14 @@ def _worktree_metadata_lock(cwd: Path) -> threading.Lock:
     key = _worktree_metadata_key(cwd)
     with _WORKTREE_METADATA_LOCKS_GUARD:
         return _WORKTREE_METADATA_LOCKS.setdefault(key, threading.Lock())
+
+
+def _worktree_metadata_guard(
+    cwd: Path, args: tuple[str, ...]
+) -> contextlib.AbstractContextManager:
+    if _reads_every_worktree(args):
+        return _worktree_metadata_lock(cwd)
+    return contextlib.nullcontext()
 
 
 class GitBackendError(RuntimeError):
@@ -334,16 +355,21 @@ class GitBackend:
             raise GitBackendError("advanced Git argv is invalid")
         root = repository_root.expanduser().resolve()
         command = self._command(root, args)
-        if not _ADVANCED_COMMAND_SLOTS.acquire(timeout=self.timeout_seconds):
-            raise GitBackendError("advanced Git concurrency limit reached")
-        try:
-            return self._run_advanced_argv_acquired(
-                command=command,
-                args=args,
-                identity=identity,
-            )
-        finally:
-            _ADVANCED_COMMAND_SLOTS.release()
+        # Wait for the worktree metadata first, so a command that is waiting
+        # for it does not hold one of the shared slots.
+        with _worktree_metadata_guard(root, args):
+            if not _ADVANCED_COMMAND_SLOTS.acquire(
+                timeout=self.timeout_seconds
+            ):
+                raise GitBackendError("advanced Git concurrency limit reached")
+            try:
+                return self._run_advanced_argv_acquired(
+                    command=command,
+                    args=args,
+                    identity=identity,
+                )
+            finally:
+                _ADVANCED_COMMAND_SLOTS.release()
 
     def _run_advanced_argv_acquired(
         self,
@@ -1827,13 +1853,8 @@ class GitBackend:
         command_input: str | bytes | None = input_text
         if preserve_newlines and input_text is not None:
             command_input = input_text.encode(encoding or "utf-8")
-        guard: contextlib.AbstractContextManager = (
-            _worktree_metadata_lock(cwd)
-            if _reads_every_worktree(args)
-            else contextlib.nullcontext()
-        )
         try:
-            with guard:
+            with _worktree_metadata_guard(cwd, args):
                 completed = subprocess.run(
                     command,
                     check=False,

@@ -45,15 +45,18 @@ class _SlowWorktreeAdd:
     def __init__(self, monkeypatch, repository: Path, elsewhere: Path):
         self.half_written = threading.Event()
         self.finish = threading.Event()
-        self.read_during_add = threading.Event()
+        self.started_during_add = threading.Event()
         self._adding = False
-        real_run = subprocess.run
+        real_popen = subprocess.Popen
 
-        def run(command, **kwargs):
+        # Every Git process starts here: `subprocess.run` calls `Popen` too.
+        def popen(command, *args, **kwargs):
             arguments = tuple(str(value) for value in command)
-            if "worktree" not in arguments and "--all" not in arguments:
-                return real_run(command, **kwargs)
-            if "add" in arguments and str(repository) in arguments:
+            if (
+                "worktree" in arguments
+                and "add" in arguments
+                and str(repository) in arguments
+            ):
                 # What another Git process sees mid-add: the new worktree's
                 # folder and `gitdir` exist, and `commondir` is still empty.
                 metadata = repository / ".git" / "worktrees" / "half-written"
@@ -68,10 +71,10 @@ class _SlowWorktreeAdd:
                 self._adding = False
                 shutil.rmtree(metadata)
             elif self._adding:
-                self.read_during_add.set()
-            return real_run(command, **kwargs)
+                self.started_during_add.set()
+            return real_popen(command, *args, **kwargs)
 
-        monkeypatch.setattr(backend_module.subprocess, "run", run)
+        monkeypatch.setattr(backend_module.subprocess, "Popen", popen)
 
 
 def _in_thread(function):
@@ -89,7 +92,14 @@ def _in_thread(function):
 
 
 @pytest.mark.parametrize(
-    "read", ["list", "list_from_linked_worktree", "search_every_branch"]
+    "read",
+    [
+        "list",
+        "list_from_linked_worktree",
+        "search_every_branch",
+        "history_of_every_branch",
+        "branch_list",
+    ],
 )
 def test_reading_every_worktree_waits_for_a_worktree_being_added(
     tmp_path: Path, monkeypatch, read: str
@@ -121,10 +131,17 @@ def test_reading_every_worktree_waits_for_a_worktree_being_added(
         "search_every_branch": lambda: backend.find_commit_by_operation(
             repository, "operation-1"
         ),
+        # The same walk and a branch list, as the Git view runs them.
+        "history_of_every_branch": lambda: backend.run_advanced_argv(
+            repository, ("log", "--max-count=5", "--format=%H", "--all")
+        ),
+        "branch_list": lambda: backend.run_advanced_argv(
+            repository, ("branch",)
+        ),
     }
     reading, result = _in_thread(readers[read])
     # Git must not be asked to read every worktree while one is half-written.
-    read_too_early = slow.read_during_add.wait(0.5)
+    read_too_early = slow.started_during_add.wait(0.5)
     slow.finish.set()
     adding.join(10)
     reading.join(10)
@@ -132,16 +149,24 @@ def test_reading_every_worktree_waits_for_a_worktree_being_added(
     assert not read_too_early
     assert "error" not in added, added.get("error")
     assert "error" not in result, result.get("error")
-    if read == "search_every_branch":
-        assert result["value"] is None
-    else:
-        assert {item.path for item in result["value"]} >= {
+    value = result["value"]
+    if read in {"list", "list_from_linked_worktree"}:
+        assert {item.path for item in value} >= {
             existing.resolve(),
             (tmp_path / "second").resolve(),
         }
+    elif read == "search_every_branch":
+        assert value is None
+    else:
+        assert value.returncode == 0, value.stderr
 
 
-def test_another_repository_is_not_held_up(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize(
+    "unaffected", ["another_repository", "command_that_reads_one_worktree"]
+)
+def test_other_git_commands_are_not_held_up(
+    tmp_path: Path, monkeypatch, unaffected: str
+):
     repository = tmp_path / "repository"
     backend, anchor = _repository(repository)
     other = tmp_path / "other"
@@ -157,13 +182,24 @@ def test_another_repository_is_not_held_up(tmp_path: Path, monkeypatch):
         )
     )
     assert slow.half_written.wait(10)
-    try:
-        # Finishes while the first repository's add is still held.
-        assert [item.path for item in other_backend.list_worktrees(other)] == [
-            other.resolve()
-        ]
-    finally:
-        slow.finish.set()
-        adding.join(10)
+    commands = {
+        "another_repository": lambda: other_backend.list_worktrees(other),
+        "command_that_reads_one_worktree": lambda: backend.ref_oid(
+            repository, "refs/heads/eigent/second"
+        ),
+    }
+    running, result = _in_thread(commands[unaffected])
+    # It has to finish while the first repository's add is still held.
+    running.join(5)
+    finished_during_add = not running.is_alive()
+    slow.finish.set()
+    adding.join(10)
+    running.join(10)
 
+    assert finished_during_add
     assert "error" not in added, added.get("error")
+    assert "error" not in result, result.get("error")
+    if unaffected == "another_repository":
+        assert [item.path for item in result["value"]] == [other.resolve()]
+    else:
+        assert result["value"] == anchor
