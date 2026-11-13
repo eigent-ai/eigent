@@ -33,6 +33,9 @@ interface ElectronAPI {
   closeWindow: (isForceQuit?: boolean) => void;
   minimizeWindow: () => void;
   toggleMaximizeWindow: () => void;
+  setWindowChromeTheme: (
+    theme: import('@/shared/windowChrome').WindowChromeTheme
+  ) => void;
   isFullScreen: () => Promise<boolean>;
   selectFile: (options?: any) => Promise<{
     success: boolean;
