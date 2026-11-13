@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { app, ipcMain } from 'electron';
+import log from 'electron-log';
 import type {
   ProgressInfo,
   UpdateDownloadedEvent,
@@ -28,7 +29,99 @@ import {
 
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 
+// autoUpdater is a process-wide singleton, so its listeners are registered
+// once and forward to whichever window currently owns the update UI. Adding
+// listeners per window or per download duplicated every event and kept
+// forwarding to windows that had started an earlier attempt.
+let updateWindow: Electron.BrowserWindow | null = null;
+const updateClients = new Set<Electron.WebContents>();
+let updateOperation: 'download' | 'install' | null = null;
+let checkListenersRegistered = false;
+let operationListenersRegistered = false;
+
+function sendToUpdateWindow(channel: string, payload: unknown) {
+  if (updateWindow && !updateWindow.isDestroyed()) {
+    updateWindow.webContents.send(channel, payload);
+  }
+}
+
+function sendToUpdateClients(channel: string, payload?: unknown) {
+  for (const client of updateClients) {
+    if (client.isDestroyed()) {
+      updateClients.delete(client);
+    } else {
+      client.send(channel, payload);
+    }
+  }
+}
+
+function registerCheckListeners() {
+  if (checkListenersRegistered) return;
+  checkListenersRegistered = true;
+
+  autoUpdater.on('update-available', (arg: UpdateInfo) => {
+    sendToUpdateWindow('update-can-available', {
+      update: true,
+      version: app.getVersion(),
+      newVersion: arg?.version,
+    });
+  });
+  autoUpdater.on('update-not-available', (arg: UpdateInfo) => {
+    sendToUpdateWindow('update-can-available', {
+      update: false,
+      version: app.getVersion(),
+      newVersion: arg?.version,
+    });
+  });
+  // Handle errors globally to prevent crashes. Errors from a background
+  // check stay in the log, even when one fails while a download is running;
+  // errors from the download or install itself reach the UI.
+  autoUpdater.on('error', (error: Error, message?: string) => {
+    log.error('[AutoUpdater] Update error:', error?.message ?? error);
+    const fromUpdateCheck =
+      typeof message === 'string' &&
+      message.startsWith('Cannot check for updates');
+    if (!updateOperation || fromUpdateCheck) return;
+    updateOperation = null;
+    sendToUpdateClients('update-error', {
+      message: error?.message,
+      error,
+    });
+  });
+}
+
+function registerOperationListeners() {
+  if (operationListenersRegistered) return;
+  operationListenersRegistered = true;
+
+  const finishDownload = () => {
+    if (updateOperation === 'download') updateOperation = null;
+    sendToUpdateClients('update-downloaded');
+  };
+
+  autoUpdater.on('download-progress', (info: ProgressInfo) =>
+    sendToUpdateClients('download-progress', info)
+  );
+
+  const nativeMacUpdater =
+    process.platform === 'darwin'
+      ? ((autoUpdater as { nativeUpdater?: NodeJS.EventEmitter })
+          .nativeUpdater ?? null)
+      : null;
+  if (nativeMacUpdater) {
+    // Squirrel.Mac finishes staging after electron-updater's own event.
+    nativeMacUpdater.on('update-downloaded', finishDownload);
+  } else {
+    autoUpdater.on('update-downloaded', (_event: UpdateDownloadedEvent) =>
+      finishDownload()
+    );
+  }
+}
+
 export function update(win: Electron.BrowserWindow) {
+  // Without a logger electron-updater only writes to the console, which a
+  // packaged app does not keep; route it to the app log for diagnostics.
+  autoUpdater.logger = log;
   // When set to false, the update download will be triggered through the API
   autoUpdater.verifyUpdateCodeSignature = false;
   autoUpdater.autoDownload = false;
@@ -37,28 +130,8 @@ export function update(win: Electron.BrowserWindow) {
 
   autoUpdater.forceDevUpdateConfig = true;
 
-  // start check
-  autoUpdater.on('checking-for-update', function () {});
-  // update available
-  autoUpdater.on('update-available', (arg: UpdateInfo) => {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('update-can-available', {
-        update: true,
-        version: app.getVersion(),
-        newVersion: arg?.version,
-      });
-    }
-  });
-  // update not available
-  autoUpdater.on('update-not-available', (arg: UpdateInfo) => {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('update-can-available', {
-        update: false,
-        version: app.getVersion(),
-        newVersion: arg?.version,
-      });
-    }
-  });
+  updateWindow = win;
+  registerCheckListeners();
   console.log('Current version:', autoUpdater.currentVersion.version);
   console.log('Update config path:', autoUpdater.getUpdateConfigPath?.());
   console.log('User data path (where config lives):', app.getPath('userData'));
@@ -106,12 +179,6 @@ export function update(win: Electron.BrowserWindow) {
       );
     });
   }
-
-  // Handle errors globally to prevent crashes
-  autoUpdater.on('error', (error: Error) => {
-    console.error('[AutoUpdater] Update error:', error.message);
-    // Don't crash the app on update errors
-  });
 }
 
 /**
@@ -134,36 +201,29 @@ export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
 
   // Start downloading and feedback on progress
   ipcMain.handle('start-download', (event: Electron.IpcMainInvokeEvent) => {
-    startDownload(
-      (error, progressInfo) => {
-        if (error) {
-          // feedback download error message
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('update-error', {
-              message: error.message,
-              error,
-            });
-          }
-        } else {
-          // feedback update progress message
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('download-progress', progressInfo);
-          }
-        }
-      },
-      () => {
-        // feedback update downloaded message
-        if (!event.sender.isDestroyed()) {
-          event.sender.send('update-downloaded');
-        }
-      }
-    );
+    registerCheckListeners();
+    registerOperationListeners();
+    updateClients.add(event.sender);
+    updateOperation = 'download';
+    // Errors are delivered through the 'error' listener above.
+    autoUpdater.downloadUpdate().catch(() => undefined);
   });
 
-  // Install now
-  ipcMain.handle('quit-and-install', () => {
+  // Install now. A failed installer launch is reported as 'update-error' so
+  // the UI offers Retry instead of waiting on an install that never starts.
+  ipcMain.handle('quit-and-install', (event: Electron.IpcMainInvokeEvent) => {
+    registerCheckListeners();
+    updateClients.add(event.sender);
+    updateOperation = 'install';
+    log.info('[AutoUpdater] Quit and install requested');
     beforeQuitAndInstall?.();
-    autoUpdater.quitAndInstall(false, true);
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (error) {
+      updateOperation = null;
+      log.error('[AutoUpdater] Quit and install failed:', error);
+      throw error;
+    }
   });
 
   // Dev-only: replay updater events from DevTools to exercise the top-bar
@@ -189,30 +249,4 @@ export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
       }
     );
   }
-}
-
-function startDownload(
-  callback: (error: Error | null, info: ProgressInfo | null) => void,
-  complete: (event: UpdateDownloadedEvent) => void
-) {
-  const nativeMacUpdater =
-    process.platform === 'darwin'
-      ? ((autoUpdater as { nativeUpdater?: NodeJS.EventEmitter })
-          .nativeUpdater ?? null)
-      : null;
-
-  autoUpdater.on('download-progress', (info: ProgressInfo) =>
-    callback(null, info)
-  );
-  autoUpdater.on('error', (error: Error) => callback(error, null));
-
-  if (nativeMacUpdater) {
-    nativeMacUpdater.once('update-downloaded', () =>
-      complete({} as UpdateDownloadedEvent)
-    );
-  } else {
-    autoUpdater.on('update-downloaded', complete);
-  }
-
-  autoUpdater.downloadUpdate();
 }

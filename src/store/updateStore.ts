@@ -52,7 +52,14 @@ export const useDesktopUpdateStore = create<DesktopUpdateState>((set) => ({
     set((state) => (state.phase === 'idle' ? { phase: 'checking' } : state)),
   setAvailable: (newVersion) =>
     set((state) => {
-      if (state.phase === 'downloaded' || state.phase === 'installing') {
+      // A later update check must not turn a running, finished, or
+      // installing update back into the "Update" button: clicking it would
+      // start the same download again.
+      if (
+        state.phase === 'downloading' ||
+        state.phase === 'downloaded' ||
+        state.phase === 'installing'
+      ) {
         return state;
       }
       return {
