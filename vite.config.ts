@@ -19,6 +19,7 @@ import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 import electron from 'vite-plugin-electron/simple';
 import pkg from './package.json';
+import { emojiData } from './scripts/vite-emoji-data';
 
 // Git hash of the last commit that touched server/ — used for stale-server detection.
 // Set as VITE_ env var so Vite exposes it to import.meta.env automatically.
@@ -50,6 +51,7 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       react(),
+      emojiData(__dirname),
       {
         name: 'eigent-backend-shutdown',
         apply: 'serve',

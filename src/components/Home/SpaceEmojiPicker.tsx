@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/popover';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import { cn } from '@/lib/utils';
+import { EMOJI_DATA_DIR, type EmojiDataLocale } from '@/shared/emojiData';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
 import {
   defaultEmojiDataResolver,
@@ -29,20 +30,34 @@ import {
   type EmojiPickerListCategoryHeaderProps,
   type EmojiPickerListEmojiProps,
   type EmojiPickerListRowProps,
-  type Locale,
 } from 'frimousse';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-/** Pinned so the emoji list only changes when we choose to update it. */
-const EMOJIBASE_URL = 'https://cdn.jsdelivr.net/npm/emojibase-data@18.0.0';
+/**
+ * The emoji lists ship with the app (see scripts/vite-emoji-data.ts), in a
+ * folder beside index.html, so the picker works offline.
+ */
+export function bundledEmojiDataUrl(): string {
+  return new URL(
+    `${import.meta.env.BASE_URL}${EMOJI_DATA_DIR}`,
+    document.baseURI
+  ).href;
+}
 
-/** The picker shows nothing of its own when the list can't be fetched. */
+/**
+ * The same lists on a CDN, for a build that could not read its own copy.
+ * Pinned to the version the app ships, so both sources hold the same emoji.
+ */
+export const EMOJI_DATA_CDN_URL =
+  'https://cdn.jsdelivr.net/npm/emojibase-data@18.0.0';
+
+/** The picker shows nothing of its own when the list can't be read. */
 export const EMOJI_LOAD_TIMEOUT_MS = 8_000;
 
 /** The picker's search language for each app language; others use English. */
-const EMOJI_LOCALES: Readonly<Record<string, Locale>> = {
+const EMOJI_LOCALES: Readonly<Record<string, EmojiDataLocale>> = {
   de: 'de',
   es: 'es',
   fr: 'fr',
@@ -100,6 +115,29 @@ function EmojiButton({
 }
 
 /**
+ * Read the emoji list the app ships. Only when that copy cannot be read does
+ * the picker ask the CDN, so it needs no network in normal use.
+ */
+const loadEmojiData: EmojiDataResolver = async (locale, options) => {
+  try {
+    return await defaultEmojiDataResolver(locale, {
+      ...options,
+      emojibaseUrl: bundledEmojiDataUrl(),
+    });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    console.warn(
+      '[SpaceEmojiPicker] Could not read the bundled emoji list:',
+      error
+    );
+    return defaultEmojiDataResolver(locale, {
+      ...options,
+      emojibaseUrl: EMOJI_DATA_CDN_URL,
+    });
+  }
+};
+
+/**
  * The Space's emoji on its detail page, beside the title. Clicking it opens
  * an emoji picker, with a way back to the first letter.
  */
@@ -117,13 +155,14 @@ export function SpaceEmojiPicker({
   const [loadAttempt, setLoadAttempt] = useState(0);
   const current = spaceEmoji(space);
 
-  // The list comes from a CDN the first time, so it can fail or hang offline.
+  // Reading the list can still fail or hang, so the picker never waits on it
+  // forever.
   const resolveEmojiData = useCallback<EmojiDataResolver>(
     async (locale, options) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         return await Promise.race([
-          defaultEmojiDataResolver(locale, options),
+          loadEmojiData(locale, options),
           new Promise<never>((_, reject) => {
             timer = setTimeout(
               () => reject(new Error('Timed out loading emoji data')),
@@ -167,7 +206,7 @@ export function SpaceEmojiPicker({
           key={loadAttempt}
           className="flex h-80 w-full flex-col gap-ds-4"
           columns={9}
-          emojibaseUrl={EMOJIBASE_URL}
+          emojibaseUrl={bundledEmojiDataUrl()}
           resolveEmojiData={resolveEmojiData}
           locale={EMOJI_LOCALES[i18n.language] ?? 'en'}
           onEmojiSelect={({ emoji }) => choose(emoji)}

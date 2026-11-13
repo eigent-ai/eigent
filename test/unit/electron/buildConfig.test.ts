@@ -38,7 +38,14 @@ function fixture() {
     mkdtempSync(path.join(tmpdir(), 'eigent-electron-build-'))
   );
   fixtures.push(root);
-  for (const file of ['vite.config.ts', 'package.json']) {
+  for (const file of [
+    'vite.config.ts',
+    'package.json',
+    // Local modules the config imports.
+    'scripts/vite-emoji-data.ts',
+    'src/shared/emojiData.ts',
+  ]) {
+    mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     cpSync(path.join(repository, file), path.join(root, file));
   }
   // Dependencies are read from this checkout; all outputs and caches live in tmp.
@@ -94,7 +101,12 @@ function expectPreserved(root: string, files = sentinels) {
 }
 
 function copyElectronSources(root: string) {
-  for (const dir of ['electron', 'src/shared', 'src/i18n/locales']) {
+  for (const dir of [
+    'electron',
+    'src/shared',
+    'src/i18n/locales',
+    'src/lib/workspaceRelativePath.ts',
+  ]) {
     cpSync(path.join(repository, dir), path.join(root, dir), {
       recursive: true,
     });
@@ -268,6 +280,12 @@ describe('Electron build output ownership', () => {
       existsSync(path.join(root, 'dist-electron/preload/previous.mjs'))
     ).toBe(false);
     expect(existsSync(path.join(root, 'dist/previous.html'))).toBe(false);
+    // The emoji picker's lists ship beside index.html, so it works offline.
+    for (const file of ['en/data.json', 'zh-hant/messages.json']) {
+      expect(existsSync(path.join(root, 'dist/emojibase', file)), file).toBe(
+        true
+      );
+    }
     const pkg = JSON.parse(
       readFileSync(path.join(root, 'package.json'), 'utf8')
     );
