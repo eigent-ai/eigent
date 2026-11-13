@@ -8,6 +8,7 @@
   "save-changes": "Salva modifiche",
   "description-optional": "Descrizione (Opzionale)",
   "agent-tool": "Strumento Agente",
+  "agent-tool-connectors-note": "Aggiungi qui i tuoi connettori locali. I connettori remoti vengono aggiunti automaticamente a ogni agente.",
   "agent-tool-tooltip": "Seleziona strumenti e integrazioni per il tuo agente",
   "share": "Condividi",
   "advanced-model-config": "Configurazione Avanzata del Modello",

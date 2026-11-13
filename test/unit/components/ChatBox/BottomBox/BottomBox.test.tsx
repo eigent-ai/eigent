@@ -95,11 +95,6 @@ vi.mock('@/components/ChatBox/BottomBox/InputBox', () => ({
   ),
 }));
 
-vi.mock('@/components/ChatBox/BottomBox/PickerPanel', () => ({
-  ConnectorPickerPanel: () => <div />,
-  SkillPickerPanel: () => <div />,
-}));
-
 const footerProps = {
   sessionMode: 'single-agent' as const,
 };

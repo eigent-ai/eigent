@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -1808,6 +1810,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         projectFiles={fileGroups[0]?.files || []}
         surfaceClassName="bg-ds-neutral-subtle-default"
         embedded
+        // With a Space id this is the Space's Files page, which starts at the
+        // content column's left edge under the top bar.
+        alignHeaderToTopBar={Boolean(spaceId)}
         openInActions={openInActions}
         isFileTreeOpen={isFileSidebarOpen}
         onToggleFileTree={() => setIsFileSidebarOpen((open) => !open)}
@@ -2856,6 +2861,11 @@ export interface FileViewerPanelProps {
   surfaceClassName?: string;
   /** Remove standalone spacing/radius when rendered inside another panel shell. */
   embedded?: boolean;
+  /**
+   * The header sits at the content column's left edge (a full page), so its
+   * first item lines up with the top bar's search icon.
+   */
+  alignHeaderToTopBar?: boolean;
   /** Clicking the breadcrumb (reveal in folder / download remote). The header
    * does not invoke this in `file-path` mode or when segment clicks are supplied.
    * Also used by the file-manager action when `canRevealFile` is enabled. */
@@ -3004,6 +3014,7 @@ export function FileViewerPanel({
   projectFiles,
   surfaceClassName = 'bg-ds-neutral-subtle-default',
   embedded = false,
+  alignHeaderToTopBar = false,
   onRevealFile,
   onBreadcrumbSegmentClick,
   onDownloadFile,
@@ -3067,7 +3078,10 @@ export function FileViewerPanel({
         <ContentHeader
           border={false}
           height="adaptive"
-          className="flex-wrap py-ds-4"
+          className={cn(
+            'flex-wrap py-ds-4',
+            alignHeaderToTopBar && CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS
+          )}
         >
           {selectedFile && pathPresentation === 'file-path' ? (
             <TooltipSimple
@@ -3295,14 +3309,14 @@ export function FileViewerPanel({
                 />
               ) : selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
-                  <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                  <div className="flex w-full flex-col items-center gap-2 text-center">
                     <DsIcon
                       icon={FolderOpen}
                       recipe="illustration"
                       illustrationSize={40}
                       className="text-ds-ink-muted-default"
                     />
-                    <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
+                    <p className="m-0 text-ds-text-body-large font-semibold wrap-anywhere text-ds-ink-default-default">
                       {selectedFile.name}
                     </p>
                     <p className="m-0 text-ds-text-base text-ds-ink-muted-default">

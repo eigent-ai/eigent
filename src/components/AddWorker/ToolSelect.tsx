@@ -895,6 +895,15 @@ const ToolSelect = forwardRef<
             />
           </TooltipSimple>
         </div>
+        {/* Hosted connectors reach every agent through the Connector
+            Gateway at task start, so only local tools are picked here. */}
+        <p
+          id="agent-tool-connectors-note"
+          data-agent-tool-connectors-note
+          className="m-0 text-ds-text-meta text-ds-ink-muted-default"
+        >
+          {t('workforce.agent-tool-connectors-note')}
+        </p>
         <div
           onMouseDown={() => inputRef.current?.focus()}
           className={cn(
@@ -911,6 +920,7 @@ const ToolSelect = forwardRef<
               showSearchPlaceholder ? t('setting.search-mcp') : undefined
             }
             aria-label={t('workforce.agent-tool')}
+            aria-describedby="agent-tool-connectors-note"
             aria-controls="agent-tool-picker-panel"
             className="!min-h-[20px] min-w-[8ch] flex-1 resize-none border-none p-0 text-sm leading-5 text-ds-ink-default-default !shadow-none !ring-0 !ring-offset-0 placeholder:text-ds-ink-muted-default focus-visible:ring-0"
             rows={1}

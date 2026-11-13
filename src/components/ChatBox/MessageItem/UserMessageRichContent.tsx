@@ -15,6 +15,11 @@
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import {
+  CONNECTOR_CHIP_ICON_CLASSES,
+  connectorChipIconUrl,
+  connectorChipLabel,
+} from '@/lib/connectorChipIcon';
+import {
   RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
   RICH_TAG_BASE_STYLE_CLASSES,
@@ -106,7 +111,15 @@ function renderMessageRichSegments(
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
-          {seg.text}
+          <img
+            src={connectorChipIconUrl(seg.text)}
+            alt=""
+            aria-hidden
+            draggable={false}
+            className={CONNECTOR_CHIP_ICON_CLASSES}
+          />
+          <span className="sr-only">@</span>
+          {connectorChipLabel(seg.text)}
         </span>
       );
     }

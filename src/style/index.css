@@ -10,6 +10,25 @@
 @source '../../index.html';
 @source '../../src';
 @source '../../.storybook';
+
+/*
+ * Named width steps. The JS config's spacing scale also names its steps
+ * (`gap-sm`, `p-md`, …), and Tailwind resolves `max-w-*` / `min-w-*` through
+ * spacing before its container sizes, which made `max-w-md` 16px instead of
+ * 28rem. These pin the named widths to Tailwind's container scale.
+ */
+@theme {
+  --max-width-xs: 20rem;
+  --max-width-sm: 24rem;
+  --max-width-md: 28rem;
+  --max-width-lg: 32rem;
+  --max-width-xl: 36rem;
+  --min-width-xs: 20rem;
+  --min-width-sm: 24rem;
+  --min-width-md: 28rem;
+  --min-width-lg: 32rem;
+  --min-width-xl: 36rem;
+}
 @source not inline('container');
 
 /* Public Accent / Neutral / Ink / Hairline / Ring groups. Engine still emits

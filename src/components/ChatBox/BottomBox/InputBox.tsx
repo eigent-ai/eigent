@@ -28,14 +28,12 @@ import { getEnterKeyLabel } from '@/shared/keyboardShortcuts';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
-  Cable,
   FileText,
   Image,
-  Paperclip,
   Play,
+  Plus,
   Square,
   UploadCloud,
-  WandSparkles,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -107,16 +105,32 @@ export interface InputboxProps {
   privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
-  /** Connector picker panel state; the toggle button only renders when the callback is provided. */
-  connectorPanelOpen?: boolean;
-  onToggleConnectorPanel?: () => void;
-  /** Skill picker panel state; the toggle button only renders when the callback is provided. */
-  skillPanelOpen?: boolean;
-  onToggleSkillPanel?: () => void;
+  /**
+   * The floating "add context" panel (files, skills, connectors) that the "+"
+   * button opens. Omit it and "+" opens the file picker directly.
+   */
+  contextPanel?: ComposerContextPanelControl;
+  /** Extra controls after the "+" button, for example Workforce's agents. */
+  leadingActions?: React.ReactNode;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
   onTriggerCreated?: (triggerData: TriggerInput) => void;
+}
+
+/** How the composer drives the floating "add context" panel above it. */
+export interface ComposerContextPanelControl {
+  open: boolean;
+  onToggle: () => void;
+  /**
+   * Panel keys typed in the text field, which doubles as the panel's search
+   * box (arrows, Enter, Escape). Returns true when the panel consumed the key.
+   */
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => boolean;
+  /** DOM id of the panel's list. */
+  listId: string;
+  /** DOM id of the highlighted row, if any. */
+  activeRowId?: string;
 }
 
 /**
@@ -126,7 +140,7 @@ export interface InputboxProps {
  * - **Layer 1**: Input-required question / details (when provided)
  * - **Layer 2**: File attachment chips (original design, up to 5 + overflow)
  * - **Layer 3**: Auto-expanding rich text input
- * - **Layer 4**: Action buttons (attach, connectors, skills, send)
+ * - **Layer 4**: Action buttons ("+" menu for files, skills and connectors; send)
  * - Send button changes color based on content (gray when empty, green when has content)
  * - Arrow icon rotates when there's content
  * - Supports Enter to send, Shift+Enter for new line
@@ -179,10 +193,8 @@ export const Inputbox = ({
   onUnsupportedAttachment,
   privacy = true,
   useCloudModelInDev = false,
-  connectorPanelOpen = false,
-  onToggleConnectorPanel,
-  skillPanelOpen = false,
-  onToggleSkillPanel,
+  contextPanel,
+  leadingActions,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
@@ -244,7 +256,17 @@ export const Inputbox = ({
     }
   };
 
+  const uploadDisabled =
+    !attachmentsEnabled ||
+    !privacy ||
+    useCloudModelInDev ||
+    typeof onAddFile !== 'function';
+  const addContextLabel = contextPanel
+    ? t('chat.input-add-context')
+    : t('chat.input-attach-add-files-or-photos');
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isComposing && contextPanel?.onKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey && !disabled && !isComposing) {
       e.preventDefault();
       handleSend();
@@ -413,12 +435,14 @@ export const Inputbox = ({
     <div
       data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-ds-24 border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 shadow-ds-elevation-card transition-colors',
+        // The edge is a 1px inset ring rather than a border: it composites
+        // with the soft shadow and follows the theme's hairline color.
+        'relative flex w-full flex-col items-start rounded-ds-24 bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 shadow-ds-elevation-card-subtle ring-1 ring-ds-hairline-subtle-default transition-[box-shadow,background-color] ring-inset',
         !disabled &&
           (isFocused || hasContent) &&
-          'border-ds-border-information-default-default',
+          'ring-ds-border-information-default-default',
         isDragging &&
-          'border-ds-hairline-strong-default bg-ds-bg-information-subtle-default',
+          'bg-ds-bg-information-subtle-default ring-ds-hairline-strong-default',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -583,6 +607,10 @@ export const Inputbox = ({
             handleTextChange(next, cursorPos ?? undefined)
           }
           onKeyDown={handleKeyDown}
+          ariaControls={contextPanel?.open ? contextPanel.listId : undefined}
+          ariaActiveDescendant={
+            contextPanel?.open ? contextPanel.activeRowId : undefined
+          }
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
           onFocus={() => setIsFocused(true)}
@@ -610,77 +638,35 @@ export const Inputbox = ({
         data-input-actions
         className="flex w-full flex-wrap items-center justify-between gap-y-2"
       >
-        {/* Left: add files/photos + connector picker + skill picker */}
+        {/* Left: one "+" for files, skills and connectors */}
         <div className="flex min-w-0 items-center gap-1">
-          <TooltipSimple content="Attach" side="top">
+          <TooltipSimple content={addContextLabel} side="top">
             <Button
               type="button"
+              data-context-panel-trigger
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="lg"
-              disabled={
-                disabled ||
-                !attachmentsEnabled ||
-                !privacy ||
-                useCloudModelInDev ||
-                typeof onAddFile !== 'function'
+              disabled={disabled || (!contextPanel && uploadDisabled)}
+              aria-label={addContextLabel}
+              aria-haspopup={contextPanel ? 'listbox' : undefined}
+              aria-expanded={contextPanel ? contextPanel.open : undefined}
+              aria-controls={
+                contextPanel?.open ? contextPanel.listId : undefined
               }
-              aria-label={t('chat.input-attach-add-files-or-photos')}
-              onClick={() => onAddFile?.()}
+              className={cn(
+                contextPanel?.open && 'bg-ds-neutral-strong-default'
+              )}
+              onClick={() =>
+                contextPanel ? contextPanel.onToggle() : onAddFile?.()
+              }
             >
-              <DsIcon icon={Paperclip} />
+              <DsIcon icon={Plus} />
             </Button>
           </TooltipSimple>
-          {onToggleConnectorPanel && (
-            <TooltipSimple content="MCPs" side="top">
-              <Button
-                type="button"
-                data-picker-trigger
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                textWeight="bold"
-                buttonRadius="lg"
-                disabled={disabled}
-                aria-label={t('chat.input-add-connector', {
-                  defaultValue: 'Add connectors',
-                })}
-                aria-haspopup="true"
-                aria-expanded={connectorPanelOpen}
-                className={cn(
-                  connectorPanelOpen && 'bg-ds-neutral-strong-default'
-                )}
-                onClick={onToggleConnectorPanel}
-              >
-                <DsIcon icon={Cable} />
-              </Button>
-            </TooltipSimple>
-          )}
-          {onToggleSkillPanel && (
-            <TooltipSimple content="Skills" side="top">
-              <Button
-                type="button"
-                data-picker-trigger
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                textWeight="bold"
-                buttonRadius="lg"
-                disabled={disabled}
-                aria-label={t('chat.input-add-skill', {
-                  defaultValue: 'Add skills',
-                })}
-                aria-haspopup="true"
-                aria-expanded={skillPanelOpen}
-                className={cn(skillPanelOpen && 'bg-ds-neutral-strong-default')}
-                onClick={onToggleSkillPanel}
-              >
-                <DsIcon icon={WandSparkles} />
-              </Button>
-            </TooltipSimple>
-          )}
+          {leadingActions}
         </div>
 
         {/* Right: send or control the current task when the draft is empty. */}
