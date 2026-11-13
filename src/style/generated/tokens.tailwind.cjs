@@ -139,6 +139,7 @@ module.exports = {
     "ds-panel": "var(--ds-radius-panel)",
     "ds-popover": "var(--ds-radius-popover)",
     "ds-primary-action": "var(--ds-radius-primary-action)",
+    "ds-shell-control": "var(--ds-radius-shell-control)",
     "ds-0": "var(--ds-ref-radius-0)",
     "ds-12": "var(--ds-ref-radius-12)",
     "ds-16": "var(--ds-ref-radius-16)",

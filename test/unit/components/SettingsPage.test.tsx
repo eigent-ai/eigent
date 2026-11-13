@@ -36,6 +36,11 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The Space page's composer is the full chat composer, covered by its own
+// tests; here it only needs to be on the page.
+vi.mock('@/components/Home/SpaceQuickComposer', () => ({
+  SpaceQuickComposer: () => <div data-testid="space-quick-composer" />,
+}));
 vi.mock('@/api/brain', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/brain')>()),
   skillRead: vi
@@ -397,7 +402,8 @@ describe('SettingsPage', () => {
     const bundleOptions = screen.getByRole('group', {
       name: 'Bundle import options',
     });
-    expect(bundleOptions).toHaveClass('grid-cols-1');
+    // Choices stack as rows, one per line, whatever their number.
+    expect(bundleOptions).toHaveClass('flex', 'flex-col');
     expect(
       within(bundleOptions).queryByRole('button', {
         name: 'Import Agent Plugin as Bundle',
@@ -616,7 +622,13 @@ describe('SettingsPage', () => {
     const newSpaceOptions = within(newSpaceDialog).getByRole('group', {
       name: 'New Space options',
     });
-    expect(newSpaceOptions).toHaveClass('grid-cols-3');
+    // A short list of rows in a medium dialog, not three wide cards.
+    expect(newSpaceOptions).toHaveClass('flex', 'flex-col');
+    expect(newSpaceDialog).toHaveClass('max-w-[600px]');
+    for (const row of within(newSpaceOptions).getAllByRole('button')) {
+      expect(row).toHaveAttribute('data-new-space-option');
+      expect(row).toHaveClass('flex', 'items-center', 'w-full');
+    }
     expect(
       within(newSpaceOptions).getByRole('button', {
         name: 'Start from scratch',
@@ -639,7 +651,7 @@ describe('SettingsPage', () => {
     const bundleOptions = within(bundleOptionsDialog).getByRole('group', {
       name: 'Bundle import options',
     });
-    expect(bundleOptions).toHaveClass('grid-cols-2');
+    expect(bundleOptions).toHaveClass('flex', 'flex-col');
     expect(
       within(bundleOptions).getByRole('button', {
         name: 'Import Agent Plugin as Bundle',
@@ -1228,7 +1240,7 @@ describe('SettingsPage', () => {
     ).toHaveAttribute('aria-haspopup', 'menu');
     expect(
       within(detailHeader).getByRole('button', { name: 'Pin Space' })
-    ).toHaveAttribute('data-variant', 'secondary');
+    ).toHaveAttribute('data-variant', 'ghost');
     const openInSpaceViewButton = within(detailHeader).getByRole('button', {
       name: 'Open workspace',
     });
@@ -1299,7 +1311,11 @@ describe('SettingsPage', () => {
     for (const rail of detailRails) {
       expect(rail).toHaveClass('mx-auto', 'w-full', 'max-w-[1100px]');
     }
-    expect(detailRails[2]?.parentElement).toHaveClass('px-8');
+    // In Home the content lines up with the header, not a fixed 32px inset.
+    expect(detailRails[2]?.parentElement).toHaveClass(
+      'pl-[calc(var(--ds-ref-space-16)_-_var(--ds-ref-space-8)_+_var(--ds-button-sm-padding-inline))]',
+      'pr-[calc(var(--ds-ref-space-16)_-_var(--scrollbar-size))]'
+    );
     expect(detailRails[2]).not.toHaveClass('px-8');
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'

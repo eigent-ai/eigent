@@ -12,6 +12,7 @@
   "radius": {
     "primary-action": "{ref.radius.full}",
     "icon-action": "{ref.radius.full}",
+    "shell-control": "{ref.radius.12}",
     "field": "{ref.radius.12}",
     "compact-control": "{ref.radius.8}",
     "menu-row": "{ref.radius.12}",

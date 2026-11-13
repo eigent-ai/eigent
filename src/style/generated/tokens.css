@@ -122,6 +122,7 @@
   --ds-radius-panel: var(--ds-ref-radius-16);
   --ds-radius-popover: var(--ds-ref-radius-16);
   --ds-radius-primary-action: var(--ds-ref-radius-full);
+  --ds-radius-shell-control: var(--ds-ref-radius-12);
   --ds-ref-border-accent: 4px;
   --ds-ref-border-hairline: 0.5px;
   --ds-ref-border-strong: 2px;

@@ -24,6 +24,7 @@ import { spaceRailStatusText } from '@/components/Layout/AppRail/SpaceRailTile';
 import {
   NavTab,
   SidebarNavGroup,
+  SidebarRailSpacer,
   SidebarScrollArea,
   SidebarSection,
   SidebarShell,
@@ -76,6 +77,7 @@ import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { openSettings } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   isUnconfiguredPlaceholderSpace,
@@ -83,8 +85,9 @@ import {
   type Space,
   type SpaceProjectMeta,
 } from '@/store/spaceStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { TFunction } from 'i18next';
-import { ChevronDown, ChevronRight, Folder, Plus } from 'lucide-react';
+import { Cable, ChevronRight, Folder, Plus } from 'lucide-react';
 import { memo, useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -104,6 +107,24 @@ import NewSpaceDialog from './NewSpaceDialog';
 
 const SPACE_ROW_FOCUS_CLASS =
   'outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none';
+
+/** Snappy height change: a steep start that settles gently. */
+const SPACE_GROUP_HEIGHT_EASE = [0.25, 1, 0.5, 1] as const;
+
+/**
+ * Unfolding grows the group, then fades the rows in as the space opens.
+ * Folding fades the rows first and closes a little faster, since the choice
+ * is already made.
+ */
+const SPACE_GROUP_OPEN = {
+  height: { duration: 0.22, ease: SPACE_GROUP_HEIGHT_EASE },
+  opacity: { duration: 0.18, delay: 0.04, ease: 'easeOut' },
+} as const;
+const SPACE_GROUP_CLOSE = {
+  height: { duration: 0.18, ease: SPACE_GROUP_HEIGHT_EASE },
+  opacity: { duration: 0.1, ease: 'easeOut' },
+} as const;
+const SPACE_GROUP_INSTANT = { duration: 0 } as const;
 
 interface SessionRowSources {
   t: TFunction;
@@ -237,6 +258,7 @@ function HomeSpaceGroup({
 }: HomeSpaceGroupProps) {
   const { t } = useTranslation();
   const groupId = useId();
+  const reduceMotion = useReducedMotion();
   const name = getActiveSpaceTriggerLabel(space.name, t);
   const statusText = spaceRailStatusText(attention, t);
   const showAllSessions = usePageTabStore((state) =>
@@ -261,7 +283,7 @@ function HomeSpaceGroup({
     : t('layout.fold-space', { name });
 
   return (
-    <div data-home-space={space.id} className="flex min-w-0 flex-col gap-0.5">
+    <div data-home-space={space.id} className="flex min-w-0 flex-col">
       <div
         data-sidebar-row
         className={cn(
@@ -278,7 +300,7 @@ function HomeSpaceGroup({
           onClick={onToggleFold}
           aria-label={foldLabel}
           aria-expanded={!folded}
-          aria-controls={groupId}
+          aria-controls={folded ? undefined : groupId}
           data-home-space-fold
           className={cn(
             'group/fold no-drag ml-ds-8 flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control text-ds-ink-muted-default',
@@ -295,7 +317,14 @@ function HomeSpaceGroup({
             aria-hidden
             className="hidden items-center justify-center group-hover/space-row:flex group-focus-visible/fold:flex"
           >
-            <DsIcon icon={folded ? ChevronRight : ChevronDown} />
+            {/* One chevron turns with the group instead of swapping glyphs. */}
+            <DsIcon
+              icon={ChevronRight}
+              className={cn(
+                'transition-transform duration-200 ease-out motion-reduce:transition-none',
+                !folded && 'rotate-90'
+              )}
+            />
           </span>
         </button>
         <SidebarRowTooltip
@@ -335,57 +364,85 @@ function HomeSpaceGroup({
           onDelete={onDeleteSpace}
         />
       </div>
-      <div
-        id={groupId}
-        hidden={folded}
-        className="flex min-w-0 flex-col gap-0.5"
-      >
-        {visibleSessions.length > 0 ? (
-          <SessionNavListRows
-            sessions={visibleSessions.map((session) =>
-              toSessionNavItem(session, rowSources)
-            )}
-            activeSessionId={activeSessionId}
-            onSessionClick={onSessionClick}
-            onEndSession={onEndSession}
-            onDeleteSession={onDeleteSession}
-            contextActions={sessionContextActions}
-            folded={false}
-            nested
-          />
-        ) : null}
-        {!folded && sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
-          <NavTab
-            active={false}
-            onClick={() => setHomeSpaceExpanded(space.id, !showAllSessions)}
-            // The spacer lines the label up with the Session names.
-            leading={<span aria-hidden className="size-ds-icon-md shrink-0" />}
-            label={
-              <span className="text-ds-text-base font-medium text-ds-ink-subtle-default">
-                {showAllSessions
-                  ? t('layout.show-fewer-sessions')
-                  : t('layout.show-all-sessions', { count: sessions.length })}
-              </span>
-            }
-            ariaLabel={
-              showAllSessions
-                ? t('layout.show-fewer-sessions-in-space', { name })
-                : t('layout.show-all-sessions-in-space', {
-                    count: sessions.length,
-                    name,
-                  })
-            }
-          />
-        ) : null}
-      </div>
+      {/* Folding keeps the rows on screen while they fade and the group
+          closes; the gap above them lives inside, so nothing jumps at the end. */}
+      <AnimatePresence initial={false}>
+        {folded ? null : (
+          <motion.div
+            key="sessions"
+            id={groupId}
+            data-home-space-sessions
+            className="min-w-0 overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: 'auto',
+              opacity: 1,
+              transition: reduceMotion ? SPACE_GROUP_INSTANT : SPACE_GROUP_OPEN,
+            }}
+            exit={{
+              height: 0,
+              opacity: 0,
+              transition: reduceMotion
+                ? SPACE_GROUP_INSTANT
+                : SPACE_GROUP_CLOSE,
+            }}
+          >
+            <div className="flex min-w-0 flex-col gap-0.5 pt-0.5">
+              {visibleSessions.length > 0 ? (
+                <SessionNavListRows
+                  sessions={visibleSessions.map((session) =>
+                    toSessionNavItem(session, rowSources)
+                  )}
+                  activeSessionId={activeSessionId}
+                  onSessionClick={onSessionClick}
+                  onEndSession={onEndSession}
+                  onDeleteSession={onDeleteSession}
+                  contextActions={sessionContextActions}
+                  folded={false}
+                  nested
+                />
+              ) : null}
+              {sessions.length > HOME_SPACE_RECENT_SESSIONS ? (
+                <NavTab
+                  active={false}
+                  onClick={() =>
+                    setHomeSpaceExpanded(space.id, !showAllSessions)
+                  }
+                  // The spacer lines the label up with the Session names.
+                  leading={
+                    <span aria-hidden className="size-ds-icon-md shrink-0" />
+                  }
+                  label={
+                    <span className="text-ds-text-base font-medium text-ds-ink-subtle-default">
+                      {showAllSessions
+                        ? t('layout.show-fewer-sessions')
+                        : t('layout.show-all-sessions', {
+                            count: sessions.length,
+                          })}
+                    </span>
+                  }
+                  ariaLabel={
+                    showAllSessions
+                      ? t('layout.show-fewer-sessions-in-space', { name })
+                      : t('layout.show-all-sessions-in-space', {
+                          count: sessions.length,
+                          name,
+                        })
+                  }
+                />
+              ) : null}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 /**
- * Home's sidebar: New session, All Spaces, the Sessions waiting for a reply,
- * and every Space with its recent Sessions. Spaces sort by last activity once
- * per Home visit, so rows don't move while it's open.
+ * Home's sidebar: New session, All Spaces, Connectors, the Sessions waiting
+ * for a reply, and every Space with its recent Sessions. Spaces sort by last
+ * activity once per Home visit, so rows don't move while it's open.
  */
 function HomeSidebar() {
   const { t } = useTranslation();
@@ -646,6 +703,7 @@ function HomeSidebar() {
 
   const newSessionLabel = t('layout.new-project');
   const allSpacesLabel = t('layout.all-spaces');
+  const connectorsLabel = t('layout.connectors');
   const newSpaceLabel = t('layout.new-space');
   const homeLabel = t('layout.home');
 
@@ -671,26 +729,24 @@ function HomeSidebar() {
       <SidebarShell ariaLabel={homeLabel}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-clip">
           {/* The gap sits here, not on the list, so scrolling stops below it. */}
-          <SidebarSection className="mb-3">
+          <SidebarSection className="mb-3 gap-ds-4">
+            {/* One tab tall and level with Home on the rail. Not a control. */}
+            <div
+              data-home-sidebar-brand
+              className="flex h-8 w-full min-w-0 shrink-0 items-center gap-3 px-3"
+            >
+              <img
+                src={appearance === 'dark' ? eigentIconWhite : eigentIconBlack}
+                alt=""
+                draggable={false}
+                className="-mx-1 size-6 shrink-0 pt-[0.5px] select-none"
+              />
+              <span className="min-w-0 truncate font-display text-ds-text-body-large font-bold text-ds-ink-default-default">
+                Eigent
+              </span>
+            </div>
+            <SidebarRailSpacer />
             <SidebarNavGroup>
-              {/* One tab tall, like the Space sidebar's name row, so New
-                  session stays put between the two. Not a control. */}
-              <div
-                data-home-sidebar-brand
-                className="flex h-8 w-full min-w-0 shrink-0 items-center gap-3 px-3"
-              >
-                <img
-                  src={
-                    appearance === 'dark' ? eigentIconWhite : eigentIconBlack
-                  }
-                  alt=""
-                  draggable={false}
-                  className="-mx-1 size-6 shrink-0 pt-[0.5px] select-none"
-                />
-                <span className="min-w-0 truncate font-display text-ds-text-body-large font-bold text-ds-ink-default-default">
-                  Eigent
-                </span>
-              </div>
               <NavTab
                 active={onWorkspaceRoute && !sessionTabOpen}
                 onClick={openNewSession}
@@ -718,6 +774,15 @@ function HomeSidebar() {
                 label={allSpacesLabel}
                 ariaLabel={allSpacesLabel}
                 ariaCurrentPage={onHomePage && !routeSpaceId}
+              />
+              <NavTab
+                active={false}
+                onClick={() => openSettings('connectors')}
+                leading={
+                  <DsIcon icon={Cable} className="shrink-0" aria-hidden />
+                }
+                label={connectorsLabel}
+                ariaLabel={connectorsLabel}
               />
             </SidebarNavGroup>
           </SidebarSection>
@@ -775,27 +840,25 @@ function HomeSidebar() {
                     ? t('layout.sessions-heading')
                     : t('layout.spaces')
                 }
-                actions={
-                  <>
-                    <HomeSidebarViewMenu />
-                    <TooltipSimple
-                      content={newSpaceLabel}
-                      compact
-                      side="bottom"
-                      variant="instant"
+                actions={<HomeSidebarViewMenu />}
+                persistentActions={
+                  <TooltipSimple
+                    content={newSpaceLabel}
+                    compact
+                    side="bottom"
+                    variant="instant"
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      buttonContent="icon-only"
+                      aria-label={newSpaceLabel}
+                      onClick={() => setNewSpaceDialogOpen(true)}
                     >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        buttonContent="icon-only"
-                        aria-label={newSpaceLabel}
-                        onClick={() => setNewSpaceDialogOpen(true)}
-                      >
-                        <DsIcon icon={Plus} aria-hidden />
-                      </Button>
-                    </TooltipSimple>
-                  </>
+                      <DsIcon icon={Plus} aria-hidden />
+                    </Button>
+                  </TooltipSimple>
                 }
               >
                 {grouping === 'list' ? (

@@ -16,6 +16,7 @@ import { SidebarShell } from '@/components/Layout/AppSidebar';
 import {
   SIDEBAR_TOOLTIP_GAP_PX,
   SidebarRowTooltip,
+  SidebarTooltipProvider,
 } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,5 +109,44 @@ describe('SidebarRowTooltip', () => {
     });
     act(() => vi.runOnlyPendingTimers());
     expect(shell()).toBeNull();
+  });
+
+  it('centres on a rail button and slides between them', () => {
+    const height = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.hasAttribute('data-sidebar-tooltip') ? 20 : 0;
+      });
+    render(
+      <SidebarTooltipProvider>
+        <SidebarRowTooltip content="Home" align="center">
+          <button type="button">Home</button>
+        </SidebarRowTooltip>
+        <SidebarRowTooltip content="Research" align="center">
+          <button type="button">Research</button>
+        </SidebarRowTooltip>
+      </SidebarTooltipProvider>
+    );
+    const home = screen.getByRole('button', { name: 'Home' });
+    const research = screen.getByRole('button', { name: 'Research' });
+    vi.spyOn(home, 'getBoundingClientRect').mockReturnValue(rect(44, 40));
+    vi.spyOn(research, 'getBoundingClientRect').mockReturnValue(rect(89, 40));
+
+    fireEvent.pointerEnter(home, { pointerType: 'mouse' });
+    act(() => vi.runOnlyPendingTimers());
+    const first = shell();
+    // Placed at the button's middle and pulled up half its height in CSS, so
+    // it is centred from the first frame.
+    expect(first?.style.transform).toContain('translateY(60px)');
+    expect(first).toHaveAttribute('data-sidebar-tooltip-align', 'center');
+    expect(first).toHaveClass('-translate-y-1/2');
+    expect(first).toHaveStyle({ left: `${40 + SIDEBAR_TOOLTIP_GAP_PX}px` });
+
+    fireEvent.pointerLeave(home, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(research, { pointerType: 'mouse' });
+    act(() => vi.runOnlyPendingTimers());
+    expect(shell()).toBe(first);
+    expect(shell()).toHaveTextContent('Research');
+    height.mockRestore();
   });
 });

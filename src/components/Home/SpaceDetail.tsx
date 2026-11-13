@@ -29,8 +29,13 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
-import { getSpaceStatusLabel, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  getSpaceStatusLabel,
+  isLegacySpace,
+  isLocalWorkspaceSpace,
+} from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -58,6 +63,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { HomeHubListInsetProvider } from './components/HomeHubListTable';
 import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
 import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
@@ -67,6 +73,7 @@ import {
   SpaceDetailTabsNav,
   type SpaceDetailTab,
 } from './SpaceDetailTabsNav';
+import { SpaceQuickComposer } from './SpaceQuickComposer';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
 import { formatHubDate } from './utils';
@@ -86,6 +93,16 @@ const WorkspaceConfigurationEditor = lazy(() =>
 );
 
 const SPACE_DETAIL_RAIL_CLASS = 'mx-auto w-full max-w-[1100px]';
+/**
+ * Home's Space page lines its content up with the header above it. On the
+ * left, that is the icon of the Space menu: a ghost button pulled 8px into
+ * the header's 16px inset, with its icon inset by the button's own padding.
+ * On the right, it is Open workspace's edge, less the 8px scrollbar track
+ * that the scroll area keeps on that side.
+ */
+const HOME_CONTENT_INSET_CLASS =
+  'pl-[calc(var(--ds-ref-space-16)_-_var(--ds-ref-space-8)_+_var(--ds-button-sm-padding-inline))] pr-[calc(var(--ds-ref-space-16)_-_var(--scrollbar-size))]';
+const SPACE_VIEW_CONTENT_INSET_CLASS = 'px-8';
 const uiEaseOut = [0.23, 1, 0.32, 1] as const;
 
 function CommittedSpaceDetailFallback({
@@ -208,8 +225,60 @@ function Stat({
   );
 }
 
+/** A Space page fact as a row: icon and name, with the value at the end. */
+function StatRow({
+  icon,
+  label,
+  value,
+  loading = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: ReactNode;
+  loading?: boolean;
+}) {
+  return (
+    <div
+      data-space-stat={label}
+      className="flex min-w-0 items-center gap-ds-12 py-ds-8"
+    >
+      <DsIcon icon={icon} className="shrink-0 text-ds-ink-muted-default" />
+      <DsText
+        as="span"
+        role="base"
+        className="min-w-0 flex-1 truncate text-ds-ink-muted-default"
+      >
+        {label}
+      </DsText>
+      {loading ? (
+        <Skeleton
+          data-space-stat-skeleton={label}
+          className="h-4 w-10 shrink-0"
+        />
+      ) : (
+        <span
+          className="max-w-[60%] shrink-0 truncate text-right !text-ds-text-base font-semibold text-ds-ink-default-default tabular-nums"
+          title={typeof value === 'string' ? value : undefined}
+        >
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+interface SpaceStatItem {
+  icon: LucideIcon;
+  label: string;
+  value: ReactNode;
+  loading?: boolean;
+}
+
 const SPACE_NAME_CLASS =
   'block truncate !text-ds-text-section font-bold text-ds-ink-default-default';
+/** Home's Space page leads with the Space, so its name reads larger. */
+const HOME_SPACE_NAME_CLASS =
+  'block truncate !text-ds-text-page font-bold text-ds-ink-default-default';
 
 interface SpaceDetailProps {
   spaceId: string;
@@ -218,9 +287,10 @@ interface SpaceDetailProps {
   onBack: () => void;
   /**
    * `home` is the Workspace page in Home: its header's title is the Space's
-   * name and menu, beside Pin Space and Open workspace. `space-view` is the
-   * same page next to the Space sidebar, which already has both, so it has no
-   * header.
+   * name and menu, beside Pin Space and Open workspace, and its summary leads
+   * with the Space and a box to start a Session in it, with the facts stacked
+   * beside them. `space-view` is the same page next to the Space sidebar,
+   * which already has both, so it has no header and keeps the compact summary.
    */
   presentation?: 'home' | 'space-view';
 }
@@ -294,6 +364,47 @@ export default function SpaceDetail({
   const location = isLocalWorkspaceSpace(space)
     ? t('layout.files-tab-local')
     : t('layout.files-tab-remote');
+  const description = space.description?.trim() || t('layout.no-description');
+  const stats: SpaceStatItem[] = [
+    {
+      icon: MessageCircle,
+      label: t('layout.projects'),
+      value: data.projectCount,
+      loading: data.projectsLoading,
+    },
+    {
+      icon: ListChecks,
+      label: t('layout.tasks-heading'),
+      value: data.taskCount,
+      loading: data.projectsLoading,
+    },
+    {
+      icon: AUTOMATION_ICON,
+      label: t('layout.triggers'),
+      value: data.triggerCount,
+      loading: data.triggersLoading,
+    },
+    {
+      icon: Activity,
+      label: t('layout.home-list-status'),
+      value: getSpaceStatusLabel(space.status, t),
+    },
+    {
+      icon: isLocalWorkspaceSpace(space) ? HardDrive : Cloud,
+      label: t('layout.home-list-location'),
+      value: location,
+    },
+    {
+      icon: CalendarDays,
+      label: t('layout.home-list-created'),
+      value:
+        formatHubDate(
+          space.createdAt,
+          i18n.resolvedLanguage || i18n.language
+        ) || '—',
+    },
+  ];
+  const pinLabel = pinned ? t('layout.unpin-space') : t('layout.pin-space');
 
   const tabContent = (() => {
     switch (activeTab) {
@@ -343,6 +454,9 @@ export default function SpaceDetail({
   })();
 
   const contextLikeTab = activeTab === 'context';
+  const contentInsetClass = inSpaceView
+    ? SPACE_VIEW_CONTENT_INSET_CLASS
+    : HOME_CONTENT_INSET_CLASS;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
@@ -354,19 +468,28 @@ export default function SpaceDetail({
           title={headerTitle}
           actions={
             <>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                buttonRadius="full"
-                onClick={() => {
-                  if (pinned) unpinSpace(spaceId);
-                  else pinSpaceOrChoose(spaceId);
-                }}
+              <TooltipSimple
+                content={pinLabel}
+                compact
+                side="bottom"
+                variant="instant"
               >
-                <DsIcon icon={pinned ? PinOff : Pin} aria-hidden />
-                {pinned ? t('layout.unpin-space') : t('layout.pin-space')}
-              </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonRadius="full"
+                  buttonContent="icon-only"
+                  aria-label={pinLabel}
+                  data-space-pin-toggle
+                  onClick={() => {
+                    if (pinned) unpinSpace(spaceId);
+                    else pinSpaceOrChoose(spaceId);
+                  }}
+                >
+                  <DsIcon icon={pinned ? PinOff : Pin} aria-hidden />
+                </Button>
+              </TooltipSimple>
               <Button
                 type="button"
                 variant="primary"
@@ -385,19 +508,64 @@ export default function SpaceDetail({
           data-space-detail-scroll-container
           className="scrollbar-always-visible grid min-h-0 flex-1 [scrollbar-gutter:stable] grid-rows-[auto_auto_minmax(32rem,1fr)] overflow-y-scroll"
         >
-          <div className="px-8 py-6">
+          {inSpaceView ? null : (
+            // Home's Space page leads with the Space and a box to start a
+            // Session in it; the facts stack beside it, and the tabs sit
+            // below the larger summary.
             <div
-              data-space-detail-summary-rail
-              className={cn(
-                SPACE_DETAIL_RAIL_CLASS,
-                'grid gap-6 lg:grid-cols-[minmax(220px,0.8fr)_minmax(420px,1.4fr)] lg:items-start'
-              )}
+              data-space-detail-summary-inset
+              className={cn(HOME_CONTENT_INSET_CLASS, 'pt-ds-40 pb-ds-32')}
             >
-              <div className="flex min-w-0 items-start gap-ds-12">
-                <SpaceEmojiPicker space={space} name={spaceName} />
-                <div className="min-w-0 overflow-hidden">
-                  {/* Without the header, the Space's name is the page heading. */}
-                  {inSpaceView ? (
+              <div
+                data-space-detail-summary-rail
+                data-space-detail-summary="home"
+                className={cn(
+                  SPACE_DETAIL_RAIL_CLASS,
+                  'grid gap-ds-32 lg:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] lg:items-start'
+                )}
+              >
+                <div className="flex min-w-0 flex-col gap-ds-24">
+                  <div className="flex min-w-0 items-start gap-ds-16">
+                    <SpaceEmojiPicker space={space} name={spaceName} />
+                    <div className="min-w-0 overflow-hidden">
+                      <span className={HOME_SPACE_NAME_CLASS} title={spaceName}>
+                        {spaceName}
+                      </span>
+                      <span className="mt-ds-4 block !text-ds-text-body-large text-ds-ink-muted-default">
+                        {description}
+                      </span>
+                    </div>
+                  </div>
+                  <SpaceQuickComposer
+                    spaceId={spaceId}
+                    readOnly={isLegacySpace(space)}
+                  />
+                </div>
+                <div
+                  data-space-stats-list
+                  className="flex min-w-0 flex-col lg:border-x-0 lg:border-y-0 lg:border-l-ds-hairline lg:border-solid lg:border-ds-hairline-subtle-default lg:pl-ds-24"
+                >
+                  {stats.map((stat) => (
+                    <StatRow key={stat.label} {...stat} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {inSpaceView ? (
+            <div className="px-8 py-6">
+              <div
+                data-space-detail-summary-rail
+                data-space-detail-summary="space-view"
+                className={cn(
+                  SPACE_DETAIL_RAIL_CLASS,
+                  'grid gap-6 lg:grid-cols-[minmax(220px,0.8fr)_minmax(420px,1.4fr)] lg:items-start'
+                )}
+              >
+                <div className="flex min-w-0 items-start gap-ds-12">
+                  <SpaceEmojiPicker space={space} name={spaceName} />
+                  <div className="min-w-0 overflow-hidden">
+                    {/* Without the header, the Space's name is the page heading. */}
                     <h1
                       ref={heading}
                       tabIndex={-1}
@@ -406,62 +574,26 @@ export default function SpaceDetail({
                     >
                       {spaceName}
                     </h1>
-                  ) : (
-                    <span className={SPACE_NAME_CLASS} title={spaceName}>
-                      {spaceName}
+                    <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
+                      {description}
                     </span>
-                  )}
-                  <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
-                    {space.description?.trim() || t('layout.no-description')}
-                  </span>
+                  </div>
+                </div>
+                <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 min-[560px]:grid-cols-2 xl:grid-cols-3">
+                  {stats.map((stat) => (
+                    <Stat key={stat.label} {...stat} />
+                  ))}
                 </div>
               </div>
-              <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 min-[560px]:grid-cols-2 xl:grid-cols-3">
-                <Stat
-                  icon={MessageCircle}
-                  label={t('layout.projects')}
-                  value={data.projectCount}
-                  loading={data.projectsLoading}
-                />
-                <Stat
-                  icon={ListChecks}
-                  label={t('layout.tasks-heading')}
-                  value={data.taskCount}
-                  loading={data.projectsLoading}
-                />
-                <Stat
-                  icon={AUTOMATION_ICON}
-                  label={t('layout.triggers')}
-                  value={data.triggerCount}
-                  loading={data.triggersLoading}
-                />
-                <Stat
-                  icon={Activity}
-                  label={t('layout.home-list-status')}
-                  value={getSpaceStatusLabel(space.status, t)}
-                />
-                <Stat
-                  icon={isLocalWorkspaceSpace(space) ? HardDrive : Cloud}
-                  label={t('layout.home-list-location')}
-                  value={location}
-                />
-                <Stat
-                  icon={CalendarDays}
-                  label={t('layout.home-list-created')}
-                  value={
-                    formatHubDate(
-                      space.createdAt,
-                      i18n.resolvedLanguage || i18n.language
-                    ) || '—'
-                  }
-                />
-              </div>
             </div>
-          </div>
+          ) : null}
 
           <div
             data-space-tabs-sticky
-            className="sticky -top-px z-20 border-x-0 border-t-0 border-b-1 border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default px-8 pt-2"
+            className={cn(
+              'sticky -top-px z-20 border-x-0 border-t-0 border-b-1 border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default pt-2',
+              contentInsetClass
+            )}
           >
             <div
               data-space-detail-tabs-rail
@@ -477,7 +609,8 @@ export default function SpaceDetail({
 
           <div
             className={cn(
-              'min-h-0 px-8 py-4',
+              'min-h-0 py-4',
+              contentInsetClass,
               contextLikeTab ? 'h-full' : 'min-h-full'
             )}
           >
@@ -488,12 +621,18 @@ export default function SpaceDetail({
                 contextLikeTab ? 'h-full' : 'min-h-full'
               )}
             >
-              <SpaceDetailSuspenseContent
-                activeTab={activeTab}
-                contextLikeTab={contextLikeTab}
+              {/* In Home, list rows line up with the header-aligned edges;
+                  this also reaches the loading skeleton. */}
+              <HomeHubListInsetProvider
+                value={inSpaceView ? 'default' : 'flush'}
               >
-                {tabContent}
-              </SpaceDetailSuspenseContent>
+                <SpaceDetailSuspenseContent
+                  activeTab={activeTab}
+                  contextLikeTab={contextLikeTab}
+                >
+                  {tabContent}
+                </SpaceDetailSuspenseContent>
+              </HomeHubListInsetProvider>
             </div>
           </div>
         </div>

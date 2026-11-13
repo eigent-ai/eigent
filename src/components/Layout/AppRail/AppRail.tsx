@@ -15,6 +15,7 @@
 import { useHomeVisitTracking } from '@/components/Home/homeVisit';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { APP_SHELL_RAIL_WIDTH_PX } from '@/components/Layout/AppShellLayout';
+import { SidebarTooltipProvider } from '@/components/Layout/AppSidebar/SidebarTooltip';
 import {
   canRenameSpace,
   SpaceRenameDialog,
@@ -171,58 +172,65 @@ function AppRail() {
         spaceId={renameSpaceId}
         onClose={() => setRenameSpaceId(null)}
       />
-      {/* The sidebar's first row sits below the shell's top inset (`py-ds-4`),
+      {/* One tooltip for the whole rail, as in the sidebar: it slides from
+          item to item instead of closing and reopening. */}
+      <SidebarTooltipProvider>
+        {/* The sidebar's first row sits below the shell's top inset (`py-ds-4`),
           so Home starts there too and lines up with it. */}
-      <div className="w-full shrink-0 pt-ds-4">
+        <div className="w-full shrink-0 pt-ds-4">
+          <AppRailButton
+            label={homeLabel}
+            tooltip={
+              <ShortcutTooltipContent
+                label={homeLabel}
+                shortcutId="navigate-home"
+              />
+            }
+            selected={place === 'home'}
+            onClick={openHome}
+          >
+            <DsIcon icon={House} aria-hidden />
+          </AppRailButton>
+        </div>
+
+        <span
+          aria-hidden
+          className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default"
+        />
+
+        {/* Ten pins and the active tile fit at the minimum window height; a
+          shorter window or a large zoom scrolls the tiles instead. */}
+        <div
+          data-app-rail-spaces
+          className="scrollbar-hide flex min-h-0 w-full flex-col items-center gap-ds-4 overflow-x-hidden overflow-y-auto"
+        >
+          <AnimatePresence initial={false}>
+            {pinnedIds.map((spaceId, index) => renderTile(spaceId, index))}
+            {showActiveTile ? renderTile(activeSpace.id, -1) : null}
+          </AnimatePresence>
+        </div>
+        <PinnedSpacesChooser />
+
+        <div className="min-h-0 flex-1" />
+
         <AppRailButton
-          label={homeLabel}
+          label={settingsLabel}
           tooltip={
             <ShortcutTooltipContent
-              label={homeLabel}
-              shortcutId="navigate-home"
+              label={settingsLabel}
+              shortcutId="settings"
             />
           }
-          selected={place === 'home'}
-          onClick={openHome}
+          selected={place === 'settings'}
+          onClick={openSettingsPage}
         >
-          <DsIcon icon={House} aria-hidden />
+          <DsIcon icon={Settings} aria-hidden />
         </AppRailButton>
-      </div>
 
-      <span
-        aria-hidden
-        className="my-ds-2 w-ds-24 shrink-0 border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default"
-      />
-
-      {/* Ten pins and the active tile fit at the minimum window height; a
-          shorter window or a large zoom scrolls the tiles instead. */}
-      <div
-        data-app-rail-spaces
-        className="scrollbar-hide flex min-h-0 w-full flex-col items-center gap-ds-4 overflow-x-hidden overflow-y-auto"
-      >
-        <AnimatePresence initial={false}>
-          {pinnedIds.map((spaceId, index) => renderTile(spaceId, index))}
-          {showActiveTile ? renderTile(activeSpace.id, -1) : null}
-        </AnimatePresence>
-      </div>
-      <PinnedSpacesChooser />
-
-      <div className="min-h-0 flex-1" />
-
-      <AppRailButton
-        label={settingsLabel}
-        tooltip={
-          <ShortcutTooltipContent label={settingsLabel} shortcutId="settings" />
-        }
-        selected={place === 'settings'}
-        onClick={openSettingsPage}
-      >
-        <DsIcon icon={Settings} aria-hidden />
-      </AppRailButton>
-
-      <div className="flex w-full shrink-0 justify-center">
-        <UserMenu />
-      </div>
+        <div className="flex w-full shrink-0 justify-center">
+          <UserMenu />
+        </div>
+      </SidebarTooltipProvider>
     </nav>
   );
 }

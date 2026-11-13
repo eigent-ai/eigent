@@ -169,9 +169,14 @@ vi.mock('@/components/Layout/AppSidebar', () => {
   const Container = ({ children }: any) => <div>{children}</div>;
   return {
     SidebarShell: Container,
-    SidebarSection: Container,
+    SidebarSection: ({ children, className }: any) => (
+      <div className={className}>{children}</div>
+    ),
     SidebarNavGroup: Container,
     SidebarSeparator: () => null,
+    SidebarRailSpacer: () => (
+      <span aria-hidden="true" data-sidebar-rail-spacer />
+    ),
     NavTab: ({
       label,
       ariaLabel,
@@ -276,6 +281,25 @@ describe('Space sidebar first rows', () => {
         screen.queryByRole('button', { name: removed })
       ).not.toBeInTheDocument();
     }
+  });
+
+  it('puts New session level with the rail’s first Space tile', () => {
+    renderSidebar();
+
+    // Name row, then an invisible copy of the rail's divider, then New
+    // session, so it lines up with the second rail item as in Home.
+    const nameRow = screen
+      .getByRole('button', { name: 'Space menu' })
+      .closest('[data-sidebar-row]') as HTMLElement;
+    const spacer = nameRow.nextElementSibling as HTMLElement;
+    expect(spacer).toHaveAttribute('data-sidebar-rail-spacer');
+    expect(spacer).toHaveAttribute('aria-hidden', 'true');
+    expect(spacer.parentElement).toHaveClass('gap-ds-4');
+    expect(
+      spacer.compareDocumentPosition(
+        screen.getByRole('button', { name: 'New session' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('opens Space settings from the row button', () => {

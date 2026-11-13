@@ -62,7 +62,7 @@ describe('TopBarPrimaryNavigation', () => {
 
     expect(sidebarControls).toHaveStyle({
       width: '220px',
-      paddingRight: '4px',
+      paddingRight: '8px',
     });
     expect(sidebarControls).toHaveClass('box-border', 'justify-between');
     expect(contentControls).toHaveStyle({ marginLeft: '2px' });

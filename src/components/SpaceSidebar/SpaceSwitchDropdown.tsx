@@ -29,7 +29,6 @@ import {
   Pencil,
   Pin,
   PinOff,
-  Plus,
   Save,
   Settings,
   Trash2,
@@ -74,8 +73,6 @@ export interface SpaceSwitchDropdownProps {
   contentSideOffset?: number;
   onOpenChange?: (open: boolean) => void;
   savePointMenu?: SpaceSwitchDropdownSavePointMenu;
-  /** Starts a new Space. The Space sidebar has no other way to. */
-  onCreateSpace?: () => void;
 }
 
 /**
@@ -91,7 +88,6 @@ export function SpaceSwitchDropdown({
   onOpenSpaceSettings,
   onOpenMemorySettings,
   pinMenu,
-  onCreateSpace,
   onDeleteSpace,
   contentAlign = 'start',
   contentClassName,
@@ -138,19 +134,6 @@ export function SpaceSwitchDropdown({
             <span>
               {pinMenu.pinned ? t('layout.unpin-space') : t('layout.pin-space')}
             </span>
-          </DropdownMenuItem>
-        ) : null}
-
-        {onCreateSpace ? (
-          <DropdownMenuItem
-            className="gap-2"
-            onSelect={() => {
-              setOpen(false);
-              onCreateSpace();
-            }}
-          >
-            <DsIcon icon={Plus} aria-hidden />
-            <span>{t('layout.spaces-create-new-space')}</span>
           </DropdownMenuItem>
         ) : null}
 

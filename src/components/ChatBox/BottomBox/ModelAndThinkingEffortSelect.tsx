@@ -62,6 +62,11 @@ export interface ModelAndThinkingEffortSelectProps {
   onThinkingEffortChange?: (effort: ThinkingEffortType | undefined) => void;
   disabled?: boolean;
   projectId?: string | null;
+  /**
+   * The Space whose default model a projectless composer reads and writes.
+   * Defaults to the active Space; a Space's page passes its own.
+   */
+  spaceId?: string | null;
   readOnly?: boolean;
   className?: string;
 }
@@ -234,6 +239,7 @@ export function ModelAndThinkingEffortSelect({
   onThinkingEffortChange,
   disabled,
   projectId,
+  spaceId: spaceIdOverride,
   readOnly = false,
   className,
 }: ModelAndThinkingEffortSelectProps) {
@@ -278,7 +284,7 @@ export function ModelAndThinkingEffortSelect({
   const spaceId = useSpaceStore((state) =>
     projectId
       ? (runtimeSpaceId ?? state.projectIdIndex[projectId])
-      : state.activeSpaceId
+      : (spaceIdOverride ?? state.activeSpaceId)
   );
   const rawSpaceChoice = useSpaceStore((state) =>
     spaceId

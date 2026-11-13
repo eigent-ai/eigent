@@ -281,12 +281,16 @@ value matches. Canonical headers are separate 40px and 48px pattern recipes.
 | ----------------------------- | ---------------: |
 | compact control               |              8px |
 | field, menu row, media        |             12px |
+| shell control (rail, top bar) |             12px |
 | card, panel, popover, message |             16px |
 | dialog                        |             24px |
 | primary/icon action           | full pill/circle |
 
 Full radius is only for a pill or circle. Cards, panels, dialogs, multiline
-fields, and media use bounded semantic radii. Directional and connected shapes
+fields, and media use bounded semantic radii. The window shell's navigation
+controls (app rail and top bar) use `radius-shell-control` through
+`buttonRadius="shell"`: a rounded square concentric with the rail's 24px Space
+tiles, which sit 4px inside the 32px rail buttons with an 8px radius. Directional and connected shapes
 belong to their pattern recipe.
 
 ### Borders and focus

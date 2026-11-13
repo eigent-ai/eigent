@@ -586,7 +586,7 @@ export function GlobalSearchButton() {
       type="button"
       data-global-search-button
       onClick={() => setOpen(true)}
-      className="no-drag ml-ds-8 flex h-7 w-fit max-w-full min-w-0 cursor-pointer items-center justify-start gap-ds-6 rounded-full border-0 border-x-0 border-y-0 bg-transparent px-ds-10 text-left text-ds-ink-muted-default transition-colors outline-none hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
+      className="no-drag ml-ds-8 flex h-7 w-fit max-w-full min-w-0 cursor-pointer items-center justify-start gap-ds-6 rounded-ds-shell-control border-0 border-x-0 border-y-0 bg-transparent px-ds-10 text-left text-ds-ink-muted-default transition-colors outline-none hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
     >
       <DsIcon icon={Search} className="shrink-0" aria-hidden />
       <span className="min-w-0 truncate text-ds-text-base">

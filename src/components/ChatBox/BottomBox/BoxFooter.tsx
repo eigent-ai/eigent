@@ -39,6 +39,11 @@ export interface BoxFooterProps {
   /** Project whose pinned model and thinking effort the selectors read and write. */
   projectId?: string | null;
   /**
+   * Without a project, the Space whose access and default model the
+   * selectors edit. Defaults to the active Space.
+   */
+  spaceId?: string | null;
+  /**
    * When true, the session-mode control is interactive (Workspace / New session).
    * On a running Session the mode is locked; approval, thinking effort, and
    * model stay selectable for later tasks.
@@ -60,6 +65,7 @@ export function BoxFooter({
   sessionMode,
   onSessionModeChange,
   projectId,
+  spaceId: spaceIdOverride,
   interactive = false,
   disabled = false,
   modelSelectDisabled = disabled,
@@ -94,7 +100,7 @@ export function BoxFooter({
   const spaceId = useSpaceStore((state) =>
     projectId
       ? (state.projectIdIndex[projectId] ?? state.activeSpaceId)
-      : state.activeSpaceId
+      : (spaceIdOverride ?? state.activeSpaceId)
   );
 
   return (
@@ -130,6 +136,7 @@ export function BoxFooter({
           }}
           disabled={modelSelectDisabled}
           projectId={projectId}
+          spaceId={projectId ? undefined : spaceIdOverride}
           readOnly={!interactive && !projectId}
           className={compact ? 'max-w-56' : undefined}
         />

@@ -32,7 +32,11 @@ import { buttonTokenAliases, mergeAliasStyles } from './tokenAliases';
 export type ButtonContent = 'text' | 'icon-only';
 export type ButtonTextWeight = 'normal' | 'medium' | 'semibold' | 'bold';
 /** Corner style; uses Tailwind important so it wins over variant/size radii. */
-export type ButtonRadius = 'lg' | 'full';
+/**
+ * `shell`: the window shell's navigation controls (app rail, top bar), a
+ * rounded square concentric with the rail's 24px Space tiles.
+ */
+export type ButtonRadius = 'lg' | 'full' | 'shell';
 
 /** Semantic tone; use `neutral` (preferred) instead of the legacy `default`. */
 export type ButtonTone = UiTone;
@@ -167,6 +171,7 @@ const TEXT_WEIGHT_CLASSES: Record<ButtonTextWeight, string> = {
 const RADIUS_CLASSES: Record<ButtonRadius, string> = {
   lg: '!rounded-lg',
   full: '!rounded-full',
+  shell: '!rounded-ds-shell-control',
 };
 
 type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';

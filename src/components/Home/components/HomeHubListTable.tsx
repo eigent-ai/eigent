@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HomeHubItemKind } from './HomeHubItemShared';
 import {
@@ -68,6 +68,28 @@ const LIST_MIN_WIDTH_CLASS: Record<HomeHubItemKind, string> = {
 const PROJECT_WITHOUT_SPACE_GRID_CLASS =
   'grid-cols-[minmax(0,2fr)_72px_72px_80px]';
 
+/**
+ * `default`: rows inset 12px inside the table. `flush`: the text of every
+ * row lines up with the surrounding content edges, and row highlights bleed
+ * 8px past them, the same inset as a ghost tab. A page whose content edges
+ * line up with its header, like a Space's page in Home, provides `flush`.
+ */
+export type HomeHubListInset = 'default' | 'flush';
+
+const HomeHubListInsetContext = createContext<HomeHubListInset>('default');
+
+export const HomeHubListInsetProvider = HomeHubListInsetContext.Provider;
+
+const ROW_INSET_CLASS: Record<HomeHubListInset, string> = {
+  default: 'px-3',
+  flush: 'px-ds-8',
+};
+
+/** Inline padding for a row drawn inside the current list table. */
+export function useHomeHubListRowInsetClass(): string {
+  return ROW_INSET_CLASS[useContext(HomeHubListInsetContext)];
+}
+
 type HomeHubListTableProps = {
   kind: HomeHubItemKind;
   children: ReactNode;
@@ -82,6 +104,8 @@ export default function HomeHubListTable({
   hideSpaceColumn = false,
 }: HomeHubListTableProps) {
   const { t } = useTranslation();
+  const inset = useContext(HomeHubListInsetContext);
+  const rowInsetClass = ROW_INSET_CLASS[inset];
   const hiddenColumns = hideSpaceColumn ? ['space'] : [];
   const columns = LIST_COLUMNS[kind].filter(
     (column) => !hiddenColumns.includes(column.id)
@@ -101,14 +125,25 @@ export default function HomeHubListTable({
     <div
       role="table"
       aria-label={label}
-      className={cn('w-full min-w-0 overflow-x-auto', className)}
+      data-home-hub-list-inset={inset}
+      className={cn(
+        'w-full min-w-0 overflow-x-auto',
+        inset === 'flush' && '-mx-ds-8 w-auto',
+        className
+      )}
     >
-      <HomeHubListLayoutContext.Provider value={{ gridClass, hiddenColumns }}>
+      <HomeHubListLayoutContext.Provider
+        value={{ gridClass, hiddenColumns, rowInsetClass }}
+      >
         <div className={LIST_MIN_WIDTH_CLASS[kind]}>
           <div role="rowgroup">
             <div
               role="row"
-              className={cn('grid items-center gap-x-4 px-3 py-2.5', gridClass)}
+              className={cn(
+                'grid items-center gap-x-4 py-2.5',
+                rowInsetClass,
+                gridClass
+              )}
             >
               {columns.map((column) => (
                 <span

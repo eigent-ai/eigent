@@ -174,6 +174,9 @@ vi.mock('@/components/Layout/AppSidebar', () => {
     SidebarSection: Container,
     SidebarNavGroup: Container,
     SidebarSeparator: () => null,
+    SidebarRailSpacer: () => (
+      <span aria-hidden="true" data-sidebar-rail-spacer />
+    ),
     NavTab: () => null,
   };
 });

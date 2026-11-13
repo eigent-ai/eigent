@@ -24,7 +24,14 @@ import { APP_COMMAND } from '@/shared/appCommands';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
-import { act, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -162,7 +169,7 @@ describe('AppRail', () => {
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
       'Home',
       'Research',
-      'Choose pinned Spaces',
+      'Add or pin Spaces',
       'Settings',
       'Profile',
     ]);
@@ -218,7 +225,7 @@ describe('AppRail', () => {
       within(rail())
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label'))
-    ).toEqual(['Home', 'Choose pinned Spaces', 'Settings', 'Profile']);
+    ).toEqual(['Home', 'Add or pin Spaces', 'Settings', 'Profile']);
   });
 
   it('opens each place', async () => {
@@ -426,7 +433,7 @@ describe('AppRail pinned Spaces', () => {
       10
     );
     const chooser = await screen.findByRole('dialog', {
-      name: 'Choose pinned Spaces',
+      name: 'Add or pin Spaces',
     });
     expect(within(chooser).getByText('10 of 10')).toBeInTheDocument();
     expect(
@@ -437,15 +444,176 @@ describe('AppRail pinned Spaces', () => {
     ).toBeChecked();
   });
 
+  it('shares one sliding tooltip across Home, Space tiles and the plus', async () => {
+    renderRail('/');
+    const tooltip = () =>
+      document.querySelectorAll<HTMLElement>('[data-sidebar-tooltip]');
+
+    fireEvent.pointerEnter(
+      within(rail()).getByRole('button', { name: 'Home' }),
+      { pointerType: 'mouse' }
+    );
+    await waitFor(() => expect(tooltip()).toHaveLength(1));
+    const shell = tooltip()[0];
+    expect(shell).toHaveTextContent('Home');
+    // Centred on the square rail buttons.
+    expect(shell).toHaveAttribute('data-sidebar-tooltip-align', 'center');
+
+    const research = within(rail()).getAllByRole('button', {
+      name: /Research/,
+    })[0];
+    fireEvent.pointerEnter(research, { pointerType: 'mouse' });
+    await waitFor(() => expect(tooltip()[0]).toHaveTextContent('Research'));
+    // The same element moved; nothing closed and reopened.
+    expect(tooltip()).toHaveLength(1);
+    expect(tooltip()[0]).toBe(shell);
+
+    fireEvent.pointerEnter(
+      within(rail()).getByRole('button', { name: 'Add or pin Spaces' }),
+      { pointerType: 'mouse' }
+    );
+    await waitFor(() =>
+      expect(tooltip()[0]).toHaveTextContent('Add or pin Spaces')
+    );
+    expect(tooltip()[0]).toBe(shell);
+  });
+
+  it('rounds every rail control to the shell-control square', () => {
+    renderRail('/');
+
+    for (const name of ['Home', 'Settings', 'Add or pin Spaces']) {
+      expect(within(rail()).getByRole('button', { name })).toHaveClass(
+        '!rounded-ds-shell-control'
+      );
+    }
+    for (const tile of rail().querySelectorAll('[data-space-rail-tile]')) {
+      expect(tile).toHaveClass('!rounded-ds-shell-control');
+    }
+  });
+
+  it('adds a Space from the first row of the plus menu', async () => {
+    const user = userEvent.setup();
+    renderRail('/');
+
+    const trigger = within(rail()).getByRole('button', {
+      name: 'Add or pin Spaces',
+    });
+    expect(trigger.querySelector('svg')).toHaveClass('lucide-plus');
+    await user.click(trigger);
+    const chooser = await screen.findByRole('dialog', {
+      name: 'Add or pin Spaces',
+    });
+
+    // New Space comes first, before the Pinned Spaces list.
+    const newSpace = within(chooser).getByRole('button', { name: 'New Space' });
+    const firstCheckbox = within(chooser).getAllByRole('checkbox')[0];
+    expect(
+      newSpace.compareDocumentPosition(firstCheckbox) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await user.click(newSpace);
+    expect(
+      await screen.findByRole('dialog', { name: 'Create a new Space' })
+    ).toBeInTheDocument();
+    expect(usePinnedSpacesChooser.getState().open).toBe(false);
+  });
+
+  it('shows a pin’s drag handle on hover, focus, drag, or without hover', async () => {
+    usePinnedSpacesChooser.setState({ open: true });
+    renderRail('/');
+
+    const chooser = await screen.findByRole('dialog', {
+      name: 'Add or pin Spaces',
+    });
+    const handle = chooser.querySelector(
+      '[data-pinned-space-handle]'
+    ) as HTMLElement;
+    expect(handle.closest('[data-pinned-space-row]')).toHaveClass(
+      'group/pinned-row'
+    );
+    expect(handle).toHaveClass(
+      'opacity-0',
+      'group-hover/pinned-row:opacity-100',
+      'focus-visible:opacity-100',
+      'pointer-coarse:opacity-100'
+    );
+  });
+
+  it('searches every Space below New Space, at a fixed height', async () => {
+    const user = userEvent.setup();
+    renderRail('/');
+
+    await user.click(
+      within(rail()).getByRole('button', { name: 'Add or pin Spaces' })
+    );
+    const chooser = await screen.findByRole('dialog', {
+      name: 'Add or pin Spaces',
+    });
+    // New Space is a plain action: its plus sits in the checkbox column, with
+    // no empty slot or dashed tile.
+    const newSpace = within(chooser).getByRole('button', { name: 'New Space' });
+    expect(newSpace.querySelector('.border-dashed')).toBeNull();
+
+    const search = within(chooser).getByRole('textbox', {
+      name: 'Search spaces...',
+    });
+    expect(search).toHaveFocus();
+    expect(
+      newSpace.compareDocumentPosition(search) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const list = chooser.querySelector('[data-pinned-spaces-list]');
+    expect(list).toHaveClass('h-80', 'overflow-y-auto');
+    expect(chooser.querySelectorAll('[data-pinned-space-handle]')).toHaveLength(
+      2
+    );
+
+    // Pinned and other Spaces both filter; reordering pauses meanwhile.
+    await user.type(search, 'rese');
+    expect(
+      within(chooser).getByRole('checkbox', { name: /Research/ })
+    ).toBeChecked();
+    expect(
+      within(chooser).queryByRole('checkbox', { name: /Marketing/ })
+    ).toBeNull();
+    expect(within(chooser).queryByRole('checkbox', { name: /Ops/ })).toBeNull();
+    expect(chooser.querySelector('[data-pinned-space-handle]')).toBeNull();
+    expect(chooser).toHaveTextContent('Clear the search to reorder.');
+    expect(list).toHaveClass('h-80');
+
+    // Unpinning from a filtered list keeps the other pins.
+    await user.click(
+      within(chooser).getByRole('checkbox', { name: /Research/ })
+    );
+    expect(useSpaceStore.getState().pinnedSpaceIdsByUser.local).toEqual([
+      'space-marketing',
+    ]);
+
+    await user.clear(search);
+    await user.type(search, 'zzz');
+    expect(
+      chooser.querySelector('[data-pinned-spaces-empty]')
+    ).toHaveTextContent('No results match your search.');
+
+    // Escape clears the search before it closes anything.
+    await user.keyboard('{Escape}');
+    expect(search).toHaveValue('');
+    expect(usePinnedSpacesChooser.getState().open).toBe(true);
+    expect(
+      within(chooser).getByRole('checkbox', { name: /Ops/ })
+    ).toBeInTheDocument();
+  });
+
   it('pins and unpins from the chooser', async () => {
     const user = userEvent.setup();
     renderRail('/');
 
     await user.click(
-      within(rail()).getByRole('button', { name: 'Choose pinned Spaces' })
+      within(rail()).getByRole('button', { name: 'Add or pin Spaces' })
     );
     const chooser = await screen.findByRole('dialog', {
-      name: 'Choose pinned Spaces',
+      name: 'Add or pin Spaces',
     });
     expect(within(chooser).getByText('2 of 10')).toBeInTheDocument();
 
@@ -471,7 +639,7 @@ describe('AppRail pinned Spaces', () => {
     renderRail('/');
 
     const chooser = await screen.findByRole('dialog', {
-      name: 'Choose pinned Spaces',
+      name: 'Add or pin Spaces',
     });
     within(chooser)
       .getByRole('button', { name: 'Move Research, position 2 of 2' })

@@ -46,6 +46,12 @@ const VIEWPORT_MARGIN_PX = 8;
 /** Grace period so moving between rows doesn't close and reopen the shell. */
 const HIDE_GRACE_MS = 80;
 
+/**
+ * How the tooltip lines up with its row: `start` with the row's top, for
+ * sidebar rows; `center` with its middle, for the app rail's square buttons.
+ */
+export type SidebarTooltipAlign = 'start' | 'center';
+
 interface SidebarTooltipRequest {
   /** The row's own id, so only it can close what it opened. */
   owner: string;
@@ -53,6 +59,7 @@ interface SidebarTooltipRequest {
   content: ReactNode;
   className?: string;
   variant: TooltipVariant;
+  align: SidebarTooltipAlign;
 }
 
 interface SidebarTooltipApi {
@@ -70,15 +77,17 @@ interface ShellState {
   top: number;
   bottom: number;
   left: number;
+  align: SidebarTooltipAlign;
   /** False on the first frame after opening, so it appears in place. */
   moving: boolean;
 }
 
 /**
- * One tooltip for a whole sidebar. It sits a fixed gap past the hovered tab's
- * right edge, lines up with the top of the hovered row, and slides to the
- * next row instead of closing and reopening; only its text changes. Near the
- * window's bottom it lines up with the row's bottom instead.
+ * One tooltip for a whole sidebar, or for the app rail. It sits a fixed gap
+ * past the hovered tab's right edge, lines up with the top (or middle) of the
+ * hovered row, and slides to the next row instead of closing and reopening;
+ * only its text changes. Near the window's bottom it lines up with the row's
+ * bottom instead.
  */
 export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
@@ -98,7 +107,14 @@ export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
   };
 
   const show = useCallback(
-    ({ owner, anchor, content, className, variant }: SidebarTooltipRequest) => {
+    ({
+      owner,
+      anchor,
+      content,
+      className,
+      variant,
+      align,
+    }: SidebarTooltipRequest) => {
       clearTimers();
       const place = () => {
         const row = anchor.getBoundingClientRect();
@@ -109,6 +125,7 @@ export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
           top: row.top,
           bottom: row.bottom,
           left: row.right + SIDEBAR_TOOLTIP_GAP_PX,
+          align,
           moving: shellOpen.current,
         });
       };
@@ -154,13 +171,24 @@ export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo(() => ({ show, hide }), [show, hide]);
   const surface = tooltipSurfaceProps(shell?.className);
+  // A centred shell is placed by its middle and pulled up half its own
+  // height in CSS, so it never waits for a measurement to sit right.
+  const centred = shell?.align === 'center';
+  const halfHeight = centred ? shellHeight / 2 : 0;
+  const preferredTop = shell
+    ? centred
+      ? (shell.top + shell.bottom) / 2 - halfHeight
+      : shell.top
+    : 0;
   const fitsBelowTop =
     !shell ||
-    shell.top + shellHeight <= window.innerHeight - VIEWPORT_MARGIN_PX;
+    preferredTop + shellHeight <= window.innerHeight - VIEWPORT_MARGIN_PX;
   const top = shell
     ? fitsBelowTop
-      ? shell.top
-      : shell.bottom - shellHeight
+      ? centred
+        ? (shell.top + shell.bottom) / 2
+        : shell.top
+      : shell.bottom - shellHeight + halfHeight
     : 0;
 
   return (
@@ -173,7 +201,12 @@ export function SidebarTooltipProvider({ children }: { children: ReactNode }) {
               role="tooltip"
               aria-hidden
               data-sidebar-tooltip
-              className={cn(surface.className, 'pointer-events-none fixed')}
+              data-sidebar-tooltip-align={shell.align}
+              className={cn(
+                surface.className,
+                'pointer-events-none fixed',
+                centred && '-translate-y-1/2'
+              )}
               style={{ ...surface.style, left: shell.left, top: 0 }}
               initial={false}
               animate={{ y: top }}
@@ -200,6 +233,8 @@ interface SidebarRowTooltipProps {
   className?: string;
   /** The row the tooltip lines up with; defaults to the trigger itself. */
   rowSelector?: string;
+  /** Line up with the row's top (sidebar rows) or middle (rail buttons). */
+  align?: SidebarTooltipAlign;
 }
 
 function isFocusVisible(target: EventTarget): boolean {
@@ -228,6 +263,7 @@ export function SidebarRowTooltip({
   variant = 'instant',
   className,
   rowSelector,
+  align = 'start',
 }: SidebarRowTooltipProps) {
   const api = useContext(SidebarTooltipContext);
   const owner = useId();
@@ -242,7 +278,7 @@ export function SidebarRowTooltip({
       <TooltipSimple
         content={content}
         side="right"
-        align="start"
+        align={align}
         enabled={enabled}
         variant={variant}
         className={className}
@@ -265,6 +301,7 @@ export function SidebarRowTooltip({
       content,
       className,
       variant,
+      align,
     });
   };
 
