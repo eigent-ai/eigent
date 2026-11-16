@@ -14,7 +14,7 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "postinstall": "node scripts/fix-node-pty-permissions.js",
+    "postinstall": "node scripts/fix-node-pty-permissions.js && node scripts/patch-electron-builder-keychain.js",
     "clean-cache": "rimraf node_modules/.vite",
     "dev": "npm run clean-cache && vite",
     "dev:web": "npm run clean-cache && vite --config vite.config.web.ts",
