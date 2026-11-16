@@ -19,7 +19,8 @@
 // `security set-key-partition-list -k`. Older macOS ignored the wrong
 // password; macOS 27 rejects it ("SecKeychainUnlock: The user name or
 // passphrase you entered is not correct"), so macOS signing fails.
-// electron-builder 26 passes the keychain's own password. Apply the same
+// electron-builder 26.17.0 and later pass the keychain's own password (25.x
+// and 26.0-26.15 still have the bug). Apply the same
 // change to the installed 24.x copy. No-op when the package is missing or
 // already uses the keychain password; warns if the code has a different shape.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -43,7 +44,7 @@ const REPLACEMENTS = [
   ],
 ];
 
-// Present once the keychain's own password is used (patched 24.x, or 26+).
+// Present once the keychain's own password is used (patched 24.x, or 26.17+).
 const FIXED_CALL = REPLACEMENTS[2][1];
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
