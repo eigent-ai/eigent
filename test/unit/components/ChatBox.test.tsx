@@ -58,6 +58,7 @@ import {
 } from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
 import { ProjectChatContainer } from '../../../src/components/ChatBox/ProjectChatContainer';
+import { SessionLoadingCover } from '../../../src/components/ChatBox/SessionLoadingHalo';
 import { useAuthStore } from '../../../src/store/authStore';
 import { usePageTabStore } from '../../../src/store/pageTabStore';
 
@@ -425,6 +426,7 @@ describe('ChatBox Component', async () => {
 
   const defaultProjectStoreState = {
     activeProjectId: 'test-project-id',
+    historyLoadingProjectIds: {} as Record<string, true>,
     projects: {},
     createProject: vi.fn(),
     setActiveProject: vi.fn(),
@@ -965,6 +967,44 @@ describe('ChatBox Component', async () => {
           : 'wrong-tab-type'
       ).toBeUndefined();
       expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
+    it('holds the first load for the history replay only while the event timeline is empty', () => {
+      eventNativeHarness.enabled = true;
+      const durable = runningEventNativeSnapshot();
+      eventNativeHarness.snapshot = {
+        ...durable,
+        chat: { ...durable.chat, nodes: [] },
+      };
+      const loading = defaultProjectStoreState.historyLoadingProjectIds;
+      loading['test-project-id'] = true;
+      const page = () => (
+        <BrowserRouter>
+          <SessionLoadingCover
+            sessionKey="test-project-id"
+            loading={false}
+            label="Loading conversation"
+          >
+            <ChatBox />
+          </SessionLoadingCover>
+        </BrowserRouter>
+      );
+      const cover = () =>
+        document
+          .querySelector('[data-session-loading-cover]')
+          ?.getAttribute('data-session-loading-cover');
+      try {
+        const view = render(page());
+        // Nothing durable to show yet: the replayed history is the content.
+        expect(cover()).toBe('hidden');
+
+        eventNativeHarness.snapshot = durable;
+        view.rerender(page());
+        // Durable events are on screen; the replay no longer holds the page.
+        expect(cover()).toBe('shown');
+      } finally {
+        delete loading['test-project-id'];
+      }
     });
 
     it('recovers an admitted review handoff from the durable user message', async () => {

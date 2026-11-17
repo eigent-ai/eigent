@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     }),
     previewSlice: { open: true, tabs: [], activeTabId: null },
   },
+  historyLoadingProjectIds: {} as Record<string, boolean>,
   projectState: {
     chatStoreAvailable: true,
     activeProjectId: 'project-1',
@@ -174,7 +175,11 @@ vi.mock('@/store/projectRuntimeStore', () => ({
       selector: (state: {
         historyLoadingProjectIds: Record<string, boolean>;
       }) => unknown
-    ) => selector({ ...mocks.projectState, historyLoadingProjectIds: {} }),
+    ) =>
+      selector({
+        ...mocks.projectState,
+        historyLoadingProjectIds: mocks.historyLoadingProjectIds,
+      }),
     { getState: () => mocks.projectState }
   ),
 }));
@@ -322,6 +327,7 @@ describe('Session preview resize', () => {
     mocks.pageState.activeWorkspaceTab = 'project';
     mocks.projectState.chatStoreAvailable = true;
     sessionExecutionMocks.routeLoading = false;
+    mocks.historyLoadingProjectIds = {};
     scheduledFrame = null;
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
@@ -340,6 +346,7 @@ describe('Session preview resize', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('holds viewports until the 200ms geometry entrance completes', () => {
@@ -495,6 +502,30 @@ describe('Session preview resize', () => {
     unmount();
     act(() => lastFrame?.(0));
     expect(window.cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it('opens without waiting for the legacy history replay in the event-native view', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+    mocks.historyLoadingProjectIds = { 'project-1': true };
+
+    render(<Session />);
+
+    // The event-native timeline reports its own first load; the replay only
+    // feeds the legacy view, so it must not hold the whole page.
+    expect(
+      document.querySelector('[data-session-loading-cover]')
+    ).toHaveAttribute('data-session-loading-cover', 'shown');
+  });
+
+  it('waits for the history replay in the legacy view, which shows it', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    mocks.historyLoadingProjectIds = { 'project-1': true };
+
+    render(<Session />);
+
+    expect(
+      document.querySelector('[data-session-loading-cover]')
+    ).toHaveAttribute('data-session-loading-cover', 'hidden');
   });
 
   it('renders while the active chat store rebuilds during route loading', () => {

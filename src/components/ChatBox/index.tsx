@@ -101,6 +101,7 @@ import {
 } from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
 import {
   isSessionStarting,
@@ -165,6 +166,7 @@ import {
   SessionExecutionChat,
   SessionExecutionStatus,
 } from './SessionExecutionChat';
+import { useReportSessionLoading } from './SessionLoadingHalo';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -1037,6 +1039,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     eventNativeTimelineEnabled &&
     activeProjectId &&
     (hasEventNativeTimelineContent || !hasAnyMessages)
+  );
+  // The replayed history is what this view shows only while the event
+  // timeline has nothing durable yet (an older or cloud-restored Session), so
+  // only then does the Session's first load wait for the replay.
+  const isHistoryReplayLoading = useProjectRuntimeStore((state) =>
+    activeProjectId
+      ? Boolean(state.historyLoadingProjectIds[activeProjectId])
+      : false
+  );
+  useReportSessionLoading(
+    'history-replay',
+    eventNativeTimelineEnabled &&
+      !hasEventNativeTimelineContent &&
+      isHistoryReplayLoading
   );
   const shouldRenderBottomBoxOverlay =
     shouldRenderChatTimeline &&
