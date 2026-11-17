@@ -111,6 +111,7 @@ import { useSpaceStore } from '@/store/spaceStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
+  dismissUsageBanner,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -445,8 +446,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
   const incident = activeUsageIncident(usage);
-  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
-    useState<string | null>(null);
   const {
     run: interruptedRun,
     setRun: setInterruptedRun,
@@ -508,6 +507,25 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null;
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
+  // A closed reminder stays closed across Sessions and restarts, until the
+  // reminder changes; once none applies, the next one shows again.
+  const dismissedUsageLimitBannerId = usage.dismissedBanner;
+  // Credits and the plan must both be known: a failed plan request also
+  // yields no reminder, and must not reopen the one that was closed.
+  useEffect(() => {
+    if (
+      currentCredits !== null &&
+      subscriptionUsage !== null &&
+      !bannerId &&
+      dismissedUsageLimitBannerId
+    )
+      dismissUsageBanner(null);
+  }, [
+    bannerId,
+    currentCredits,
+    dismissedUsageLimitBannerId,
+    subscriptionUsage,
+  ]);
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
   // An open incident owns this slot even while its toast hides the banner.
   const usageLimitBanner = incident
@@ -526,7 +544,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
           onAction: () => void refreshUsage(),
           onDismiss: () => {
-            setDismissedUsageLimitBannerId(bannerId ?? null);
+            dismissUsageBanner(bannerId ?? null);
             acknowledgeUsageNotice();
           },
         };
