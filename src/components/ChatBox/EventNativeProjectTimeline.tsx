@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionLoadingHalo } from '@/components/ChatBox/SessionLoadingHalo';
+import {
+  SessionLoadingHalo,
+  useReportSessionLoading,
+} from '@/components/ChatBox/SessionLoadingHalo';
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
@@ -668,6 +671,21 @@ export function EventNativeProjectTimeline({
     hydration.status !== 'error' &&
     !hydration.olderHistoryError &&
     !historyLoaded;
+  const historyLoadingLabel =
+    hydration.status === 'retrying'
+      ? t('chat.timeline-history-reconnecting')
+      : t('chat.timeline-history-loading');
+  // While the Session page covers its first load, it draws the one halo. An
+  // empty timeline whose history is about to start loading counts too; a
+  // runtime that is switched off (no snapshot) never starts, so it does not.
+  const pageShowsLoading = useReportSessionLoading(
+    'timeline-history',
+    historyLoading ||
+      (visibleRuns.length === 0 &&
+        hydration.status === 'idle' &&
+        runtime.snapshot !== null),
+    historyLoadingLabel
+  );
 
   return (
     <div
@@ -774,12 +792,8 @@ export function EventNativeProjectTimeline({
         {floatingControl}
       </div>
       <SessionLoadingHalo
-        active={historyLoading}
-        label={
-          hydration.status === 'retrying'
-            ? t('chat.timeline-history-reconnecting')
-            : t('chat.timeline-history-loading')
-        }
+        active={historyLoading && !pageShowsLoading}
+        label={historyLoadingLabel}
       />
     </div>
   );
