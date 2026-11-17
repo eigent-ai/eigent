@@ -81,7 +81,7 @@ logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 
 
 _SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
