@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { VanillaChatStore } from '@/store/chatStore';
-import { AgentStep } from '@/types/constants';
+import { AgentStep, type SessionModeType } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
@@ -24,6 +24,7 @@ import {
   type ResolvedRunModel,
 } from './TimelineModes/ModelChangeDivider';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
+import { useHistoryEntrance } from './useHistoryEntrance';
 
 interface ProjectSectionProps {
   onEditUserMessage?: (message: EditUserMessageSource) => void;
@@ -36,6 +37,8 @@ interface ProjectSectionProps {
   model?: ResolvedRunModel | null;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
+  /** The Session's mode, for Tasks that record none of their own. */
+  sessionMode?: SessionModeType;
 }
 
 export const ProjectSection = React.forwardRef<
@@ -76,6 +79,8 @@ export const ProjectSection = React.forwardRef<
     };
   }, [chatStore]);
 
+  // Reloaded history appears where it ended instead of animating in again.
+  const entrance = useHistoryEntrance();
   const activeTaskId = taskId ?? chatState.activeTaskId;
   const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
@@ -95,7 +100,7 @@ export const ProjectSection = React.forwardRef<
     <motion.div
       ref={ref}
       data-turn-id={activeTaskId}
-      initial={{ opacity: 0, y: 20 }}
+      initial={entrance({ opacity: 0, y: 20 })}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
@@ -119,6 +124,7 @@ export const ProjectSection = React.forwardRef<
             onEditUserMessage={props.onEditUserMessage}
             index={index}
             taskId={activeTaskId}
+            sessionMode={props.sessionMode}
           />
         ))}
       </div>
