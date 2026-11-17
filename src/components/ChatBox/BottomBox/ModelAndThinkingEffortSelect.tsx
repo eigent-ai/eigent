@@ -35,6 +35,8 @@ import {
   providerDefinition,
   selectableConfiguredModels,
 } from '@/lib/configuredModels';
+import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
+import { getProviderValid } from '@/lib/providerStatus';
 import {
   parseSpaceModelChoice,
   setSpaceModelChoice,
@@ -341,15 +343,18 @@ export function ModelAndThinkingEffortSelect({
     selection.modelType === 'cloud'
       ? getCloudName(selection.cloud_model_type ?? '')
       : selection.modelType === 'codex_subscription'
-        ? selection.codex_model_type
+        ? modelDisplayName(selection.codex_model_type)
         : selectedRecord
           ? [
-              selectedRecord.model_type,
+              configuredModelName(
+                selectedRecord,
+                inventory.records.filter(getProviderValid)
+              ),
               configurationHint(selectedRecord, inventory.records),
             ]
               .filter(Boolean)
               .join(' · ')
-          : selection.model_type;
+          : modelDisplayName(selection.model_type);
   const effortLabel = t(
     thinkingEffort === undefined
       ? 'setting.default'
