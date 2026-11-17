@@ -3235,6 +3235,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onEditUserMessage={handleEditUserMessage}
+              sessionMode={displaySessionMode}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
