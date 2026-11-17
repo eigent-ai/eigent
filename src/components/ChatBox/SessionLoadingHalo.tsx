@@ -45,6 +45,15 @@ export const SESSION_LOADING_MIN_VISIBLE_MS = 600;
  */
 export const SESSION_LOADING_SETTLE_MS = 32;
 
+/** The halo fades in a little slower than it leaves. */
+const HALO_ENTER_S = 0.25;
+/**
+ * The halo's exit and the content's fade-in are one crossfade, so they share
+ * this duration and {@link HALO_EASE}.
+ */
+const HALO_EXIT_S = 0.2;
+const HALO_EASE = [0.23, 1, 0.32, 1] as const;
+
 /**
  * A halo that leaves and comes back within this window is the same wait, for
  * example the Session fallback handing over to the timeline. It carries on
@@ -128,17 +137,25 @@ export function SessionLoadingHalo({
       {active ? (
         <motion.div
           key="halo"
-          animate={{ opacity: 1 }}
+          animate={{
+            opacity: 1,
+            transition: {
+              duration: reduceMotion ? 0 : HALO_ENTER_S,
+              ease: HALO_EASE,
+            },
+          }}
           aria-busy
           className="session-loading-halo-frame pointer-events-none absolute inset-0 overflow-hidden"
           data-session-loading-halo
-          exit={{ opacity: 0 }}
+          exit={{
+            opacity: 0,
+            transition: {
+              duration: reduceMotion ? 0 : HALO_EXIT_S,
+              ease: HALO_EASE,
+            },
+          }}
           initial={fadeIn && !reduceMotion ? { opacity: 0 } : false}
           role="status"
-          transition={{
-            duration: reduceMotion ? 0 : 0.32,
-            ease: [0.23, 1, 0.32, 1],
-          }}
         >
           <HaloGlow />
           <span className="sr-only">{label}</span>
