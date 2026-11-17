@@ -68,7 +68,7 @@ export function selectableConfiguredModels({
           .map((model) => ({
             id: `cloud:${model.id}`,
             group: 'eigent' as const,
-            name: model.display_name,
+            name: modelDisplayName(model.display_name),
             cloudModel: model,
           }))
       : []),

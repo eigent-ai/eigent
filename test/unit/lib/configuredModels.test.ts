@@ -184,6 +184,33 @@ describe('Configured model identity', () => {
     });
     expect(choices.map((choice) => choice.id)).toEqual(['cloud:free']);
   });
+  it('names Eigent Cloud models without a gateway provider prefix', () => {
+    const cloud = (id: string, display_name: string) => ({
+      id,
+      display_name,
+      model_type: id,
+      model_platform: 'openai-compatible-model',
+      provider_family: 'google',
+      kind: 'chat' as const,
+      min_plan_key: 'free',
+    });
+    const choices = selectableConfiguredModels({
+      records: [],
+      cloudModels: [
+        cloud('openai/gemini-4-carbon', 'openai/gemini-4-carbon'),
+        cloud('gpt-5.5', 'GPT-5.5'),
+      ],
+      hidden: [],
+      cloudAvailable: true,
+      codexConnected: false,
+      codexModelType: '',
+      planKey: 'free',
+    });
+    expect(choices.map((choice) => choice.name)).toEqual([
+      'gemini-4-carbon',
+      'GPT-5.5',
+    ]);
+  });
   it('fails safely when a paginated endpoint repeats the same page', async () => {
     mocks.get.mockResolvedValue({ items: [{ id: 1 }], total: 200, pages: 2 });
     // Repeated IDs cannot be mistaken for two separate configurations.

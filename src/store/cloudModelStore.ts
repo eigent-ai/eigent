@@ -545,7 +545,12 @@ export const useCloudModelStore = create<CloudModelState>()(
 
       getModelDisplayName: (modelId) => {
         const resolved = get().resolveCloudModel(modelId);
-        return resolved?.model.display_name || humanizeModelId(modelId);
+        // Show the model's name alone, even if the catalog name carries the
+        // gateway's provider prefix.
+        return (
+          modelDisplayName(resolved?.model.display_name) ||
+          humanizeModelId(modelId)
+        );
       },
 
       getEffectiveModelId: (modelId) => {
