@@ -100,6 +100,8 @@ const mocks = vi.hoisted(() => {
       },
     },
     projectsBySpaceId: {},
+    projectIdIndex: {} as Record<string, string>,
+    projectsSyncedAt: { 'space-1': 1 } as Record<string, number>,
     getProjectMeta: vi.fn(() => null),
     setActiveSpace: vi.fn(),
   };
@@ -1220,6 +1222,36 @@ describe('Workspace', () => {
     } finally {
       window.localStorage.removeItem('eigent.starterUseCases');
       delete spaces['space-2'];
+    }
+  });
+
+  it('shows starter use cases only to a user with no Session yet', () => {
+    const state = mocks.spaceState;
+    try {
+      state.projectIdIndex = { 'project-old': 'space-1' };
+      const returning = renderWorkspace();
+      expect(
+        returning.container.querySelector('[data-workspace-use-cases]')
+      ).toBeNull();
+      returning.unmount();
+
+      // Until the Space's Sessions load, nobody is known to be new.
+      state.projectIdIndex = {};
+      state.projectsSyncedAt = {};
+      const loading = renderWorkspace();
+      expect(
+        loading.container.querySelector('[data-workspace-use-cases]')
+      ).toBeNull();
+      loading.unmount();
+
+      state.projectsSyncedAt = { 'space-1': 1 };
+      const { container } = renderWorkspace();
+      expect(
+        container.querySelector('[data-workspace-use-cases]')
+      ).not.toBeNull();
+    } finally {
+      state.projectIdIndex = {};
+      state.projectsSyncedAt = { 'space-1': 1 };
     }
   });
 
