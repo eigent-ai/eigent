@@ -31,6 +31,7 @@ import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import {
   getSessionPreviewSlice,
   NEW_SESSION_DRAFT_SCOPE,
@@ -522,12 +523,15 @@ function SessionContent({
     !chatStore &&
     sessionExecution.state.route?.route === 'legacy';
   // The page's own waits; the chat timeline reports its first history load.
+  // Only the legacy view shows the history that `loadProjectFromHistory`
+  // replays, so only it waits for that replay here. In the event-native view
+  // ChatBox reports the replay itself, and only while it is what's shown.
   const pageLoading =
     !isNewProject &&
     !sessionExecution.state.error &&
     (!sessionExecution.state.route ||
       waitingForChatStore ||
-      isHistoryLoadingActiveProject);
+      (!isChatEventTimelineEnabled() && isHistoryLoadingActiveProject));
 
   const sessionSidePanel =
     displaySessionMode &&
