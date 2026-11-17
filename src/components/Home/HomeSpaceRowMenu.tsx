@@ -112,7 +112,7 @@ export function HomeSpaceRowMenu({
             size="sm"
             buttonRadius="full"
             buttonContent="icon-only"
-            className="no-drag shrink-0 data-[state=open]:bg-ds-neutral-subtle-selected data-[state=open]:hover:bg-ds-neutral-subtle-selected"
+            className="no-drag shrink-0"
             aria-label={t('layout.space-more-actions', { name: spaceName })}
           >
             <DsIcon

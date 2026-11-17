@@ -133,7 +133,10 @@ export const SpaceHeaderMenu = forwardRef<
               aria-haspopup="menu"
               aria-label={name}
               data-space-sidebar-menu
-              className={cn(sidebarTabButtonClass(false), 'flex-1 gap-1')}
+              className={cn(
+                sidebarTabButtonClass(false),
+                'flex-1 gap-1 data-[state=open]:bg-ds-neutral-subtle-default'
+              )}
             >
               <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
                 {name}
