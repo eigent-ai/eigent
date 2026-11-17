@@ -16,6 +16,7 @@ import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
 import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
 import { getProviderValid } from '@/lib/providerStatus';
 import { getAuthStore } from '@/store/authStore';
 import type { CloudModel } from '@/store/cloudModelStore';
@@ -55,6 +56,7 @@ export function selectableConfiguredModels({
   codexModelType: string;
   planKey?: string | null;
 }): ConfiguredModelChoice[] {
+  const validRecords = records.filter(getProviderValid);
   return [
     ...(cloudAvailable
       ? cloudModels
@@ -70,10 +72,10 @@ export function selectableConfiguredModels({
             cloudModel: model,
           }))
       : []),
-    ...records.filter(getProviderValid).map((record) => ({
+    ...validRecords.map((record) => ({
       id: `provider:${record.id}`,
       group: record.provider_name,
-      name: record.model_type,
+      name: configuredModelName(record, validRecords),
       record,
     })),
     ...(codexConnected
@@ -81,7 +83,7 @@ export function selectableConfiguredModels({
           {
             id: 'codex' as const,
             group: 'codex-subscription' as const,
-            name: codexModelType,
+            name: modelDisplayName(codexModelType),
           },
         ]
       : []),

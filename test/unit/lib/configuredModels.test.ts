@@ -108,6 +108,30 @@ describe('Configured model identity', () => {
     ]);
   });
 
+  it('names saved models without their gateway provider prefix', () => {
+    const choices = selectableConfiguredModels({
+      records: [
+        {
+          id: 21,
+          provider_name: 'openrouter',
+          model_type: 'google/gemini-4-carbon',
+          api_key: 'key',
+          endpoint_url: '',
+          is_valid: 2,
+        },
+      ],
+      cloudModels: [],
+      hidden: [],
+      cloudAvailable: false,
+      codexConnected: true,
+      codexModelType: 'gpt-5-codex',
+    });
+    expect(choices.map((choice) => choice.name)).toEqual([
+      'gemini-4-carbon',
+      'gpt-5-codex',
+    ]);
+  });
+
   it('names what sets repeated configurations apart', () => {
     const record = (id: number, endpoint_url: string, api_key: string) => ({
       id,
