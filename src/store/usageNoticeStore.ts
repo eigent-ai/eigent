@@ -57,6 +57,8 @@ interface UsageNoticeState {
   subscription: SubscriptionUsage | null;
   refreshing: boolean;
   refreshError: string | null;
+  /** The usage reminder this account closed; it stays closed until it changes. */
+  dismissedBanner: string | null;
 }
 const initial = {
   incidents: [],
@@ -67,6 +69,7 @@ const initial = {
   subscription: null,
   refreshing: false,
   refreshError: null,
+  dismissedBanner: null,
 };
 export const useUsageNoticeStore = create<UsageNoticeState>(() => ({
   account: null,
@@ -144,6 +147,36 @@ export function liveUsageNoticeCopy(
   };
 }
 
+const dismissedBannerSlot = (account: string) =>
+  `eigent-usage-banner-dismissed:${account}`;
+
+function readDismissedBanner(account: string | null): string | null {
+  if (!account) return null;
+  try {
+    return window.localStorage.getItem(dismissedBannerSlot(account));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Close the usage reminder `id` for this account, across Sessions and
+ * restarts. A different reminder (a higher level, or out of credits) shows
+ * again; `null` forgets it, once the reminder no longer applies.
+ */
+export function dismissUsageBanner(id: string | null) {
+  const { account, dismissedBanner } = useUsageNoticeStore.getState();
+  if (dismissedBanner === id) return;
+  useUsageNoticeStore.setState({ dismissedBanner: id });
+  if (!account) return;
+  try {
+    if (id) window.localStorage.setItem(dismissedBannerSlot(account), id);
+    else window.localStorage.removeItem(dismissedBannerSlot(account));
+  } catch {
+    // Without storage it stays closed until the app restarts.
+  }
+}
+
 export function setUsageAccount(account: string | null) {
   const previous = useUsageNoticeStore.getState().account;
   if (previous === account) return;
@@ -151,7 +184,11 @@ export function setUsageAccount(account: string | null) {
   inFlight = null;
   clearFollowUpRefresh();
   if (previous) toast.dismiss(slot(previous));
-  useUsageNoticeStore.setState({ ...initial, account });
+  useUsageNoticeStore.setState({
+    ...initial,
+    account,
+    dismissedBanner: readDismissedBanner(account),
+  });
 }
 
 export function contactSupport() {

@@ -524,6 +524,8 @@ describe('ChatBox Component', async () => {
     resetSessionDrafts();
     resetFollowUpAdmissionClaims();
     setUsageAccount(null);
+    // A closed usage reminder is kept in the store; start each test without one.
+    useUsageNoticeStore.setState({ dismissedBanner: null });
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
     // Reset all mocks
@@ -746,6 +748,61 @@ describe('ChatBox Component', async () => {
       } as any);
       renderChatBox();
       expect(latestBanner()).toBeNull();
+    });
+    it('keeps a closed reminder closed in other Sessions and after a restart, until it no longer applies', () => {
+      const relaxed = {
+        ...trial,
+        trial_daily_credits_used: 10,
+        trial_daily_credits_remaining: 290,
+        trial_total_credits_used: 10,
+        trial_total_credits_remaining: 990,
+      };
+      try {
+        setUsageAccount('user@example.com');
+        useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+        const view = renderChatBox();
+        act(() => latestBanner()?.onDismiss?.());
+        expect(latestBanner()).toBeNull();
+
+        // Another Session mounts a new composer.
+        view.unmount();
+        renderChatBox();
+        expect(latestBanner()).toBeNull();
+
+        // A failed plan request yields no reminder either; it stays closed.
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: null, credits: 472 })
+        );
+        expect(useUsageNoticeStore.getState().dismissedBanner).not.toBeNull();
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 })
+        );
+        expect(latestBanner()).toBeNull();
+
+        // A restart reads the account's closed reminder back.
+        act(() => {
+          setUsageAccount(null);
+          setUsageAccount('user@example.com');
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+        });
+        expect(latestBanner()).toBeNull();
+
+        // Once usage is back under the line, the next crossing shows again.
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: relaxed, credits: 9000 })
+        );
+        expect(latestBanner()).toBeNull();
+        expect(useUsageNoticeStore.getState().dismissedBanner).toBeNull();
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 })
+        );
+        expect(latestBanner()).toMatchObject({ severity: 'warning' });
+      } finally {
+        setUsageAccount(null);
+        window.localStorage.removeItem(
+          'eigent-usage-banner-dismissed:user@example.com'
+        );
+      }
     });
   });
 
