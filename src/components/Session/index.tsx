@@ -14,7 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
-import { SessionLoadingHalo } from '@/components/ChatBox/SessionLoadingHalo';
+import { SessionLoadingCover } from '@/components/ChatBox/SessionLoadingHalo';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -38,6 +38,7 @@ import {
   WorkspaceTab,
 } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChatTaskStatus,
@@ -162,6 +163,9 @@ function SessionContent({
     sessionPreviewProjectId === scopeId;
   const previewOpening = useSessionPageTabStore((s) => s.sessionPreviewOpening);
   const sessionExecution = useSessionExecution(activeProjectId);
+  const isSessionStarting = useSessionStartStore((s) =>
+    activeProjectId ? Boolean(s.startingProjectIds[activeProjectId]) : false
+  );
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
       ? Boolean(s.historyLoadingProjectIds[activeProjectId])
@@ -512,17 +516,18 @@ function SessionContent({
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (
+  // A legacy Session renders once its chat store exists.
+  const waitingForChatStore =
     !isNewProject &&
     !chatStore &&
-    sessionExecution.state.route?.route === 'legacy'
-  ) {
-    return (
-      <div className="relative h-full w-full">
-        <SessionLoadingHalo active label={t('chat.timeline-history-loading')} />
-      </div>
-    );
-  }
+    sessionExecution.state.route?.route === 'legacy';
+  // The page's own waits; the chat timeline reports its first history load.
+  const pageLoading =
+    !isNewProject &&
+    !sessionExecution.state.error &&
+    (!sessionExecution.state.route ||
+      waitingForChatStore ||
+      isHistoryLoadingActiveProject);
 
   const sessionSidePanel =
     displaySessionMode &&
@@ -672,21 +677,34 @@ function SessionContent({
     );
   }
 
+  // Opening a Session shows one halo over the whole Session area until it is
+  // ready, or nothing if it is ready almost at once. A Session the user has
+  // just started from a composer shows at once instead.
   return (
-    <ProjectEventRuntimeProvider
-      key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
-      projectId={activeProjectId}
-      expectedAccountKey={sessionExecution.scope.accountKey}
-      enabled={
-        Boolean(sessionExecution.state.route) && !sessionExecution.state.error
-      }
+    <SessionLoadingCover
+      sessionKey={`${sessionExecution.scope.accountKey}:${activeProjectId ?? ''}`}
+      loading={pageLoading}
+      skip={isSessionStarting}
+      label={t('chat.timeline-history-loading')}
     >
-      <SessionArtifactPreview
-        scope={sessionExecution.scope}
-        enabled={sessionExecution.state.managed}
-      >
-        {layout}
-      </SessionArtifactPreview>
-    </ProjectEventRuntimeProvider>
+      {waitingForChatStore ? null : (
+        <ProjectEventRuntimeProvider
+          key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
+          projectId={activeProjectId}
+          expectedAccountKey={sessionExecution.scope.accountKey}
+          enabled={
+            Boolean(sessionExecution.state.route) &&
+            !sessionExecution.state.error
+          }
+        >
+          <SessionArtifactPreview
+            scope={sessionExecution.scope}
+            enabled={sessionExecution.state.managed}
+          >
+            {layout}
+          </SessionArtifactPreview>
+        </ProjectEventRuntimeProvider>
+      )}
+    </SessionLoadingCover>
   );
 }
