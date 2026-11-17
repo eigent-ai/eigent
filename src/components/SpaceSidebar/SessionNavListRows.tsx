@@ -368,10 +368,7 @@ function SessionNavRowMenu({
             size="sm"
             buttonRadius="full"
             buttonContent="icon-only"
-            className={cn(
-              'no-drag shrink-0',
-              'data-[state=open]:bg-ds-neutral-subtle-selected data-[state=open]:hover:bg-ds-neutral-subtle-selected'
-            )}
+            className="no-drag shrink-0"
             aria-label={moreLabel}
             onClick={(e) => e.stopPropagation()}
           >

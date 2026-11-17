@@ -657,7 +657,8 @@ export const Inputbox = ({
                 contextPanel?.open ? contextPanel.listId : undefined
               }
               className={cn(
-                contextPanel?.open && 'bg-ds-neutral-strong-default'
+                contextPanel?.open &&
+                  'bg-ds-neutral-strong-default hover:bg-ds-neutral-strong-default'
               )}
               onClick={() =>
                 contextPanel ? contextPanel.onToggle() : onAddFile?.()
