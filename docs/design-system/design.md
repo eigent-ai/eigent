@@ -430,6 +430,12 @@ Use `ContentHeader` from `src/components/Layout/ContentHeader.tsx`.
 - The title is wrapped in a `span`. When the header must carry a real page
   heading, pass `titleAsChild` and apply `CONTENT_HEADER_TITLE_CLASS` to your
   own element — never nest a heading inside the default wrapper.
+- When the title is a control, such as a Space's name opening its menu, apply
+  `CONTENT_HEADER_TITLE_CONTROL_CLASS` to the heading instead. The control
+  truncates its own label: a user-provided name shows in full whenever it
+  fits, ends in an ellipsis only when the header runs out of room, and then
+  shows the full name in a tooltip. Do not cap the title with a fixed
+  `max-w-*`; the header's actions are what limit it.
 
 ### Markdown
 

@@ -26,6 +26,7 @@ import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdo
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import { useOpenSpaceHomeTab } from '@/hooks/useSpaceSwitch';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
@@ -34,8 +35,48 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ChevronDown, Folder } from 'lucide-react';
-import { forwardRef, useState } from 'react';
+import { forwardRef, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+/**
+ * The Space's name. It shows in full whenever it fits; when the trigger runs
+ * out of room it ends in an ellipsis and a tooltip shows the full name.
+ */
+function SpaceNameLabel({
+  name,
+  className,
+}: {
+  name: string;
+  className: string;
+}) {
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const label = labelRef.current;
+    if (!label) return;
+    const measure = () =>
+      setTruncated(label.scrollWidth > label.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(label);
+    return () => observer.disconnect();
+  }, [name]);
+
+  return (
+    <TooltipSimple
+      content={name}
+      enabled={truncated}
+      side="bottom"
+      align="start"
+    >
+      <span ref={labelRef} className={className}>
+        {name}
+      </span>
+    </TooltipSimple>
+  );
+}
 
 interface SpaceHeaderMenuProps {
   spaceId: string;
@@ -138,9 +179,10 @@ export const SpaceHeaderMenu = forwardRef<
                 'flex-1 gap-1 data-[state=open]:bg-ds-neutral-subtle-default'
               )}
             >
-              <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
-                {name}
-              </span>
+              <SpaceNameLabel
+                name={name}
+                className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
+              />
               <DsIcon
                 icon={ChevronDown}
                 className="shrink-0 text-ds-ink-subtle-default"
@@ -154,14 +196,15 @@ export const SpaceHeaderMenu = forwardRef<
               variant="ghost"
               size="sm"
               buttonRadius="full"
-              className="-ml-ds-8 max-w-full min-w-0"
+              className="min-w-0 shrink"
               aria-haspopup="menu"
               aria-label={name}
             >
               <DsIcon icon={Folder} className="shrink-0" aria-hidden />
-              <span className="min-w-0 truncate !text-ds-text-base font-semibold text-ds-ink-default-default">
-                {name}
-              </span>
+              <SpaceNameLabel
+                name={name}
+                className="min-w-0 truncate !text-ds-text-base font-semibold text-ds-ink-default-default"
+              />
               <DsIcon
                 icon={ChevronDown}
                 className="shrink-0 text-ds-ink-subtle-default"

@@ -206,6 +206,16 @@ describe('SpaceDetail presentations', () => {
     expect(screen.getByTestId('list-row-inset')).toHaveTextContent('px-ds-8');
   });
 
+  it("gives the Space menu the header's width instead of clipping its name", () => {
+    renderDetail('home');
+
+    const heading = screen.getByRole('heading', { name: 'Research menu' });
+    // The menu button truncates its own label, so the heading must not clip
+    // it or its focus ring, and it carries the button's leading inset.
+    expect(heading).toHaveClass('flex', 'min-w-0', '-ml-ds-8');
+    expect(heading).not.toHaveClass('truncate');
+  });
+
   it('keeps the Space view on its own inset', () => {
     renderDetail('space-view');
 

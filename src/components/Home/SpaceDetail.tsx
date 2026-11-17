@@ -22,6 +22,7 @@ import {
 } from '@/components/Layout/AppRail/pinnedSpaces';
 import ContentHeader, {
   CONTENT_HEADER_TITLE_CLASS,
+  CONTENT_HEADER_TITLE_CONTROL_CLASS,
   useFocusContentHeading,
 } from '@/components/Layout/ContentHeader';
 import OverviewIconFrame from '@/components/Layout/OverviewIconFrame';
@@ -319,9 +320,19 @@ export default function SpaceDetail({
   const pinned = usePinnedSpaceIds().includes(spaceId);
   const unpinSpace = useSpaceStore((state) => state.unpinSpace);
   // The title is the Space's name and its menu; a missing Space keeps the
-  // plain page name.
+  // plain page name. The menu button truncates its own label, so its heading
+  // does not clip it; the heading takes the button's leading inset so the
+  // name lines up with the header's text edge.
   const headerTitle = (
-    <h1 ref={heading} tabIndex={-1} className={CONTENT_HEADER_TITLE_CLASS}>
+    <h1
+      ref={heading}
+      tabIndex={-1}
+      className={
+        space
+          ? cn(CONTENT_HEADER_TITLE_CONTROL_CLASS, '-ml-ds-8')
+          : CONTENT_HEADER_TITLE_CLASS
+      }
+    >
       {space ? (
         <SpaceHeaderMenu spaceId={spaceId} />
       ) : (
