@@ -20,7 +20,7 @@ import { SpaceHeaderMenu } from '@/components/Home/SpaceHeaderMenu';
 import { useSpaceStore, type Space } from '@/store/spaceStore';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ deleteSpaceAndSessions: vi.fn() }));
 vi.mock('@/lib/spaceDeletion', async (importOriginal) => ({
@@ -181,5 +181,58 @@ describe('SpaceHeaderMenu', () => {
       'Space settings',
       'Memory settings',
     ]);
+  });
+
+  describe('Space name', () => {
+    const longName = 'Quarterly research for the northern region';
+    let truncated = false;
+    const spies: { mockRestore: () => void }[] = [];
+
+    beforeEach(() => {
+      truncated = false;
+      useSpaceStore.setState({
+        activeSpaceId: space.id,
+        spaces: { [space.id]: { ...space, name: longName } },
+      });
+      spies.push(
+        vi
+          .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+          .mockImplementation(() => (truncated ? 400 : 120)),
+        vi
+          .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+          .mockReturnValue(120)
+      );
+    });
+
+    afterEach(() => {
+      spies.splice(0).forEach((spy) => spy.mockRestore());
+    });
+
+    it('lets the header button shrink in its heading instead of capping it', () => {
+      render(<SpaceHeaderMenu spaceId={space.id} />);
+      const trigger = screen.getByRole('button', { name: longName });
+
+      expect(trigger).toHaveClass('min-w-0', 'shrink');
+      expect(trigger).not.toHaveClass('max-w-full', '-ml-ds-8');
+    });
+
+    it.each(['header', 'sidebar'] as const)(
+      'shows the full name in a tooltip only while the %s label is cut off',
+      async (appearance) => {
+        const user = userEvent.setup();
+        const { unmount } = render(
+          <SpaceHeaderMenu spaceId={space.id} appearance={appearance} />
+        );
+        await user.hover(screen.getByText(longName));
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        expect(screen.queryByRole('tooltip')).toBeNull();
+        unmount();
+
+        truncated = true;
+        render(<SpaceHeaderMenu spaceId={space.id} appearance={appearance} />);
+        await user.hover(screen.getByText(longName));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent(longName);
+      }
+    );
   });
 });

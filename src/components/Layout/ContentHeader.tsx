@@ -52,6 +52,15 @@ export const CONTENT_HEADER_BORDER_CLASS =
 export const CONTENT_HEADER_TITLE_CLASS =
   'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
 
+/**
+ * Title typography for a heading that holds a control, such as a menu
+ * trigger. The heading sizes to the control and does not clip it, so the
+ * control's focus ring stays visible and the control truncates its own label
+ * only when the header runs out of room.
+ */
+export const CONTENT_HEADER_TITLE_CONTROL_CLASS =
+  'flex min-w-0 shrink items-center !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
 const ContentHeaderFrameContext = createContext<{
   element: HTMLElement | null;
   setBorder: (border: boolean) => void;
