@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.auth import local_control
+from app.auth import cli_access, local_control
 
 # Load environment variables
 load_dotenv()
@@ -41,6 +41,7 @@ def reset_local_control_process_boundary(monkeypatch):
         "_process_local_control_capability",
         local_control._CAPABILITY_UNSET,
     )
+    monkeypatch.setattr(cli_access, "_process_cli_token", None)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

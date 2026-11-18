@@ -140,6 +140,10 @@ async def startup_event():
     pid_task = asyncio.create_task(write_pid_file())
     app_logger.info("PID write task created")
 
+    from app.auth.cli_access import initialize_cli_access
+
+    initialize_cli_access()
+
     # Reconcile durable execution facts before accepting new Run admission.
     # No Python coroutine or external Tool call is restarted implicitly.
     from app.artifacts import finalize_recoverable_run_artifacts
@@ -304,6 +308,9 @@ async def shutdown_event_handler():
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
+    from app.auth.cli_access import shutdown_cli_access
+
+    shutdown_cli_access()
     gc_task = globals().get("runtime_environment_gc_task")
     if gc_task is not None:
         gc_task.cancel()

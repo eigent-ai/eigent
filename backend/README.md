@@ -29,6 +29,34 @@ uv run python main.py
 | `EIGENT_HANDS_FILESYSTEM`          | -                   | Override filesystem scope: `full` / `workspace_only`                                      |
 | `EIGENT_HANDS_MCP`                 | -                   | Override MCP mode: `all` / `allowlist`                                                    |
 
+### Command-line client (`eigent`)
+
+Follow and steer Tasks on a running Eigent from a terminal. CLI access is off
+by default. Turn it on by setting `EIGENT_CLI_ACCESS=1` (in your environment or
+in `~/.eigent/.env`) and restarting Eigent. Eigent then writes:
+
+- `~/.eigent/cli/token`: the token the CLI sends. It works only on Run routes
+  and only from this machine. Anything that can read this file as your user
+  can approve or stop your Tasks, so leave CLI access off when you do not use
+  it.
+- `~/.eigent/cli/brain.json`: the address the CLI connects to.
+
+```bash
+uv run python -m eigent_cli status            # Is Eigent up, which Sessions need you
+uv run python -m eigent_cli tasks             # Active Tasks across Sessions
+uv run python -m eigent_cli show TASK_ID
+uv run python -m eigent_cli follow TASK_ID    # Timeline until the Task ends
+uv run python -m eigent_cli answer TASK_ID "use the docs folder"
+uv run python -m eigent_cli approve TASK_ID --scope once
+uv run python -m eigent_cli deny TASK_ID
+uv run python -m eigent_cli stop TASK_ID
+uv run python -m eigent_cli --json follow TASK_ID   # One event per line
+```
+
+`follow` exits with how the Task ended: `0` completed, `1` failed, `3` waiting
+for you (when no one is at the terminal), `4` stopped, `5` deadline reached,
+`6` interrupted, `7` cannot reach or sign in to Eigent.
+
 RemoteHands config file example:
 
 ```bash
