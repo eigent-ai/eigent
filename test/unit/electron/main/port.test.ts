@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Shared mutable state for the mocked modules.
@@ -144,11 +144,22 @@ function releaseOnForceKill(cmd: string): null {
   return null;
 }
 
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', realPlatform);
+});
+
 beforeEach(() => {
   state.portOccupied = true;
   state.issuedCommands = [];
   state.respond = null;
   logMock.entries.length = 0;
+  // These cases cover the Linux fuser/lsof path; Windows uses netstat/taskkill.
+  Object.defineProperty(process, 'platform', {
+    ...realPlatform,
+    value: 'linux',
+  });
   vi.useFakeTimers();
 });
 
