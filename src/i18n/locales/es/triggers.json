@@ -165,7 +165,7 @@
   "execution-in-progress": "Ejecución en curso…",
   "waiting-to-execute": "Esperando para ejecutar…",
   "execution-cancelled": "La ejecución se canceló",
-  "execution-missed": "La ejecución no se realizó",
+  "execution-missed": "Eigent no recibió esta ejecución a tiempo, así que no se inició. Mantén Eigent abierto y con la sesión iniciada, y vuelve a intentarlo.",
   "unknown-status": "Estado desconocido",
   "trigger-label": "Automatización",
   "execution-started-toast": "Ejecución iniciada: {{name}}",

@@ -1069,6 +1069,41 @@ describe('spaceStore server deletion', () => {
     );
   });
 
+  it('keeps a Session created while a Session list sync was on its way', async () => {
+    const api = await import('@/service/spaceApi');
+    let finishSync!: () => void;
+    vi.mocked(api.proxyFetchSpaceProjects).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSync = () =>
+          resolve([makeServerProject('project_deleted', 'space_deleted')]);
+      })
+    );
+    const sync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_deleted', []);
+    await vi.waitFor(() =>
+      expect(api.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1)
+    );
+
+    useSpaceStore.getState().upsertProjectMetas([
+      {
+        id: 'project_new',
+        spaceId: 'space_deleted',
+        name: 'New work',
+        status: 'active',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ]);
+    finishSync();
+    await sync;
+
+    expect(useSpaceStore.getState().getProjectMeta('project_new')).toBeTruthy();
+    expect(
+      useSpaceStore.getState().getProjectMeta('project_deleted')
+    ).toBeTruthy();
+  });
+
   it('still applies an in-flight Session list when Space deletion is rejected', async () => {
     const api = await import('@/service/spaceApi');
     let finishSync!: () => void;
@@ -1333,6 +1368,7 @@ describe('spaceStore user scoping', () => {
         legacy_1: 100,
         space_new_blank: 200,
       },
+      lastActiveSpaceIdByUser: {},
     });
   });
 
@@ -1471,6 +1507,73 @@ describe('spaceStore user scoping', () => {
         2
       );
     });
+  });
+
+  it('does not create a blank Space while hydrating for a placeholder user id', async () => {
+    // Signing in from the browser callback used to set user id 0 before the
+    // real id arrived; the account's own Spaces then looked foreign.
+    const spaceApi = await import('@/service/spaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_existing', 'Existing Space', 'folder', '2'),
+    ]);
+    authStoreMock.state = { email: 'new@example.com', user_id: 0 };
+
+    await useSpaceStore.getState().hydrateFromServer(0);
+
+    expect(spaceApi.proxyCreateSpace).not.toHaveBeenCalled();
+  });
+
+  it('reopens the Space an account left when it signs back in', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    useSpaceStore.setState({
+      activeSpaceId: 'space_selected',
+      spaces: {
+        space_selected: {
+          ...makeSpace('space_selected', 'Selected Space', 'folder', '2'),
+          updatedAt: 1,
+        },
+        space_recent: {
+          ...makeSpace('space_recent', 'Recent Space', 'folder', '2'),
+          updatedAt: 9,
+        },
+      },
+    });
+
+    // Sign out, then sign back in as the same account.
+    useSpaceStore.getState().resetForUser(null);
+    expect(useSpaceStore.getState().activeSpaceId).not.toBe('space_selected');
+    useSpaceStore.getState().resetForUser(2);
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      {
+        ...makeSpace('space_recent', 'Recent Space', 'folder', '2'),
+        updatedAt: 9,
+      },
+      makeSpace('space_selected', 'Selected Space', 'folder', '2'),
+    ]);
+    await useSpaceStore.getState().hydrateFromServer(2);
+
+    expect(spaceApi.proxyCreateSpace).not.toHaveBeenCalled();
+    expect(useSpaceStore.getState().activeSpaceId).toBe('space_selected');
+  });
+
+  it('opens the most recent Space when the remembered one is gone', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    useSpaceStore.setState({
+      activeSpaceId: null,
+      spaces: {},
+      lastActiveSpaceIdByUser: { '2': 'space_deleted' },
+    });
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_older', 'Older Space', 'folder', '2'),
+      {
+        ...makeSpace('space_recent', 'Recent Space', 'folder', '2'),
+        updatedAt: 9,
+      },
+    ]);
+
+    await useSpaceStore.getState().hydrateFromServer(2);
+
+    expect(useSpaceStore.getState().activeSpaceId).toBe('space_recent');
   });
 
   it('keeps the previously selected active space when hydrating existing spaces', async () => {

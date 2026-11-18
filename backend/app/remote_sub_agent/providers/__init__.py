@@ -13,5 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from app.remote_sub_agent.providers.gemini_agents import GeminiAgentsProvider
+from app.remote_sub_agent.providers.modelark_agents import (
+    ModelArkAgentsProvider,
+)
 
-__all__ = ["GeminiAgentsProvider"]
+__all__ = ["GeminiAgentsProvider", "ModelArkAgentsProvider"]

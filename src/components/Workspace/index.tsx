@@ -14,22 +14,42 @@
 
 import { fetchGet } from '@/api/http';
 import { AddWorker } from '@/components/AddWorker';
+import { BlockedWorkspaceOperationNotice } from '@/components/ChatBox/BlockedWorkspaceOperationCard';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DsText } from '@/components/ui/ds-text';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
-import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
-import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
-import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
+import { useWorkspaceComposerRequests } from '@/components/Workspace/composerRequests';
+import { EigentAppIcon } from '@/components/Workspace/EigentAppIcon';
+import {
+  clearWorkspaceSendRecovery,
+  peekWorkspaceSendRecovery,
+  setWorkspaceSendRecovery,
+  type WorkspaceSendRecovery,
+} from '@/components/Workspace/sendRecovery';
+import {
+  readStarterUseCasesOverride,
+  USE_CASES_URL,
+  UseCaseCards,
+} from '@/components/Workspace/UseCaseCards';
+import { pickWorkspaceWelcomeKey } from '@/components/Workspace/welcomeMessage';
+import { WorkforceAgentsMenu } from '@/components/Workspace/WorkforceAgentsMenu';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useNewSessionModelQuota } from '@/hooks/useNewSessionModelQuota';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionPane } from '@/hooks/useSessionPane';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import { cn } from '@/lib/utils';
 import {
   createWorkspaceSessionDraft,
   reviseWorkspaceSessionDraft,
@@ -39,16 +59,27 @@ import {
 import { getAuthStore, useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import {
+  EMPTY_SESSION_DRAFT,
+  sessionDraftKey,
+  useSessionDraftStore,
+} from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { SessionMode, type SessionModeType } from '@/types/constants';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
-const WORKSPACE_COWORK_TEXT_CLASS =
-  'inline-flex shrink-0 items-center font-display text-ds-text-display font-semibold text-ds-ink-default-default';
 
 interface WorkspaceProps {
   /**
@@ -61,6 +92,8 @@ interface WorkspaceProps {
   /** Controlled session mode when embedded in the new-project Session shell. */
   sessionMode?: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
+  /** First control in the composer toolbar, for example a Space chip. */
+  composerFooterLeading?: ReactNode;
 }
 
 /**
@@ -72,6 +105,7 @@ export default function Workspace({
   embedded = false,
   sessionMode: controlledSessionMode,
   onSessionModeChange,
+  composerFooterLeading,
 }: WorkspaceProps) {
   const { t } = useTranslation();
   const host = useHost();
@@ -89,6 +123,7 @@ export default function Workspace({
   );
   const workerList = useWorkerList();
   const { modelType, token, user_id, setWorkerList } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
     SessionMode.SINGLE_AGENT
   );
@@ -105,10 +140,19 @@ export default function Workspace({
     [onSessionModeChange]
   );
 
-  const [message, setMessage] = useState('');
+  // A failed start that already opened its Session returns its draft here.
+  const [recoveredDraft] = useState(() =>
+    peekWorkspaceSendRecovery(activeSpaceId, activeWorkspaceTab)
+  );
+  useEffect(() => {
+    if (recoveredDraft) clearWorkspaceSendRecovery(recoveredDraft);
+  }, [recoveredDraft]);
+  const [message, setMessage] = useState(recoveredDraft?.message ?? '');
   const messageRevision = useRef(0);
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
-  const [draftFiles, setDraftFiles] = useState<FileAttachment[]>([]);
+  const [draftFiles, setDraftFiles] = useState<FileAttachment[]>(
+    recoveredDraft?.files ?? []
+  );
   const accountKey = useAuthStore(getAccountEnvironmentKey);
   const [managedAvailable, setManagedAvailable] = useState(false);
   const [managedSelected, setManagedSelected] = useState(false);
@@ -166,9 +210,16 @@ export default function Workspace({
     (!activeSpace.userId || activeSpace.userId === String(user_id))
   );
   const canStartWithModel = hasModel || canResolveSpaceModelAtLaunch;
+  const spaceModelType = useSpaceStore((state) =>
+    activeSpaceId
+      ? parseSpaceModelChoice(
+          state.spaces?.[activeSpaceId]?.metadata?.[SPACE_MODEL_METADATA_KEY]
+        )?.modelType
+      : undefined
+  );
   const modelQuota = useNewSessionModelQuota(
     canResolveSpaceModelAtLaunch ? activeSpaceId : null,
-    modelType
+    spaceModelType ?? modelType
   );
   const incidentBanner = useUsageIncidentBanner(
     modelQuota.isCurrentAccount ? (modelQuota.effectiveModelType ?? '') : ''
@@ -279,6 +330,64 @@ export default function Workspace({
       getAccountEnvironmentKey(getAuthStore()) === accountKey &&
       useSpaceStore.getState().activeSpaceId === activeSpaceId &&
       usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab;
+    // Creating the Session selects it, so the composer is owned when that new
+    // Session is the selection rather than the one Send started from.
+    const ownsComposerView = (createdProjectId: string) =>
+      mountedRef.current &&
+      activeSubmission.current === submission &&
+      composerGeneration.current === owner.generation &&
+      messageRevision.current === owner.messageRevision &&
+      useProjectRuntimeStore.getState().activeProjectId === createdProjectId &&
+      usePageTabStore.getState().workspaceChatFocusRequestId ===
+        owner.focusRequest &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      useSpaceStore.getState().activeSpaceId === activeSpaceId &&
+      usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab;
+    const openedSession: { projectId: string | null } = { projectId: null };
+    let sentDraft: WorkspaceSendRecovery | null = null;
+    // A Session that failed to start stays open with its error, and the
+    // message waits in its composer for a retry.
+    const settleFailedSend = (
+      projectId: string,
+      draft: WorkspaceSendRecovery
+    ) => {
+      if (getAccountEnvironmentKey(getAuthStore()) !== accountKey) return;
+      if (!useProjectRuntimeStore.getState().projects[projectId]) return;
+      const key = sessionDraftKey(accountKey, projectId);
+      const { drafts } = useSessionDraftStore.getState();
+      if (!drafts[key]?.text) {
+        useSessionDraftStore.setState({
+          drafts: {
+            ...drafts,
+            [key]: {
+              ...(drafts[key] ?? EMPTY_SESSION_DRAFT),
+              text: draft.message,
+            },
+          },
+        });
+      }
+    };
+    // A Session the server rejected is removed, which clears the selection
+    // and lets the page select another Session. While the rejected Session
+    // is still selected, return the draft to the tab Send started from.
+    const returnRejectedDraft = (
+      projectId: string,
+      draft: WorkspaceSendRecovery
+    ) => {
+      const stillViewingSession =
+        getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+        usePageTabStore.getState().activeWorkspaceTab === 'project' &&
+        useProjectRuntimeStore.getState().activeProjectId === projectId &&
+        useSpaceStore.getState().activeSpaceId === draft.spaceId;
+      if (!stillViewingSession) return;
+      if (mountedRef.current) {
+        setMessage(draft.message);
+        setDraftFiles(draft.files);
+      } else {
+        setWorkspaceSendRecovery(draft);
+      }
+      setActiveWorkspaceTab(draft.tab);
+    };
     setIsStartingDirectProject(true);
     const startingAuth = getAuthStore();
     const startingAccount =
@@ -342,6 +451,12 @@ export default function Workspace({
         }
         return;
       }
+      sentDraft = {
+        spaceId: activeSpaceId,
+        tab: activeWorkspaceTab,
+        message,
+        files: draftFiles,
+      };
       const syncedProject = await createSyncedProjectInSpace({
         projectStore,
         spaceId: activeSpaceId,
@@ -356,9 +471,35 @@ export default function Workspace({
             ? { thinkingEffort: composerThinkingEffort }
             : {}),
         },
+        // Open the Session on Send; creation and startup continue behind it.
+        onLocalProjectCreated: ({ projectId }) => {
+          if (!ownsComposerView(projectId)) return;
+          // The Session page sends an unstarted Session back to this
+          // composer and opens Activity for a started one, so mark the first
+          // task started before opening it, as a completed start would.
+          const openedChatStore = useProjectRuntimeStore
+            .getState()
+            .getActiveChatStore(projectId)
+            ?.getState();
+          if (!openedChatStore?.activeTaskId) return;
+          openedChatStore.setHasMessages(openedChatStore.activeTaskId, true);
+          usePageTabStore.getState().markSessionTaskStarted(projectId);
+          openedSession.projectId = projectId;
+          // The opened Session's composer waits until this start settles.
+          useSessionStartStore.getState().markSessionStarting(projectId);
+          setDraftFiles([]);
+          setMessage('');
+          handOffNewSessionDraft(projectId);
+          setActiveWorkspaceTab('project');
+        },
+        onLocalProjectRejected: ({ projectId }) => {
+          if (openedSession.projectId === projectId && sentDraft) {
+            returnRejectedDraft(projectId, sentDraft);
+          }
+        },
       });
       assertStartingContext();
-      if (!mountedRef.current) return;
+      if (!openedSession.projectId && !mountedRef.current) return;
       useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
       const targetProjectId = syncedProject.projectId;
       const targetChatStore =
@@ -376,8 +517,7 @@ export default function Workspace({
       const attachesToSend = JSON.parse(JSON.stringify(draftFiles)) || [];
       targetChatStore.setAttaches(taskId, attachesToSend);
 
-      // Keep the draft mounted until the server accepts startup. Key/usage and
-      // admission failures must not navigate away from the user's composer.
+      // Key/usage and admission failures keep the user in the new Session.
       await targetChatStore.startTask(
         taskId,
         undefined,
@@ -395,6 +535,7 @@ export default function Workspace({
       // A newer New session command can clear selection without unmounting
       // this composer or changing its Space/tab. It owns the draft and view.
       if (
+        !openedSession.projectId &&
         mountedRef.current &&
         useProjectRuntimeStore.getState().activeProjectId === targetProjectId &&
         useSpaceStore.getState().activeSpaceId === activeSpaceId &&
@@ -407,6 +548,9 @@ export default function Workspace({
       }
     } catch (err: unknown) {
       console.error('Failed to start task:', err);
+      if (openedSession.projectId && sentDraft) {
+        settleFailedSend(openedSession.projectId, sentDraft);
+      }
       // Auth changes before useUsageNotices synchronizes its account. Never
       // re-report a departed account's rejection as the current user's limit.
       const currentAuth = getAuthStore();
@@ -427,6 +571,11 @@ export default function Workspace({
         );
       }
     } finally {
+      if (openedSession.projectId) {
+        useSessionStartStore
+          .getState()
+          .clearSessionStarting(openedSession.projectId);
+      }
       if (activeSubmission.current === submission) {
         activeSubmission.current = null;
         directProjectStartRef.current = false;
@@ -454,6 +603,17 @@ export default function Workspace({
       console.error('Select File Error:', error);
     }
   }, [host, t]);
+
+  // The Space panel's Add files attaches through this composer's picker.
+  const attachFilesRequestId = useWorkspaceComposerRequests(
+    (s) => s.attachFilesRequestId
+  );
+  const handledAttachFilesRequest = useRef(attachFilesRequestId);
+  useEffect(() => {
+    if (attachFilesRequestId === handledAttachFilesRequest.current) return;
+    handledAttachFilesRequest.current = attachFilesRequestId;
+    if (variant === 'workspace') void handleFileSelect();
+  }, [attachFilesRequestId, handleFileSelect, variant]);
 
   const composerInputProps = {
     value: message,
@@ -501,102 +661,75 @@ export default function Workspace({
     });
   }, [taskAssigning, workerList]);
 
-  const onSelectAgent = useCallback(
-    (agentId: string) => {
-      if (!chatStore?.activeTaskId) return;
-      chatStore.setActiveWorkspace(chatStore.activeTaskId, agentId);
-      chatStore.setActiveAgent(chatStore.activeTaskId, agentId);
-      host?.electronAPI?.hideAllWebview?.();
-    },
-    [chatStore, host]
-  );
+  /** Puts a starter use case in the composer, ready to edit or send. */
+  const applyUseCasePrompt = useCallback((prompt: string) => {
+    setMessage(prompt);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+  }, []);
 
-  const onEditWorkerFromMenu = (agent: Agent) => {
-    setEditingWorkerAgent(agent);
-  };
-
-  const onDuplicateUserAgent = useCallback(
-    (agent: Agent) => {
-      if (isBaseWorkflowAgent(agent)) return;
-      const baseName = agent.workerInfo?.name ?? agent.name;
-      const taken = new Set<string>();
-      workerList.forEach((w) => {
-        taken.add(w.agent_id);
-        taken.add(w.name);
-      });
-      let newName = `${baseName} copy`;
-      let n = 2;
-      while (taken.has(newName)) {
-        newName = `${baseName} copy ${n++}`;
-      }
-      const raw = JSON.parse(JSON.stringify(agent)) as Agent;
-      const duplicate: Agent = {
-        ...raw,
-        agent_id: newName,
-        name: newName,
-        type: newName as AgentNameType,
-        tasks: [],
-        log: [],
-        activeWebviewIds: [],
-        workerInfo: raw.workerInfo
-          ? { ...raw.workerInfo, name: newName }
-          : undefined,
-      };
-      setWorkerList([...workerList, duplicate]);
-    },
-    [workerList, setWorkerList]
-  );
-
-  const onDeleteUserAgent = useCallback(
-    (agentId: string) => {
-      setWorkerList(workerList.filter((w) => w.agent_id !== agentId));
-    },
-    [workerList, setWorkerList]
-  );
-
-  const activeAgentId = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
-    : undefined;
-
-  const renderAgentList = () =>
-    effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-      <SingleAgentList />
-    ) : (
-      <WorkforceAgentList
-        sortedAgents={sortedAgents}
-        activeAgentId={activeAgentId}
-        onSelectAgent={onSelectAgent}
-        onEditWorkerFromMenu={onEditWorkerFromMenu}
-        onDuplicateUserAgent={onDuplicateUserAgent}
-        onDeleteUserAgent={onDeleteUserAgent}
-        onAddWorker={() => setAddWorkerDialogOpen(true)}
-        alignment="start"
-      />
+  // Starter use cases are onboarding: shown only to a new user, who has at
+  // most one Space (archived ones aside) and no Session yet. They wait until
+  // the Space's Sessions have loaded, so a returning user on a new device
+  // never sees them flash.
+  const isNewUser = useSpaceStore((state) => {
+    const spaces = Object.values(state.spaces).filter(
+      (space) => space.status !== 'archived'
     );
+    if (spaces.length > 1) return false;
+    if (Object.keys(state.projectIdIndex ?? {}).length > 0) return false;
+    return (
+      !state.activeSpaceId ||
+      state.projectsSyncedAt?.[state.activeSpaceId] !== undefined
+    );
+  });
+  // Read once per visit; see STARTER_USE_CASES_OVERRIDE_KEY for testing.
+  const [useCasesOverride] = useState(readStarterUseCasesOverride);
+  const showStarterUseCases =
+    useCasesOverride === null ? isNewUser : useCasesOverride === 'show';
 
-  const workspaceComposerTop = (
-    <div
-      data-workspace-cowork-row
-      className="mb-3 flex min-h-[46px] w-full min-w-0 items-center justify-start gap-3"
-    >
-      <span className={WORKSPACE_COWORK_TEXT_CLASS}>
-        {t('layout.cowork-with', { defaultValue: 'Cowork with' })}
-      </span>
-      <div
-        data-workspace-agent-list
-        className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
-      >
-        {renderAgentList()}
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <span className="sr-only">
-            {t('layout.workspace-session-single-agent', {
-              defaultValue: 'Single Agent',
-            })}
-          </span>
-        ) : null}
-      </div>
-    </div>
+  // In a Session, "View more" opens the use cases in its Preview browser so
+  // the user stays in the app; the standalone page has no Preview, so it
+  // falls back to the system browser.
+  const sessionPane = useSessionPane();
+  const openBrowserPreview = useSessionPageTabStore(
+    (s) => s.openBrowserPreview
   );
+  const openUseCases = useCallback(() => {
+    if (sessionPane) {
+      openBrowserPreview(USE_CASES_URL);
+      return;
+    }
+    window.open(USE_CASES_URL, '_blank', 'noopener,noreferrer');
+  }, [openBrowserPreview, sessionPane]);
+
+  // Chosen once per visit so the line does not change while the user types.
+  const [welcomeKey] = useState(() => pickWorkspaceWelcomeKey());
+
+  // Workforce lists its agents from a button beside the composer's "+".
+  const workforceAgentsAction =
+    effectiveSessionMode === SessionMode.WORKFORCE ? (
+      <WorkforceAgentsMenu
+        agents={sortedAgents}
+        onAddAgent={() => setAddWorkerDialogOpen(true)}
+        onEditAgent={setEditingWorkerAgent}
+        onDeleteAgent={(agent) =>
+          setWorkerList(
+            workerList.filter((worker) => worker.agent_id !== agent.agent_id)
+          )
+        }
+        disabled={isStartingDirectProject}
+      />
+    ) : undefined;
 
   const composerInput = (
     <>
@@ -614,6 +747,13 @@ export default function Workspace({
           </DsText>
         </label>
       )}
+      {/* A new Session writes to the same checkout, so a blocked operation
+          must be resolvable before its first message. */}
+      <BlockedWorkspaceOperationNotice
+        space={activeSpace}
+        email={authEmail}
+        userId={user_id}
+      />
       <div data-workspace-bottom-box className="w-full">
         <BottomBox
           resourcePickersEnabled={!managedSelected}
@@ -625,6 +765,7 @@ export default function Workspace({
           onSelectModel={() => openSettings('models')}
           inputProps={{
             ...composerInputProps,
+            leadingActions: workforceAgentsAction,
             attachmentsEnabled: !managedSelected,
             onUnsupportedAttachment: () =>
               toast.error(t('chat.parallel-unsupported')),
@@ -633,6 +774,7 @@ export default function Workspace({
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive
           modelSelectDisabled={isStartingDirectProject || isLegacyActiveSpace}
+          footerLeading={composerFooterLeading}
         />
       </div>
       <AddWorker
@@ -643,7 +785,7 @@ export default function Workspace({
         <AddWorker
           edit
           workerInfo={editingWorkerAgent}
-          isOpen={true}
+          isOpen
           onOpenChange={(open) => {
             if (!open) setEditingWorkerAgent(null);
           }}
@@ -672,9 +814,35 @@ export default function Workspace({
             data-workspace-input-section
             className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div className="flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]">
-              {workspaceComposerTop}
+            {/* The Workspace page shares its width with the Space panel. */}
+            <div
+              className={cn(
+                '@container flex w-full min-w-0 flex-col pb-[58px]',
+                variant === 'new-project' ? 'max-w-[736px]' : 'max-w-[600px]'
+              )}
+            >
+              {/* In a narrow composer column the line wraps, so the icon stacks
+                  above it, centred; from 40rem it sits beside the line. */}
+              <h1
+                data-workspace-welcome
+                className="m-0 mb-ds-24 flex flex-col items-center justify-center gap-ds-12 text-center text-ds-text-display font-semibold text-ds-ink-default-default @min-[40rem]:flex-row"
+              >
+                <EigentAppIcon className="size-11" />
+                {/* The display face goes on the text itself: a global `*` rule gives
+                    every element Inter, so it is not inherited from the h1. */}
+                <span className="min-w-0 font-display text-balance">
+                  {t(welcomeKey)}
+                </span>
+              </h1>
               {composerInput}
+              {showStarterUseCases ? (
+                <div className="mt-ds-32 w-full">
+                  <UseCaseCards
+                    onSelectPrompt={applyUseCasePrompt}
+                    onViewMore={openUseCases}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

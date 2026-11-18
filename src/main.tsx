@@ -27,6 +27,11 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { createHost, HostProvider } from './host';
 import './i18n';
+import {
+  getSessionWindowTarget,
+  initSessionWindows,
+} from './lib/sessionWindows';
+import { applySessionWindowStoragePolicy } from './lib/sessionWindowStorage';
 import { injectHost } from './store/chatStore';
 import './style/index.css';
 
@@ -34,6 +39,9 @@ import './style/index.css';
 // import './demos/node'
 const host = createHost();
 injectHost(host);
+initSessionWindows(host);
+const sessionWindowTarget = getSessionWindowTarget();
+if (sessionWindowTarget) applySessionWindowStoragePolicy(sessionWindowTarget);
 const Router = isWeb() ? BrowserRouter : HashRouter;
 const initialChannel = isWeb() ? 'web' : 'desktop';
 

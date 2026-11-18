@@ -34,8 +34,14 @@ import {
   providerCategory,
   providerDefinition,
   selectableConfiguredModels,
-  setConfiguredProviderDefault,
 } from '@/lib/configuredModels';
+import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
+import { getProviderValid } from '@/lib/providerStatus';
+import {
+  parseSpaceModelChoice,
+  setSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { cn } from '@/lib/utils';
 import {
   getModelImage,
@@ -52,13 +58,17 @@ import { Check } from 'lucide-react';
 import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react';
 import { useId, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 export interface ModelAndThinkingEffortSelectProps {
   thinkingEffort: ThinkingEffortType | undefined;
   onThinkingEffortChange?: (effort: ThinkingEffortType | undefined) => void;
   disabled?: boolean;
   projectId?: string | null;
+  /**
+   * The Space whose default model a projectless composer reads and writes.
+   * Defaults to the active Space; a Space's page passes its own.
+   */
+  spaceId?: string | null;
   readOnly?: boolean;
   className?: string;
 }
@@ -98,7 +108,7 @@ const THINKING_EFFORT_TRACK_PATH =
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-ds-8',
-  'bg-ds-neutral-default-default text-ds-ink-default-default'
+  'bg-ds-neutral-subtle-default text-ds-ink-default-default'
 );
 
 function sliderPosition(index: number) {
@@ -231,6 +241,7 @@ export function ModelAndThinkingEffortSelect({
   onThinkingEffortChange,
   disabled,
   projectId,
+  spaceId: spaceIdOverride,
   readOnly = false,
   className,
 }: ModelAndThinkingEffortSelectProps) {
@@ -244,7 +255,6 @@ export function ModelAndThinkingEffortSelect({
   const [modelSubmenuAlignOffset, setModelSubmenuAlignOffset] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
-  const [busy, setBusy] = useState(false);
   const getCloudName = useCloudModelStore((state) => state.getModelDisplayName);
   const effectiveCloudId = useCloudModelStore((state) =>
     state.getEffectiveModelId(auth.cloud_model_type)
@@ -270,6 +280,19 @@ export function ModelAndThinkingEffortSelect({
       ? state.projectsBySpaceId[spaceId]?.[projectId]?.metadata?.modelSelection
       : null;
   });
+  const runtimeSpaceId = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.spaceId : undefined
+  );
+  const spaceId = useSpaceStore((state) =>
+    projectId
+      ? (runtimeSpaceId ?? state.projectIdIndex[projectId])
+      : (spaceIdOverride ?? state.activeSpaceId)
+  );
+  const rawSpaceChoice = useSpaceStore((state) =>
+    spaceId
+      ? state.spaces?.[spaceId]?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  );
   useLayoutEffect(() => {
     if (!modelSubmenuTrigger || !modelSubmenuContent) return;
     const updateAlignOffset = () => {
@@ -285,20 +308,27 @@ export function ModelAndThinkingEffortSelect({
     return () => observer.disconnect();
   }, [modelSubmenuContent, modelSubmenuTrigger]);
   const pinned = projectId ? (runtimeSelection ?? storedSelection) : null;
+  // A new Session starts on its Space's model; an older unpinned Session
+  // keeps following the global default, as it does at launch.
+  const spaceChoice =
+    !projectId || runtimeSpaceDefaultPending
+      ? parseSpaceModelChoice(rawSpaceChoice)
+      : null;
   const spaceDefaultPending = Boolean(
-    projectId && !pinned && runtimeSpaceDefaultPending
+    projectId && !pinned && !spaceChoice && runtimeSpaceDefaultPending
   );
   const preferred = inventory.records.find(
     (record) =>
       record.prefer && providerCategory(record.provider_name) === auth.modelType
   );
-  const selection: Selection = pinned ?? {
-    modelType: auth.modelType,
-    cloud_model_type: effectiveCloudId ?? undefined,
-    codex_model_type: auth.codex_model_type,
-    provider_id: preferred?.id,
-    model_type: preferred?.model_type,
-  };
+  const selection: Selection = pinned ??
+    spaceChoice ?? {
+      modelType: auth.modelType,
+      cloud_model_type: effectiveCloudId ?? undefined,
+      codex_model_type: auth.codex_model_type,
+      provider_id: preferred?.id,
+      model_type: preferred?.model_type,
+    };
   const selectedId = spaceDefaultPending
     ? ''
     : selection.modelType === 'cloud'
@@ -313,15 +343,18 @@ export function ModelAndThinkingEffortSelect({
     selection.modelType === 'cloud'
       ? getCloudName(selection.cloud_model_type ?? '')
       : selection.modelType === 'codex_subscription'
-        ? selection.codex_model_type
+        ? modelDisplayName(selection.codex_model_type)
         : selectedRecord
           ? [
-              selectedRecord.model_type,
+              configuredModelName(
+                selectedRecord,
+                inventory.records.filter(getProviderValid)
+              ),
               configurationHint(selectedRecord, inventory.records),
             ]
               .filter(Boolean)
               .join(' · ')
-          : selection.model_type;
+          : modelDisplayName(selection.model_type);
   const effortLabel = t(
     thinkingEffort === undefined
       ? 'setting.default'
@@ -358,30 +391,11 @@ export function ModelAndThinkingEffortSelect({
               codex_model_type: auth.codex_model_type,
             },
   }));
-  async function choose(option: Option) {
-    if (busy) return;
-    if (projectId) {
-      setProjectModel(projectId, option.selection);
-      return;
-    }
-    setBusy(true);
-    try {
-      if (option.selection.modelType === 'cloud') {
-        auth.setCloudModelType(option.selection.cloud_model_type!);
-        auth.setModelType('cloud');
-      } else if (option.selection.modelType === 'codex_subscription')
-        auth.setModelType('codex_subscription');
-      else {
-        const record = inventory.records.find(
-          (item) => item.id === option.selection.provider_id
-        );
-        if (record) await setConfiguredProviderDefault(record);
-      }
-    } catch {
-      toast.error(t('setting.save-failed'));
-    } finally {
-      setBusy(false);
-    }
+  // A pick changes this Session and its Space's later new Sessions. Only
+  // Settings > Models changes the global default.
+  function choose(option: Option) {
+    if (projectId) setProjectModel(projectId, option.selection);
+    void setSpaceModelChoice(spaceId, option.selection);
   }
   if (readOnly)
     return (
@@ -401,14 +415,14 @@ export function ModelAndThinkingEffortSelect({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || busy}
+          disabled={disabled}
           className={cn(
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-start font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
+            'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
             DS_FOCUS_RING,
-            'focus-visible:ring-offset-ds-neutral-default-default',
+            'focus-visible:ring-offset-ds-neutral-subtle-default',
             'disabled:pointer-events-none disabled:opacity-50',
             className
           )}
@@ -532,7 +546,6 @@ export function ModelAndThinkingEffortSelect({
                             key={option.id}
                             role="menuitemradio"
                             aria-checked={selectedId === option.id}
-                            disabled={busy}
                             onSelect={() => choose(option)}
                           >
                             <DsText

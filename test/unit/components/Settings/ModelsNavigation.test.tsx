@@ -143,7 +143,7 @@ function renderPage(provider?: string) {
   return render(
     <MemoryRouter
       initialEntries={[
-        `/home?section=settings&tab=models${provider ? `&provider=${provider}` : ''}`,
+        `/settings?tab=models${provider ? `&provider=${provider}` : ''}`,
       ]}
     >
       <SettingModels />
@@ -296,7 +296,7 @@ describe('Models collections and configuration dialogs', () => {
       '[data-default-model-setting]'
     ) as HTMLElement;
     expect(defaultSetting).toHaveTextContent(
-      'This default model will be used for new Sessions until you change it.'
+      'This default model will be used for new Spaces until you change it.'
     );
     expect(providerBanner.parentElement?.parentElement).toHaveClass(
       'gap-ds-24',
@@ -661,7 +661,7 @@ describe('Models collections and configuration dialogs', () => {
         <SettingsRouteBridge />
         <Routes>
           <Route path="/" element={<div>Home</div>} />
-          <Route path="/home" element={<SettingModels />} />
+          <Route path="/settings" element={<SettingModels />} />
         </Routes>
       </MemoryRouter>
     );

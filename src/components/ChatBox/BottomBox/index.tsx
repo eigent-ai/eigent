@@ -14,11 +14,13 @@
 
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { cn } from '@/lib/utils';
 import { type SessionModeType } from '@/types/constants';
 import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -27,9 +29,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { BoxFooter } from './BoxFooter';
 import { BoxHeaderConfirm, BoxHeaderDisplay, BoxHeaderSave } from './BoxHeader';
+import {
+  ContextPanel,
+  type ContextItem,
+  type ContextPanelHandle,
+} from './ContextPanel';
 import { ControlInputRouter } from './ControlInput';
 import type { FileAttachment, InputboxProps } from './InputBox';
-import { ConnectorPickerPanel, SkillPickerPanel } from './PickerPanel';
 import { QueuedBox, type QueueContext, type QueuedMessage } from './QueuedBox';
 import type { BottomBoxVariant, LegacyBottomBoxVariant } from './types';
 import {
@@ -40,7 +46,20 @@ import {
 export type BottomBoxState =
   'input' | 'confirm' | 'save' | 'running' | 'finished';
 
-type PickerPanelKind = 'connector' | 'skill';
+/** Appends a `#skill` / `@connector` token, space-separated. */
+function appendToken(text: string, token: string): string {
+  const trimmed = text.replace(/\s+$/, '');
+  return (trimmed.length ? `${trimmed} ` : '') + `${token} `;
+}
+
+/** Removes a token (and one adjacent space) from the text. */
+function stripToken(text: string, token: string): string {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text
+    .replace(new RegExp(`\\s?${escaped}`), '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^\s+/, '');
+}
 
 const VARIANT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 const VARIANT_ENTER_TRANSITION = {
@@ -95,6 +114,40 @@ function QueueReveal({
   );
 }
 
+/**
+ * BoxMain's natural height, and whether its latest change came with a width
+ * change. A width change means the column resized (a panel opened, the window
+ * moved): BoxMain follows it at once, so the composer never lags behind or
+ * overflows its column. Only height changes of its own animate.
+ */
+function useBoxMainHeight() {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [measure, setMeasure] = useState<{
+    height?: number;
+    resized: boolean;
+  }>({ resized: false });
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    let width = content.getBoundingClientRect().width;
+    const read = () => {
+      const rect = content.getBoundingClientRect();
+      const resized = rect.width !== width;
+      width = rect.width;
+      setMeasure((current) =>
+        current.height === rect.height && current.resized === resized
+          ? current
+          : { height: rect.height, resized }
+      );
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  return { contentRef, ...measure };
+}
+
 interface BottomBoxCommonProps {
   // General state
   state: BottomBoxState;
@@ -128,6 +181,20 @@ interface BottomBoxCommonProps {
   modelSelectDisabled?: boolean;
   /** Restricted file workflows do not offer connector or skill pickers. */
   resourcePickersEnabled?: boolean;
+  /** First control in the footer, for example New session's Space chip. */
+  footerLeading?: ReactNode;
+  /**
+   * Without `modelSelectProjectId`, the Space whose access and default model
+   * the footer edits. Defaults to the active Space.
+   */
+  footerSpaceId?: string | null;
+  /**
+   * `docked` (default): the composer at the foot of a chat surface, with
+   * picker panels and banners opening above it.
+   * `inline`: the same composer placed in page content, such as a Space's
+   * page. It looks the same and opens its panels below, into the page.
+   */
+  layout?: 'docked' | 'inline';
 
   // Loading states
   loading?: boolean;
@@ -165,6 +232,9 @@ export default function BottomBox({
   modelSelectProjectId,
   modelSelectDisabled,
   resourcePickersEnabled = true,
+  footerLeading,
+  footerSpaceId,
+  layout = 'docked',
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -175,35 +245,6 @@ export default function BottomBox({
   const inputProps: InputboxProps = providedInputProps ?? {};
   const normalizedVariant: BottomBoxVariant =
     variant === 'input' ? { kind: 'input' } : variant;
-
-  // Picker panels (connector/skill) float above BoxMain and are mutually exclusive.
-  const [openPanel, setOpenPanel] = useState<PickerPanelKind | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const togglePanel = (panel: PickerPanelKind) =>
-    setOpenPanel((prev) => (prev === panel ? null : panel));
-
-  // Close the floating panel on outside click (ignore the trigger buttons,
-  // which own their own toggle).
-  useEffect(() => {
-    if (!openPanel) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        panelRef.current?.contains(target ?? null) ||
-        target?.closest('[data-picker-trigger]')
-      ) {
-        return;
-      }
-      setOpenPanel(null);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [openPanel]);
-
-  useEffect(() => {
-    if (normalizedVariant.kind !== 'input') setOpenPanel(null);
-  }, [normalizedVariant.kind]);
 
   // Replacing the composer with an agent request is a mode change. Assistive
   // technology only learns about it if the new region is announced and focus
@@ -246,39 +287,133 @@ export default function BottomBox({
     });
   };
 
-  /** Append a `#skill` / `@connector` token to the input, space-separated. */
-  const insertToken = (token: string) => {
-    const trimmed = inputValue.replace(/\s+$/, '');
-    const next = (trimmed.length ? `${trimmed} ` : '') + `${token} `;
-    inputProps.onChange?.(next);
+  // "Add context" panel (files, skills, connectors) floating above BoxMain.
+  // The composer's text field is its search box: whatever is typed after the
+  // panel opens (the text past `contextAnchor`) filters it, and choosing a row
+  // replaces that search text with the row's token.
+  const contextPanelEnabled =
+    resourcePickersEnabled && normalizedVariant.kind === 'input';
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [contextAnchor, setContextAnchor] = useState('');
+  const [contextActiveRowId, setContextActiveRowId] = useState<string>();
+  const contextPanelRef = useRef<ContextPanelHandle>(null);
+  const contextPanelBoxRef = useRef<HTMLDivElement>(null);
+  const contextListId = useId();
+  const contextOpen = contextPanelEnabled && contextPanelOpen;
+  const contextBase = inputValue.startsWith(contextAnchor)
+    ? contextAnchor
+    : inputValue;
+  const contextQuery = contextOpen
+    ? inputValue.slice(contextBase.length).trim()
+    : '';
+
+  const closeContextPanel = () => {
+    setContextPanelOpen(false);
+    setContextActiveRowId(undefined);
+  };
+
+  const toggleContextPanel = () => {
+    if (contextOpen) {
+      closeContextPanel();
+      return;
+    }
+    setContextAnchor(inputValue);
+    setContextPanelOpen(true);
     focusInputEnd();
   };
 
-  /** Remove a previously inserted token (and one adjacent space) from the input. */
-  const removeToken = (token: string) => {
-    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const next = inputValue
-      .replace(new RegExp(`\\s?${escaped}`), '')
-      .replace(/\s{2,}/g, ' ')
-      .replace(/^\s+/, '');
+  // Editing back into the text that was there when the panel opened starts
+  // a fresh search from what is left.
+  useEffect(() => {
+    if (contextOpen && !inputValue.startsWith(contextAnchor)) {
+      setContextAnchor(inputValue);
+    }
+  }, [contextAnchor, contextOpen, inputValue]);
+
+  useEffect(() => {
+    if (contextPanelEnabled) return;
+    setContextPanelOpen(false);
+    setContextActiveRowId(undefined);
+  }, [contextPanelEnabled]);
+
+  // Close on outside click. The text field is the panel's search box and the
+  // "+" button owns its own toggle, so neither counts as outside.
+  useEffect(() => {
+    if (!contextOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        contextPanelBoxRef.current?.contains(target ?? null) ||
+        target?.closest('[data-context-panel-trigger], [data-text-input]')
+      ) {
+        return;
+      }
+      setContextPanelOpen(false);
+      setContextActiveRowId(undefined);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [contextOpen]);
+
+  /** Adds the item's token in place of the search text, or removes it. */
+  const pickContextItem = (item: ContextItem) => {
+    const next = contextBase.includes(item.token)
+      ? stripToken(contextBase, item.token)
+      : appendToken(contextBase, item.token);
     inputProps.onChange?.(next);
+    closeContextPanel();
     focusInputEnd();
   };
 
-  const toggleToken = (token: string) =>
-    inputValue.includes(token) ? removeToken(token) : insertToken(token);
+  const uploadFromContextPanel = () => {
+    if (contextBase !== inputValue) inputProps.onChange?.(contextBase);
+    closeContextPanel();
+    inputProps.onAddFile?.();
+  };
 
-  // Background color reflects current state only
-  let backgroundClass = 'bg-ds-neutral-default-default';
-  if (state === 'confirm' || state === 'save')
-    backgroundClass = 'bg-ds-bg-status-completed-subtle-default';
+  const handleContextPanelKeyDown = (
+    e: React.KeyboardEvent<HTMLDivElement>
+  ): boolean => {
+    if (!contextOpen || e.nativeEvent.isComposing) return false;
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp':
+        e.preventDefault();
+        contextPanelRef.current?.move(e.key === 'ArrowDown' ? 1 : -1);
+        return true;
+      case 'Enter':
+        if (e.shiftKey || !contextPanelRef.current?.pick()) return false;
+        e.preventDefault();
+        return true;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        closeContextPanel();
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const contextUploadDisabled =
+    inputProps.attachmentsEnabled === false ||
+    inputProps.privacy === false ||
+    inputProps.useCloudModelInDev === true ||
+    typeof inputProps.onAddFile !== 'function';
+
+  // Background color reflects current state only. The composer tray matches
+  // the chat canvas so its footer row reads as part of the background; the
+  // queued list keeps its own surface, which is the only outline it has.
+  const isPlanState = state === 'confirm' || state === 'save';
+  const backgroundClass = isPlanState
+    ? 'bg-ds-bg-status-completed-subtle-default'
+    : 'bg-ds-neutral-subtle-default';
+  const queuedBackgroundClass = isPlanState
+    ? 'bg-ds-bg-status-completed-subtle-default'
+    : 'bg-ds-neutral-default-default';
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
-  const activePickerPanel =
-    resourcePickersEnabled && normalizedVariant.kind === 'input'
-      ? openPanel
-      : null;
-  const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
+  const hasOverlay = !!usageLimitBanner || contextOpen;
 
   const variantHeader = normalizedVariant.header;
   // Composer and approval question/details live inside their input surfaces.
@@ -303,17 +438,34 @@ export default function BottomBox({
     : VARIANT_ENTER_TRANSITION;
   const enterOffset = shouldReduceMotion ? 0 : 6;
   const overlayOffset = shouldReduceMotion ? 0 : 4;
+  const inline = layout === 'inline';
+  const {
+    contentRef: boxMainContentRef,
+    height: boxMainHeight,
+    resized: boxMainResized,
+  } = useBoxMainHeight();
+  // Clip only while the height moves, so focus rings stay visible at rest.
+  const [boxMainMoving, setBoxMainMoving] = useState(false);
 
   return (
     <div
       data-bottom-box
-      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-ds-24 bg-ds-neutral-default-default'}`}
+      data-bottom-box-layout={layout}
+      className={cn(
+        'relative flex w-full flex-col',
+        // Inline, the card sits under the page's sticky tabs, so it must not
+        // lift above them while it scrolls past.
+        inline ? 'z-10' : 'z-50',
+        showQueuedBox
+          ? 'gap-0'
+          : 'gap-1 rounded-ds-24 bg-ds-neutral-subtle-default'
+      )}
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
         <QueueReveal reducedMotion={shouldReduceMotion}>
           <QueuedBox
-            className={backgroundClass}
+            className={queuedBackgroundClass}
             queuedMessages={queuedMessages}
             queueContext={queueContext}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -326,131 +478,157 @@ export default function BottomBox({
       {/* Floating utility overlays: never affect BoxMain layout. */}
       {hasOverlay && (
         <motion.div
-          key={activePickerPanel ?? 'usage-limit'}
-          className="pointer-events-auto absolute inset-x-0 bottom-full z-[60] mb-1 flex flex-col gap-1"
-          initial={{ opacity: 0, y: overlayOffset }}
+          key={contextOpen ? 'context-panel' : 'usage-limit'}
+          data-bottom-box-overlay={inline ? 'below' : 'above'}
+          className={cn(
+            'pointer-events-auto absolute inset-x-0 z-[60] flex flex-col gap-1',
+            inline ? 'top-full mt-1' : 'bottom-full mb-1'
+          )}
+          initial={{ opacity: 0, y: inline ? -overlayOffset : overlayOffset }}
           animate={{ opacity: 1, y: 0 }}
           transition={enterTransition}
         >
           {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
-          {activePickerPanel && (
-            <div ref={panelRef}>
-              {activePickerPanel === 'connector' ? (
-                <ConnectorPickerPanel
-                  inputValue={inputValue}
-                  onToggleItem={(item) => toggleToken(item.token)}
-                />
-              ) : (
-                <SkillPickerPanel
-                  inputValue={inputValue}
-                  onToggleItem={(item) => toggleToken(item.token)}
-                />
-              )}
+          {contextOpen && (
+            <div ref={contextPanelBoxRef}>
+              <ContextPanel
+                ref={contextPanelRef}
+                listId={contextListId}
+                query={contextQuery}
+                inputValue={inputValue}
+                uploadDisabled={contextUploadDisabled}
+                onUpload={uploadFromContextPanel}
+                onPickItem={pickContextItem}
+                onActiveRowChange={setContextActiveRowId}
+              />
             </div>
           )}
         </motion.div>
       )}
 
       {/* BoxMain */}
+      {/* Width always follows the column; only height animates, from a
+          measurement, so nothing inside is scaled or stretched. */}
       <motion.div
-        layout={instantLayout ? false : 'size'}
         data-bottom-box-main
         data-layout-motion={instantLayout ? 'instant' : 'smooth'}
-        className={`relative z-[1] flex w-full flex-col rounded-ds-24 ${backgroundClass}`}
+        data-height-motion={
+          instantLayout || boxMainResized ? 'follow' : 'animate'
+        }
+        className={cn(
+          'relative z-[1] flex w-full flex-col rounded-ds-24',
+          backgroundClass,
+          boxMainMoving && 'overflow-clip'
+        )}
+        initial={false}
+        animate={{ height: boxMainHeight ?? 'auto' }}
         transition={{
-          layout: instantLayout ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
+          height:
+            instantLayout || boxMainResized
+              ? INSTANT_TRANSITION
+              : LAYOUT_TRANSITION,
         }}
+        onAnimationStart={() => setBoxMainMoving(true)}
+        onAnimationComplete={() => setBoxMainMoving(false)}
       >
-        {/* BoxHeader — context/question display only. */}
-        {state === 'confirm' && (
-          <BoxHeaderConfirm
-            subtitle={subtitle}
-            onStartTask={onStartTask}
-            onEdit={onEdit}
-            loading={loading}
-            autoStartDeadline={autoStartDeadline}
-          />
-        )}
-        {state === 'save' && (
-          <BoxHeaderSave
-            subtitle={subtitle}
-            onSave={onSavePlan}
-            onEdit={onEdit}
-            loading={loading}
-          />
-        )}
-        <motion.div
-          key={normalizedVariant.kind}
-          ref={variantRegionRef}
-          layout={!shouldReduceMotion}
-          data-bottom-box-variant-transition
-          data-variant={normalizedVariant.kind}
-          className="w-full"
-          role={normalizedVariant.kind === 'input' ? undefined : 'region'}
-          aria-label={
-            normalizedVariant.kind === 'input'
-              ? undefined
-              : t('chat.control-region-label')
-          }
-          aria-live={
-            normalizedVariant.kind === 'approval' ? 'assertive' : 'polite'
-          }
-          initial={{ opacity: 0, y: enterOffset }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={enterTransition}
+        <div
+          ref={boxMainContentRef}
+          data-bottom-box-main-content
+          className="flex w-full flex-col"
         >
-          {externalHeader && (
-            <BoxHeaderDisplay
-              {...externalHeader}
-              className="px-3"
-              descriptionAsTitle={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
-              descriptionAsMarkdown={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
-              showQuestionIcon={
-                normalizedVariant.kind === 'feedback' &&
-                normalizedVariant.presentation === 'question'
-              }
+          {/* BoxHeader — context/question display only. */}
+          {state === 'confirm' && (
+            <BoxHeaderConfirm
+              subtitle={subtitle}
+              onStartTask={onStartTask}
+              onEdit={onEdit}
+              loading={loading}
+              autoStartDeadline={autoStartDeadline}
             />
           )}
-
-          {/* InputBox — controlled router selected by event-derived variant. */}
-          <ControlInputRouter
-            variant={normalizedVariant}
-            inputProps={inputProps}
-            connectorPanelOpen={activePickerPanel === 'connector'}
-            onToggleConnectorPanel={
-              resourcePickersEnabled
-                ? () => togglePanel('connector')
-                : undefined
+          {state === 'save' && (
+            <BoxHeaderSave
+              subtitle={subtitle}
+              onSave={onSavePlan}
+              onEdit={onEdit}
+              loading={loading}
+            />
+          )}
+          <motion.div
+            key={normalizedVariant.kind}
+            ref={variantRegionRef}
+            data-bottom-box-variant-transition
+            data-variant={normalizedVariant.kind}
+            className="w-full"
+            role={normalizedVariant.kind === 'input' ? undefined : 'region'}
+            aria-label={
+              normalizedVariant.kind === 'input'
+                ? undefined
+                : t('chat.control-region-label')
             }
-            skillPanelOpen={activePickerPanel === 'skill'}
-            onToggleSkillPanel={
-              resourcePickersEnabled ? () => togglePanel('skill') : undefined
+            aria-live={
+              normalizedVariant.kind === 'approval' ? 'assertive' : 'polite'
             }
-          />
-        </motion.div>
+            initial={{ opacity: 0, y: enterOffset }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={enterTransition}
+          >
+            {externalHeader && (
+              <BoxHeaderDisplay
+                {...externalHeader}
+                className="px-3"
+                descriptionAsTitle={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+                descriptionAsMarkdown={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+                showQuestionIcon={
+                  normalizedVariant.kind === 'feedback' &&
+                  normalizedVariant.presentation === 'question'
+                }
+              />
+            )}
 
-        {showFooter ? (
-          <div data-bottom-box-footer>
-            <BoxFooter
-              sessionMode={sessionMode!}
-              onSessionModeChange={onSessionModeChange}
-              projectId={modelSelectProjectId}
-              interactive={sessionModeSelectInteractive}
-              disabled={variantDisabled}
-              modelSelectDisabled={
-                normalizedVariant.kind === 'input'
-                  ? modelSelectDisabled
+            {/* InputBox — controlled router selected by event-derived variant. */}
+            <ControlInputRouter
+              variant={normalizedVariant}
+              inputProps={inputProps}
+              contextPanel={
+                contextPanelEnabled
+                  ? {
+                      open: contextOpen,
+                      onToggle: toggleContextPanel,
+                      onKeyDown: handleContextPanelKeyDown,
+                      listId: contextListId,
+                      activeRowId: contextActiveRowId,
+                    }
                   : undefined
               }
             />
-          </div>
-        ) : null}
+          </motion.div>
+
+          {showFooter ? (
+            <div data-bottom-box-footer>
+              <BoxFooter
+                sessionMode={sessionMode!}
+                onSessionModeChange={onSessionModeChange}
+                projectId={modelSelectProjectId}
+                spaceId={footerSpaceId}
+                leading={footerLeading}
+                interactive={sessionModeSelectInteractive}
+                disabled={variantDisabled}
+                modelSelectDisabled={
+                  normalizedVariant.kind === 'input'
+                    ? modelSelectDisabled
+                    : undefined
+                }
+              />
+            </div>
+          ) : null}
+        </div>
 
         {noModelOverlay &&
         onSelectModel &&

@@ -348,6 +348,18 @@ class RunCoordinator:
                     ):
                         self._admission_gates.pop(gate_key, None)
 
+    def has_admission_in_progress(self) -> bool:
+        """Whether any Run is being admitted by this process right now.
+
+        A Run row is written before its first Attempt exists. Only an admission
+        still inside its scope is starting work; a row left by a refused or
+        abandoned admission is not.
+        """
+
+        return any(
+            gate_key.startswith("run:") for gate_key in self._admission_gates
+        )
+
     async def attach_if_running(
         self,
         run_id: str,

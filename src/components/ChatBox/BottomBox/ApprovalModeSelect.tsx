@@ -47,6 +47,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { FOOTER_COMPACT_TRIGGER_CLASS } from './footerCompact';
 
 interface ApprovalOption {
   value: PermissionProfileName;
@@ -59,7 +60,7 @@ const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-neutral-default-default text-ds-ink-default-default'
+  'bg-ds-neutral-subtle-default text-ds-ink-default-default'
 );
 
 export interface ApprovalModeSelectProps {
@@ -67,7 +68,7 @@ export interface ApprovalModeSelectProps {
   disabled?: boolean;
   /** Shows the current mode in the same read-only shell as the model/mode controls. */
   readOnly?: boolean;
-  /** When true, hides the text label and shows only the icon (narrow footer). */
+  /** When true, shows only the mode icon: no label, no chevron (narrow footer). */
   compact?: boolean;
   className?: string;
 }
@@ -225,6 +226,7 @@ export function ApprovalModeSelect({
           triggerShellClass,
           'pointer-events-none bg-transparent',
           { 'opacity-50': disabled || loading },
+          compact && FOOTER_COMPACT_TRIGGER_CLASS,
           className
         )}
       >
@@ -253,9 +255,10 @@ export function ApprovalModeSelect({
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
-            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
+            'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
+            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
+            compact && FOOTER_COMPACT_TRIGGER_CLASS,
             className
           )}
         >
@@ -267,7 +270,7 @@ export function ApprovalModeSelect({
               </span>
             )}
           </span>
-          <DsIcon icon={ChevronDown} className="opacity-80" />
+          {!compact && <DsIcon icon={ChevronDown} className="opacity-80" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

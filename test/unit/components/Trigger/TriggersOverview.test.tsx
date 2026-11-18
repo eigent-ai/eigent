@@ -23,17 +23,18 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Overview, { type OverviewProps } from '@/components/Trigger/Triggers';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { type Trigger, TriggerStatus, TriggerType } from '@/types';
 
 const mocks = vi.hoisted(() => ({
-  fetchProjectTriggers: vi.fn(),
+  fetchSpaceTriggers: vi.fn(),
   projectState: { activeProjectId: null as string | null },
   toastError: vi.fn(),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
-  proxyFetchProjectTriggers: mocks.fetchProjectTriggers,
+  proxyFetchSpaceTriggers: mocks.fetchSpaceTriggers,
   proxyActivateTrigger: vi.fn(),
   proxyDeactivateTrigger: vi.fn(),
   proxyDeleteTrigger: vi.fn(),
@@ -92,11 +93,12 @@ const props: OverviewProps = {
 describe('Workspace automations list', () => {
   beforeEach(() => {
     // Requests beyond the ones a test expects stay pending.
-    mocks.fetchProjectTriggers
+    mocks.fetchSpaceTriggers
       .mockReset()
       .mockImplementation(() => new Promise(() => {}));
     mocks.toastError.mockReset();
     mocks.projectState = { activeProjectId: null };
+    useSpaceStore.setState({ activeSpaceId: null });
     useTriggerStore.setState({ triggers: [] });
   });
 
@@ -105,13 +107,13 @@ describe('Workspace automations list', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not request automations before a Session is selected', async () => {
+  it('does not request automations before a Space is selected', async () => {
     useTriggerStore.setState({ triggers: [automation] });
 
     render(<Overview {...props} />);
     await act(async () => {});
 
-    expect(mocks.fetchProjectTriggers).not.toHaveBeenCalled();
+    expect(mocks.fetchSpaceTriggers).not.toHaveBeenCalled();
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
     // Another Session's automations must not linger in the list.
@@ -119,20 +121,20 @@ describe('Workspace automations list', () => {
   });
 
   it('shows loading instead of the empty list while the list loads', async () => {
-    mocks.projectState.activeProjectId = 'project-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
 
     render(<Overview {...props} />);
     await act(async () => {});
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
-    expect(mocks.fetchProjectTriggers).toHaveBeenCalledWith('project-1');
+    expect(mocks.fetchSpaceTriggers).toHaveBeenCalledWith('space-1');
   });
 
   it('shows a load failure with retry instead of the empty list', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.projectState.activeProjectId = 'project-1';
-    mocks.fetchProjectTriggers
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
+    mocks.fetchSpaceTriggers
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({ items: [automation] });
 
@@ -149,15 +151,124 @@ describe('Workspace automations list', () => {
 
     expect(await screen.findByText('Morning digest')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(mocks.fetchProjectTriggers).toHaveBeenCalledTimes(2);
-    expect(mocks.fetchProjectTriggers).toHaveBeenNthCalledWith(1, 'project-1');
-    expect(mocks.fetchProjectTriggers).toHaveBeenNthCalledWith(2, 'project-1');
+    expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchSpaceTriggers).toHaveBeenNthCalledWith(1, 'space-1');
+    expect(mocks.fetchSpaceTriggers).toHaveBeenNthCalledWith(2, 'space-1');
+  });
+
+  it('shows a Space’s last list at once while it refreshes', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-revisited' });
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [automation] });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    // The refresh stays pending, so only the remembered list can show here.
+    render(<Overview {...props} />);
+
+    expect(await screen.findByText('Morning digest')).toBeInTheDocument();
+    expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(2);
+  });
+
+  it('remembers local deletes, and offers Retry when a remembered list fails to refresh', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    useSpaceStore.setState({ activeSpaceId: 'space-edited' });
+    const other = { ...automation, id: automation.id + 1, name: 'Weekly sync' };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({
+      items: [automation, other],
+    });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    act(() => {
+      useTriggerStore.getState().deleteTrigger(automation.id);
+    });
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    mocks.fetchSpaceTriggers.mockRejectedValueOnce(new Error('offline'));
+    render(<Overview {...props} />);
+
+    expect(await screen.findByText('Weekly sync')).toBeInTheDocument();
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load automations');
+    expect(
+      within(alert).getByRole('button', { name: 'Retry' })
+    ).toBeInTheDocument();
+  });
+
+  it('keeps remembering local deletes after a failed Retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    useSpaceStore.setState({ activeSpaceId: 'space-retried' });
+    const other = { ...automation, id: automation.id + 1, name: 'Weekly sync' };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({
+      items: [automation, other],
+    });
+    const first = render(<Overview {...props} />);
+    await screen.findByText('Morning digest');
+    first.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    mocks.fetchSpaceTriggers
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce(new Error('offline'));
+    const second = render(<Overview {...props} />);
+    const alert = await screen.findByRole('alert');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    await vi.waitFor(() =>
+      expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(3)
+    );
+    await screen.findByRole('alert');
+    act(() => {
+      useTriggerStore.getState().deleteTrigger(automation.id);
+    });
+    second.unmount();
+    useTriggerStore.setState({ triggers: [] });
+
+    render(<Overview {...props} />);
+    expect(await screen.findByText('Weekly sync')).toBeInTheDocument();
+    expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
+  });
+
+  it('keeps a create that finishes after a Space switch out of the new Space', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-x' });
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [] });
+    render(<Overview {...props} />);
+    await screen.findByText(EMPTY_LIST);
+
+    useSpaceStore.setState({ activeSpaceId: 'space-y' });
+    const yOne = {
+      ...automation,
+      id: automation.id + 2,
+      name: 'Y one',
+      space_id: 'space-y',
+    };
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [yOne] });
+    await screen.findByText('Y one');
+    act(() => {
+      useTriggerStore.getState().addTrigger({
+        ...automation,
+        id: automation.id + 3,
+        name: 'X late',
+        space_id: 'space-x',
+      });
+    });
+    cleanup();
+    useTriggerStore.setState({ triggers: [] });
+
+    // The next refresh stays pending, so only the remembered list shows.
+    render(<Overview {...props} />);
+    expect(await screen.findByText('Y one')).toBeInTheDocument();
+    expect(screen.queryByText('X late')).not.toBeInTheDocument();
   });
 
   it('lists an automation created after the list failed to load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.projectState.activeProjectId = 'project-1';
-    mocks.fetchProjectTriggers.mockRejectedValueOnce(new Error('network down'));
+    // A Space with no remembered list.
+    useSpaceStore.setState({ activeSpaceId: 'space-never-loaded' });
+    mocks.fetchSpaceTriggers.mockRejectedValueOnce(new Error('network down'));
 
     render(<Overview {...props} />);
     await screen.findByRole('alert');
@@ -170,9 +281,9 @@ describe('Workspace automations list', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('loads the Session automations once across re-renders', async () => {
-    mocks.projectState.activeProjectId = 'project-1';
-    mocks.fetchProjectTriggers.mockResolvedValueOnce({ items: [] });
+  it('loads Space automations once across Session changes', async () => {
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
+    mocks.fetchSpaceTriggers.mockResolvedValueOnce({ items: [] });
 
     const { rerender } = render(<Overview {...props} />);
     expect(await screen.findByText(EMPTY_LIST)).toBeInTheDocument();
@@ -180,17 +291,17 @@ describe('Workspace automations list', () => {
     // Unrelated project store updates hand out a new store object while the
     // same Session stays selected.
     for (let update = 0; update < 2; update += 1) {
-      mocks.projectState = { ...mocks.projectState };
+      mocks.projectState = { activeProjectId: `session-${update}` };
       rerender(<Overview {...props} />);
       await act(async () => {});
     }
 
-    expect(mocks.fetchProjectTriggers).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchSpaceTriggers).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores a late reply for a Session that is no longer selected', async () => {
+  it('ignores a late reply for a Space that is no longer selected', async () => {
     let resolveFirst!: (value: { items: Trigger[] }) => void;
-    mocks.fetchProjectTriggers
+    mocks.fetchSpaceTriggers
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -198,12 +309,12 @@ describe('Workspace automations list', () => {
           })
       )
       .mockResolvedValueOnce({ items: [] });
-    mocks.projectState.activeProjectId = 'project-1';
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
 
     const { rerender } = render(<Overview {...props} />);
     await act(async () => {});
 
-    mocks.projectState = { activeProjectId: 'project-2' };
+    useSpaceStore.setState({ activeSpaceId: 'space-2' });
     rerender(<Overview {...props} />);
     expect(await screen.findByText(EMPTY_LIST)).toBeInTheDocument();
 
@@ -212,6 +323,6 @@ describe('Workspace automations list', () => {
     });
 
     expect(screen.queryByText('Morning digest')).not.toBeInTheDocument();
-    expect(mocks.fetchProjectTriggers).toHaveBeenNthCalledWith(2, 'project-2');
+    expect(mocks.fetchSpaceTriggers).toHaveBeenNthCalledWith(2, 'space-2');
   });
 });

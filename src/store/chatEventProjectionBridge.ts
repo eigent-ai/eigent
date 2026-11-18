@@ -46,12 +46,13 @@ export function isChatEventProjectionEnabled(): boolean {
 }
 
 /**
- * Visible event-native ChatBox rendering remains an explicit cutover. Shadow
- * ingestion can stay enabled while renderer parity and history hydration are
- * measured without changing the production UI.
+ * The event-native ChatBox timeline is the default renderer. Build with
+ * VITE_CHATBOX_EVENT_BUS=false only for an emergency rollback to the legacy
+ * renderer, which also remains the fallback for Sessions whose history has no
+ * durable events yet.
  */
 export function isChatEventTimelineEnabled(): boolean {
-  return import.meta.env.VITE_CHATBOX_EVENT_BUS === 'true';
+  return import.meta.env.VITE_CHATBOX_EVENT_BUS !== 'false';
 }
 
 /**

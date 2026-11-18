@@ -470,6 +470,52 @@ describe('CloseCoordinator', () => {
   });
 });
 
+describe('renderer navigation', () => {
+  function create() {
+    const fixture = createWindow();
+    const confirm = vi.fn(async () => false);
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'quit-app',
+      quit: vi.fn(),
+      confirmQuitWithoutRenderer: confirm,
+    });
+    coordinator.bindWindow(fixture.window as never);
+    return { fixture, confirm, coordinator };
+  }
+
+  it.each([
+    ['an embedded preview', { isMainFrame: false, isSameDocument: false }],
+    ['an in-page route change', { isMainFrame: true, isSameDocument: true }],
+  ])('keeps asking the renderer after %s loads', (_label, navigation) => {
+    const { fixture, confirm, coordinator } = create();
+
+    // An iframe load also starts loading the whole WebContents.
+    fixture.emitWebContents('did-start-loading');
+    fixture.emitWebContents('did-start-navigation', navigation);
+    coordinator.request('quit-app');
+
+    expect(coordinator.isRendererReady()).toBe(true);
+    expect(fixture.send).toHaveBeenCalledWith('before-close', {
+      intent: 'quit-app',
+    });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('asks natively while a new main document replaces the renderer', async () => {
+    const { fixture, confirm, coordinator } = create();
+
+    fixture.emitWebContents('did-start-navigation', {
+      isMainFrame: true,
+      isSameDocument: false,
+    });
+    coordinator.request('quit-app');
+
+    expect(coordinator.isRendererReady()).toBe(false);
+    expect(fixture.send).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+  });
+});
+
 describe('native quit fallback', () => {
   it.each([true, false])(
     'respects the native decision %s with an unavailable renderer',

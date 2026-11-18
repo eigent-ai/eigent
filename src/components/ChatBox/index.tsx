@@ -58,6 +58,10 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
@@ -97,12 +101,18 @@ import {
 } from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
+import {
+  isSessionStarting,
+  useSessionStartStore,
+} from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
+  dismissUsageBanner,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -120,6 +130,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BlockedWorkspaceOperationNotice } from './BlockedWorkspaceOperationCard';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
@@ -134,6 +145,7 @@ import type {
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { isChatTimelineNearBottom } from './chatTimelineScroll';
 import { ControlRecovery, useControlOperations } from './ControlRecovery';
 import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
 import {
@@ -155,6 +167,7 @@ import {
   SessionExecutionChat,
   SessionExecutionStatus,
 } from './SessionExecutionChat';
+import { useReportSessionLoading } from './SessionLoadingHalo';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -253,6 +266,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
   const isFocusedPane = useIsFocusedSessionPane();
+  // Send in the Workspace composer opens this Session while its first task
+  // is still being created and admitted there.
+  const isSessionStartPending = useSessionStartStore((s) =>
+    Boolean(sessionProjectId && s.startingProjectIds[sessionProjectId])
+  );
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
@@ -383,6 +401,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType, token, user_id } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const sessionModelSelection =
     (activeProjectId
       ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
@@ -392,6 +411,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     : null;
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
+  );
+  // The blocked-operation card only needs the Session's Space, which its
+  // metadata knows before the runtime project has loaded.
+  const blockedOperationSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId ?? activeProjectMeta?.spaceId)
   );
   const canUseSessionSpace = Boolean(
     token &&
@@ -412,13 +436,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
-  const composerModelType = sessionModelSelection?.modelType ?? modelType;
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
   const incident = activeUsageIncident(usage);
-  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
-    useState<string | null>(null);
   const {
     run: interruptedRun,
     setRun: setInterruptedRun,
@@ -480,12 +509,32 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null;
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
+  // A closed reminder stays closed across Sessions and restarts, until the
+  // reminder changes; once none applies, the next one shows again.
+  const dismissedUsageLimitBannerId = usage.dismissedBanner;
+  // Credits and the plan must both be known: a failed plan request also
+  // yields no reminder, and must not reopen the one that was closed.
+  useEffect(() => {
+    if (
+      currentCredits !== null &&
+      subscriptionUsage !== null &&
+      !bannerId &&
+      dismissedUsageLimitBannerId
+    )
+      dismissUsageBanner(null);
+  }, [
+    bannerId,
+    currentCredits,
+    dismissedUsageLimitBannerId,
+    subscriptionUsage,
+  ]);
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
-  const usageLimitBanner =
-    incidentBanner ??
-    (composerModelType !== 'cloud' ||
-    !usageLimitBannerState ||
-    bannerId === dismissedUsageLimitBannerId
+  // An open incident owns this slot even while its toast hides the banner.
+  const usageLimitBanner = incident
+    ? incidentBanner
+    : composerModelType !== 'cloud' ||
+        !usageLimitBannerState ||
+        bannerId === dismissedUsageLimitBannerId
       ? null
       : {
           message: usageLimitBannerState.message,
@@ -497,10 +546,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
           onAction: () => void refreshUsage(),
           onDismiss: () => {
-            setDismissedUsageLimitBannerId(bannerId ?? null);
+            dismissUsageBanner(bannerId ?? null);
             acknowledgeUsageNotice();
           },
-        });
+        };
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -1009,6 +1058,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     activeProjectId &&
     (hasEventNativeTimelineContent || !hasAnyMessages)
   );
+  // The replayed history is what this view shows only while the event
+  // timeline has nothing durable yet (an older or cloud-restored Session), so
+  // only then does the Session's first load wait for the replay.
+  const isHistoryReplayLoading = useProjectRuntimeStore((state) =>
+    activeProjectId
+      ? Boolean(state.historyLoadingProjectIds[activeProjectId])
+      : false
+  );
+  useReportSessionLoading(
+    'history-replay',
+    eventNativeTimelineEnabled &&
+      !hasEventNativeTimelineContent &&
+      isHistoryReplayLoading
+  );
   const shouldRenderBottomBoxOverlay =
     shouldRenderChatTimeline &&
     Boolean(
@@ -1078,6 +1141,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       [],
   });
 
+  // A failed write surfaces once its Task stops, on either timeline renderer.
+  const blockedWorkspaceRefreshKey = `${activeProjectId ?? ''}:${
+    chatStore?.activeTaskId ?? ''
+  }:${queueExecution.busy || isTaskBusy}`;
+
   const isCloudUsageLimited =
     composerModelType === 'cloud' && cloudUsageLimitReached;
 
@@ -1086,6 +1154,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return true;
 
     const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // A message sent before that start settles would start the task again.
+    if (isSessionStartPending) return true;
 
     // If ask human is active, allow input
     if (task.activeAsk) return false;
@@ -1100,6 +1171,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isSessionStartPending,
     isCloudUsageLimited,
     canUseSessionModel,
     useCloudModelInDev,
@@ -1204,6 +1276,57 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     };
   }, []);
 
+  // Whether the timeline is scrolled up from its latest content, which offers
+  // the floating scroll-to-bottom action. Content growth changes the distance
+  // without a scroll event, so resizes are observed as well.
+  const [isTimelineScrolledUp, setIsTimelineScrolledUp] = useState(false);
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const update = () =>
+      setIsTimelineScrolledUp(
+        !isChatTimelineNearBottom(
+          scrollContainer.scrollHeight -
+            scrollContainer.scrollTop -
+            scrollContainer.clientHeight,
+          0
+        )
+      );
+    update();
+    scrollContainer.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver === 'undefined') {
+      return () => scrollContainer.removeEventListener('scroll', update);
+    }
+    const resizeObserver = new ResizeObserver(update);
+    const observeChildren = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(scrollContainer);
+      Array.from(scrollContainer.children).forEach((child) =>
+        resizeObserver.observe(child)
+      );
+      update();
+    };
+    observeChildren();
+    const mutationObserver = new MutationObserver(observeChildren);
+    mutationObserver.observe(scrollContainer, { childList: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', update);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, []);
+  const scrollTimelineToBottom = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+  }, []);
+
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
@@ -1215,6 +1338,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     const composerAttachments =
       queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (isSessionStarting(sessionProjectId)) return;
     if (
       message.trim() === '' &&
       !messageStr &&
@@ -3073,6 +3197,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
         op.phase !== 'pending'
     );
+  const isFloatingTaskRunning =
+    shouldRenderChatTimeline && composerTaskControlState === 'running';
   const handleFloatingStop = () => {
     if (eventNativeActiveProjectedRun?.status === 'running') {
       void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
@@ -3143,11 +3269,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onEditUserMessage={handleEditUserMessage}
+              sessionMode={displaySessionMode}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+            <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   title={t(
@@ -3226,20 +3359,26 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )}
         </div>
 
-        {showFloatingStop && (
-          <div
-            data-floating-stop-control
-            className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
-            style={{ bottom: scrollBottomInsetPx }}
-          >
-            <FloatingAction
-              className="static mt-0 w-auto"
-              status={ChatTaskStatus.RUNNING}
-              onSkip={handleFloatingStop}
-              loading={isPauseResumeLoading}
-            />
-          </div>
-        )}
+        {shouldRenderChatTimeline &&
+          (showFloatingStop ||
+            isFloatingTaskRunning ||
+            isTimelineScrolledUp) && (
+            <div
+              data-floating-stop-control
+              className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
+              style={{ bottom: scrollBottomInsetPx }}
+            >
+              <FloatingAction
+                className="w-auto"
+                showStop={showFloatingStop}
+                onStop={handleFloatingStop}
+                stopLoading={isPauseResumeLoading}
+                running={isFloatingTaskRunning}
+                scrolledUp={isTimelineScrolledUp}
+                onScrollToBottom={scrollTimelineToBottom}
+              />
+            </div>
+          )}
 
         {chatStore.activeTaskId && hasAnyMessages ? (
           <div id={overlaySlotId} className="contents" />
@@ -3250,11 +3389,17 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[736px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
               <HumanDecisionCard
                 key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}
                 variant={humanDecisionVariant}
+              />
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
               />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner

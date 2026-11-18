@@ -31,7 +31,10 @@ import {
   getNativeMenuMessages,
   resolveNativeMenuLocale,
 } from '../../../electron/main/commands/nativeMenuMessages';
-import { APP_COMMAND } from '../../../src/shared/appCommands';
+import {
+  APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
+} from '../../../src/shared/appCommands';
 
 type MenuItem = Electron.MenuItemConstructorOptions;
 
@@ -219,6 +222,27 @@ describe('application menu', () => {
     }
   );
 
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'closes a focused Session window instead of quitting on %s',
+    (platform) => {
+      const harness = createOptions(platform);
+      const closeSecondaryWindow = vi.fn().mockReturnValueOnce(true);
+      const template = buildApplicationMenuTemplate({
+        ...harness.options,
+        closeSecondaryWindow,
+      });
+
+      click(findItem(template, 'file.close-window'));
+      expect(closeSecondaryWindow).toHaveBeenCalledOnce();
+      expect(harness.requestQuit).not.toHaveBeenCalled();
+
+      // The main window has focus: Close Window keeps its quit semantics.
+      closeSecondaryWindow.mockReturnValueOnce(false);
+      click(findItem(template, 'file.close-window'));
+      expect(harness.requestQuit).toHaveBeenCalledOnce();
+    }
+  );
+
   it('localizes every visible application label without relying on role defaults', () => {
     const harness = createOptions('darwin');
     harness.options.messages = getNativeMenuMessages('zh-Hans');
@@ -337,6 +361,33 @@ describe('application menu', () => {
     expect(findItemOrNull(production, 'view.zoom-out')).toBeNull();
     expect(findItem(production, 'help.report-bug').label).toBe('Report a Bug…');
   });
+
+  it.each([
+    ['darwin', 'Command+Alt+'],
+    ['win32', 'Control+Shift+'],
+    ['linux', 'Control+Shift+'],
+  ] as const)(
+    'opens pinned Spaces 1–9 with hidden accelerators on %s',
+    (platform, prefix) => {
+      const harness = createOptions(platform, false);
+      const template = buildApplicationMenuTemplate(harness.options);
+      const positions = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const items = positions.map((position) =>
+        findItem(template, `view.navigate-pinned-space-${position}`)
+      );
+
+      expect(items.map((item) => [item.accelerator, item.visible])).toEqual(
+        positions.map((position) => [`${prefix}${position}`, false])
+      );
+      expect(items.every((item) => item.registerAccelerator !== false)).toBe(
+        true
+      );
+      items.forEach(click);
+      expect(harness.dispatchRendererCommand.mock.calls).toEqual(
+        PINNED_SPACE_COMMANDS.map((command) => [command])
+      );
+    }
+  );
 
   it.each(['darwin', 'win32', 'linux'] as const)(
     'installs no duplicate or renderer-reserved accelerator on %s',

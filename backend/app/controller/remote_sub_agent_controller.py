@@ -23,6 +23,10 @@ from app.remote_sub_agent.provider_registry import (
     ProviderBuildOptions,
     validate_remote_sub_agent_provider,
 )
+from app.remote_sub_agent.providers.gemini_agents import GeminiAgentsProvider
+from app.remote_sub_agent.providers.modelark_agents import (
+    ModelArkAgentsProvider,
+)
 
 logger = logging.getLogger("remote_sub_agent_controller")
 
@@ -37,6 +41,10 @@ class ValidateRemoteSubAgentRequest(BaseModel):
     api_key: str = Field("", description="Provider API key")
     base_url: str = Field("", description="Provider API base URL")
     agent_name: str = Field("", description="Provider agent id")
+    environment_id: str = Field(
+        "",
+        description="Provider environment id (ModelArk)",
+    )
     timeout_seconds: float = Field(
         45,
         ge=1,
@@ -65,10 +73,22 @@ async def validate_remote_sub_agent(
     base_url = request.base_url.strip()
     agent_name = request.agent_name.strip()
 
-    if not api_key or not base_url or not agent_name:
+    requested_environment_id = request.environment_id.strip()
+    requires_environment = provider == ModelArkAgentsProvider.name
+
+    if (
+        not api_key
+        or not base_url
+        or not agent_name
+        or (requires_environment and not requested_environment_id)
+    ):
         return ValidateRemoteSubAgentResponse(
             is_valid=False,
-            message="API Key, API Host, and Agent ID are required.",
+            message=(
+                "API Key, API Host, Agent ID, and Environment ID are required."
+                if requires_environment
+                else "API Key, API Host, and Agent ID are required."
+            ),
             provider=provider,
             agent_name=agent_name or None,
         )
@@ -82,16 +102,20 @@ async def validate_remote_sub_agent(
         },
     )
 
+    provider_config = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "agent_name": agent_name,
+    }
+    if requires_environment:
+        provider_config["environment_id"] = requested_environment_id
+
     try:
         data = await validate_remote_sub_agent_provider(
             {
                 "enabled": True,
                 "provider": provider,
-                provider: {
-                    "api_key": api_key,
-                    "base_url": base_url,
-                    "agent_name": agent_name,
-                },
+                provider: provider_config,
             },
             options=ProviderBuildOptions(
                 timeout_seconds=request.timeout_seconds,
@@ -140,8 +164,10 @@ async def validate_remote_sub_agent(
         message=message,
         provider=provider,
         agent_name=agent_name,
+        # Only a Gemini check starts an interaction; ModelArk reads the agent.
         interaction_id=interaction_id
         if isinstance(interaction_id, str)
+        and provider == GeminiAgentsProvider.name
         else None,
         environment_id=environment_id
         if isinstance(environment_id, str)

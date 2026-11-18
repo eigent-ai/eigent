@@ -15,6 +15,10 @@
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { EventNativeProjectTimeline } from '@/components/ChatBox/EventNativeProjectTimeline';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import {
+  SessionLoadingHalo,
+  useReportSessionLoading,
+} from '@/components/ChatBox/SessionLoadingHalo';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
@@ -40,24 +44,39 @@ import { SessionMode } from '@/types/constants';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/**
+ * The Session's route while it loads or after it failed. On first open the
+ * Session page's halo covers the whole page, so this draws no loading state
+ * of its own; on a later reload it shows the halo in the chat area.
+ */
 export function SessionExecutionStatus({ projectId }: { projectId: string }) {
   const { scope, state } = useSessionExecution(projectId);
   const { t } = useTranslation();
+  const loading = !state.error;
+  const pageShowsLoading = useReportSessionLoading(
+    'session-route',
+    loading,
+    t('chat.timeline-history-loading')
+  );
+  if (loading) {
+    return (
+      <div className="relative min-h-0 flex-1">
+        <SessionLoadingHalo
+          active={!pageShowsLoading}
+          label={t('chat.timeline-history-loading')}
+        />
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-3 p-4" role="status">
-      <DsText>
-        {t(
-          state.error ? 'chat.parallel-request-failed' : 'chat.parallel-loading'
-        )}
-      </DsText>
-      {Boolean(state.error) && (
-        <Button
-          variant="secondary"
-          onClick={() => refreshSessionExecution(scope)}
-        >
-          {t('chat.parallel-retry')}
-        </Button>
-      )}
+    <div className="flex flex-col gap-3 p-4" role="alert">
+      <DsText>{t('chat.parallel-request-failed')}</DsText>
+      <Button
+        variant="secondary"
+        onClick={() => refreshSessionExecution(scope)}
+      >
+        {t('chat.parallel-retry')}
+      </Button>
     </div>
   );
 }

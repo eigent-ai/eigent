@@ -25,6 +25,18 @@ const mocks = vi.hoisted(() => ({
   localGet: vi.fn(),
   sse: vi.fn(),
   post: vi.fn(),
+  spaces: {} as Record<string, any>,
+  updateSpaceOnServer: vi.fn(async () => {}),
+  toastWarning: vi.fn(),
+}));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), {
+    warning: mocks.toastWarning,
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+  }),
 }));
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
@@ -66,6 +78,14 @@ vi.mock('@/store/spaceStore', () => ({
       getSpaceById: (id: string) =>
         id === 'space-1' ? { id, userId: 'account-a', kind: 'cloud' } : null,
       updateProjectMeta: vi.fn(),
+      spaces: mocks.spaces,
+      updateSpace: (id: string, updates: any) => {
+        mocks.spaces[id] = {
+          ...mocks.spaces[id],
+          metadata: { ...mocks.spaces[id]?.metadata, ...updates.metadata },
+        };
+      },
+      updateSpaceOnServer: mocks.updateSpaceOnServer,
     }),
   },
 }));
@@ -112,6 +132,7 @@ describe('Space default through the real Chat start path', () => {
   let providers: any[];
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const id of Object.keys(mocks.spaces)) delete mocks.spaces[id];
     useUsageNoticeStore.setState({ account: 'account-a', incidents: [] });
     mocks.auth = {
       token: 'synthetic-token',
@@ -920,6 +941,135 @@ describe('Space default through the real Chat start path', () => {
     await expect(start()).rejects.toThrow('saved model. Check your connection');
     expect(mocks.sse).not.toHaveBeenCalled();
   });
+  describe("a Space's saved model", () => {
+    const saveSpace = (modelSelection?: Record<string, unknown>) => {
+      mocks.spaces['space-1'] = {
+        id: 'space-1',
+        sourceType: 'blank',
+        metadata: modelSelection ? { modelSelection } : {},
+      };
+    };
+    const savedSpaceModel = () =>
+      mocks.spaces['space-1']?.metadata?.modelSelection;
+
+    it('starts a new Session on the Space model instead of the configured or global default', async () => {
+      saveSpace({ modelType: 'cloud', cloud_model_type: 'manual' });
+      await start();
+      expect(project.metadata.modelSelection).toMatchObject({
+        modelType: 'cloud',
+        cloud_model_type: 'manual',
+      });
+      expect(request().workspace_model_selection).toBeUndefined();
+      expect(
+        mocks.localGet.mock.calls.some(([url]) =>
+          url.includes('/model-selection')
+        )
+      ).toBe(false);
+      expect(mocks.auth.setCloudModelType).not.toHaveBeenCalled();
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
+    });
+
+    it('starts a new Session on a saved BYOK model while the global default is Cloud', async () => {
+      saveSpace({
+        modelType: 'custom',
+        provider_id: 42,
+        model_platform: 'azure',
+        model_type: 'deployment',
+      });
+      await start();
+      expect(request()).toMatchObject({
+        model_type: 'deployment',
+        api_key: 'synthetic-custom-key',
+      });
+      expect(project.metadata.modelSelection).toMatchObject({
+        modelType: 'custom',
+        provider_id: 42,
+      });
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.auth.modelType).toBe('cloud');
+    });
+
+    it('keeps the Space model after the global default changes', async () => {
+      saveSpace({ modelType: 'cloud', cloud_model_type: 'global' });
+      mocks.auth.cloud_model_type = 'manual';
+      await start();
+      expect(project.metadata.modelSelection.cloud_model_type).toBe('global');
+    });
+
+    it('starts a new Space on the current global default and saves it as the Space model', async () => {
+      saveSpace();
+      installed = null;
+      mocks.auth.cloud_model_type = 'manual';
+      await start();
+      expect(project.metadata.modelSelection.cloud_model_type).toBe('manual');
+      expect(savedSpaceModel()).toEqual({
+        modelType: 'cloud',
+        cloud_model_type: 'manual',
+      });
+      expect(mocks.updateSpaceOnServer).toHaveBeenCalledWith('space-1', {
+        metadata: {
+          modelSelection: { modelType: 'cloud', cloud_model_type: 'manual' },
+        },
+      });
+    });
+
+    it("does not save a Space configuration's own model as the Space model", async () => {
+      saveSpace();
+      await start();
+      expect(project.metadata.modelSelection.cloud_model_type).toBe(
+        'space-model'
+      );
+      expect(savedSpaceModel()).toBeUndefined();
+    });
+
+    it('falls back to the global default, says so, and saves it when the Space model was removed', async () => {
+      saveSpace({
+        modelType: 'custom',
+        provider_id: 7,
+        model_platform: 'azure',
+        model_type: 'removed',
+      });
+      installed = null;
+      await start();
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "This Space's model is no longer available, so this session uses your default model."
+      );
+      expect(project.metadata.modelSelection).toMatchObject({
+        modelType: 'cloud',
+        cloud_model_type: 'global',
+      });
+      expect(savedSpaceModel()).toEqual({
+        modelType: 'cloud',
+        cloud_model_type: 'global',
+      });
+    });
+
+    it('falls back when a saved Cloud model left the catalog without a replacement', async () => {
+      saveSpace({ modelType: 'cloud', cloud_model_type: 'withdrawn' });
+      installed = null;
+      await start();
+      expect(mocks.toastWarning).toHaveBeenCalledTimes(1);
+      expect(project.metadata.modelSelection.cloud_model_type).toBe('global');
+    });
+
+    it('stops instead of falling back when the saved BYOK models cannot be loaded', async () => {
+      saveSpace({
+        modelType: 'custom',
+        provider_id: 42,
+        model_platform: 'azure',
+        model_type: 'deployment',
+      });
+      mocks.get.mockImplementation(async (url) => {
+        if (url === '/api/v1/providers') throw new Error('offline');
+        return [];
+      });
+      await expect(start()).rejects.toThrow('offline');
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(project.metadata.spaceModelDefaultPending).toBe(true);
+    });
+  });
+
   it('keeps provider://default on the existing user default path', async () => {
     installed.model_ref = 'provider://default';
     await start();

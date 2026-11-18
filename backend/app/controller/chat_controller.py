@@ -29,7 +29,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.agent.utils import current_time_str
-from app.auth import require_local_control_principal
+from app.auth import (
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
 from app.auth.local_control import LocalControlPrincipal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
@@ -109,7 +112,10 @@ from app.utils.cdp_browser_state import (
 from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
-from app.utils.workspace_resolver import get_workspace_resolver
+from app.utils.workspace_resolver import (
+    SpaceFolderNotUsableError,
+    get_workspace_resolver,
+)
 from app.workspace_bundle.runtime import (
     EnvironmentSetupRequiredError,
     ResolvedRuntimeEnvironment,
@@ -193,6 +199,12 @@ def _raise_follow_up_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _claimed_chat_source(data: Chat) -> str:
+    """The source a ``/chat`` caller reports; it can only lower trust."""
+
+    return "scheduled" if data.source == "scheduled" else "chat"
+
+
 async def _record_canonical_user_message(
     journal: SQLiteRunJournal,
     *,
@@ -206,6 +218,17 @@ async def _record_canonical_user_message(
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
+    if isinstance(journal, SQLiteRunJournal):
+        # The Run's persisted request decides; the caller can only lower
+        # trust. Trigger text stays labelled even when sent as Chat/Improve.
+        resolved = await asyncio.to_thread(
+            journal.resolve_user_message_source,
+            project_id=run_context.project_id,
+            run_id=run_context.run_id,
+            event_id=f"user-message:{request_id}",
+            claimed=source,
+        )
+        source = resolved if resolved is not None else "scheduled"
     await EventRecorder(journal).record_user_message(
         project_id=run_context.project_id,
         run_id=run_context.run_id,
@@ -243,6 +266,12 @@ def _environment_setup_error(
         f"({', '.join(exc.issues)})",
         error_code=exc.code,
     )
+
+
+def _space_folder_admission_error(
+    exc: SpaceFolderNotUsableError,
+) -> UserException:
+    return UserException(code.error, str(exc), error_code=exc.code)
 
 
 _EXPLICIT_RESUME_INSTRUCTION = """
@@ -1290,6 +1319,8 @@ async def _prepare_chat_run(
     resolver = get_workspace_resolver()
     try:
         frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    except SpaceFolderNotUsableError as exc:
+        raise _space_folder_admission_error(exc) from exc
     except ValueError as exc:
         raise UserException(code.error, str(exc)) from exc
 
@@ -1558,7 +1589,12 @@ async def _prepare_chat_run(
             run_context=run_context,
             request_id=request_id,
             content=data.question,
-            source="improve" if warm_admission is not None else "chat",
+            source=(
+                "improve"
+                if warm_admission is not None
+                and _claimed_chat_source(data) == "chat"
+                else _claimed_chat_source(data)
+            ),
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
             session_model_selection=(
@@ -2012,6 +2048,7 @@ async def start_chat_stream(data: Chat, request: Request):
                         if isinstance(detail, dict)
                         else None
                     ),
+                    source=_claimed_chat_source(data),
                 )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(
@@ -2101,7 +2138,11 @@ def _follow_up_environment_changed_error(
     )
 
 
-@router.get("/chat/{project_id}/status", name="get chat status")
+@router.get(
+    "/chat/{project_id}/status",
+    name="get chat status",
+    dependencies=[Depends(require_local_control_if_configured)],
+)
 async def status(project_id: str):
     task_lock = get_task_lock_if_exists(project_id)
     if task_lock is None:
@@ -2658,6 +2699,9 @@ async def _prepare_improve_chat(
                     f" project_id: {id}"
                 )
 
+        except SpaceFolderNotUsableError as exc:
+            # Not a best-effort path update: the follow-up must not start.
+            raise _space_folder_admission_error(exc) from exc
         except Exception as e:
             chat_logger.error(
                 "Error updating file path for"

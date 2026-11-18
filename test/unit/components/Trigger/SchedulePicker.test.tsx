@@ -594,3 +594,35 @@ describe('schedule preview across month and year ends', () => {
     expect(await openPreview(user)).toEqual(expected);
   });
 });
+
+describe('schedule preview with an end date', () => {
+  useTimeZone('Asia/Shanghai');
+
+  it.each([undefined, 'Asia/Shanghai'])(
+    'stops after the end date (zone %s)',
+    async (timezone) => {
+      vi.setSystemTime(new Date(2026, 9, 28, 10));
+      const user = userEvent.setup();
+      const schedule: LocalSchedule = {
+        frequency: 'daily',
+        hour: 8,
+        minute: 0,
+      };
+      render(
+        <SchedulePicker
+          value={scheduleToCron(schedule, new Date(), timezone)}
+          isEditing
+          timezone={timezone}
+          initialConfig={{ expirationDate: '2026-10-31', timezone }}
+          onChange={vi.fn()}
+        />
+      );
+
+      expect(await openPreview(user)).toEqual([
+        'October 29, 2026',
+        'October 30, 2026',
+        'October 31, 2026',
+      ]);
+    }
+  );
+});

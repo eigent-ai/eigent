@@ -19,7 +19,7 @@ import {
   useIsFocusedSessionPane,
   useSessionProjectId,
 } from '@/hooks/useSessionProjectId';
-import { ChatTaskStatus } from '@/types/constants';
+import { ChatTaskStatus, type SessionModeType } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -49,6 +49,8 @@ interface ProjectChatContainerProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
   scrollBottomInsetPx: number;
+  /** The Session's mode, for Tasks that record none of their own. */
+  sessionMode?: SessionModeType;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
@@ -56,6 +58,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
+  sessionMode,
 }) => {
   const { projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
@@ -188,8 +191,8 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   );
 
   // The first query follows the existing bottom reveal. From the second query
-  // onward, keep the new user box at the top of the ChatBox viewport so it sits
-  // below the fixed Session header with the standard 44px top gap.
+  // onward, keep the new user box flush with the top of the ChatBox viewport,
+  // just below the fixed Session header.
   useEffect(() => {
     if (previousQueryProjectIdRef.current !== activeProjectId) {
       previousQueryProjectIdRef.current = activeProjectId;
@@ -412,7 +415,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     <div className={`relative z-10 w-full ${className}`}>
       <div
         ref={contentRef}
-        className="mx-auto w-full max-w-[600px] pt-0"
+        className="mx-auto w-full max-w-[736px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">
@@ -436,6 +439,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
                 onEditUserMessage={onEditUserMessage}
+                sessionMode={sessionMode}
               />
             );
           })}

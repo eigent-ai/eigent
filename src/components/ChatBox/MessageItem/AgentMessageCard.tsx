@@ -237,7 +237,7 @@ export function AgentMessageCard({
         />
       </div>
       {showDeferredFileUi && attaches && attaches.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2 px-ds-panel-inset">
           {attaches?.map((file) => {
             return (
               <div
@@ -265,10 +265,10 @@ export function AgentMessageCard({
         </div>
       )}
       {showDeferredFileUi && deferredFooter != null && (
-        <div className="mt-2.5 w-full">{deferredFooter}</div>
+        <div className="mt-2.5 w-full px-ds-panel-inset">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
-        <div className="mt-ds-12 flex shrink-0 justify-start gap-ds-4 px-ds-8">
+        <div className="mt-ds-12 flex shrink-0 justify-start gap-ds-4 px-ds-panel-inset">
           <Button
             onClick={handleCopy}
             variant="ghost"

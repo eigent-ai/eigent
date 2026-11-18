@@ -17,7 +17,8 @@ export interface BottomBoxContextItem {
   id: string;
   label: string;
   description?: string;
-  kind?: 'file' | 'external-context' | 'agent' | 'operation' | 'other';
+  kind?:
+    'file' | 'command' | 'external-context' | 'agent' | 'operation' | 'other';
   removable?: boolean;
 }
 

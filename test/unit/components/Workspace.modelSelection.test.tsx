@@ -166,12 +166,6 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
   },
 }));
 vi.mock('@/components/AddWorker', () => ({ AddWorker: () => null }));
-vi.mock('@/components/Workspace/SingleAgentList', () => ({
-  SingleAgentList: () => null,
-}));
-vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
-  WorkforceAgentList: () => null,
-}));
 
 const variants = ['workspace', 'new-project'] as const;
 const question = 'Use the installed Space model';

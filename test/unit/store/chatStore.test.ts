@@ -2223,6 +2223,22 @@ describe('ChatStore - Core Functionality', () => {
         }
       });
 
+      it.each([
+        ['a Trigger run as scheduled', 'memory-trigger', 'scheduled'],
+        ['a user run without a source', undefined, undefined],
+      ])(
+        'submits %s so Memory never learns trigger text',
+        async (_label, triggerExecutionId, source) => {
+          const startup = beginStartup({ triggerExecutionId });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+
+          expect(JSON.parse(stream.body).source).toBe(source);
+          await stream.onopen(response());
+          await startup.admission;
+        }
+      );
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
@@ -4866,8 +4882,8 @@ describe('ChatStore - Core Functionality', () => {
         let sequence = 0;
 
         beforeEach(() => {
-          // Installed builds render the legacy chat view.
-          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+          // The legacy chat view, as a rollback build renders it.
+          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
           vi.useFakeTimers({ toFake: ['Date'] });
           vi.setSystemTime(startedAt);
           sequence = 0;

@@ -15,6 +15,7 @@
 import CloseNoticeDialog from '@/components/Dialog/CloseNotice';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost, type AppShellElectronAPI } from '@/host';
+import { hasUnfinishedLegacyTask } from '@/lib/unfinishedLegacyTask';
 import { assessGlobalCloseRunState } from '@/service/runCloseGuard';
 import {
   type CloseExecutionClass,
@@ -97,7 +98,7 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       const currentChatStore = chatStoreRef.current;
       const legacyActive =
         hasAnyActiveLegacySSEConnection() ||
-        [
+        hasUnfinishedLegacyTask([
           currentChatStore,
           ...Object.values(useProjectRuntimeStore.getState().projects).flatMap(
             (runtime) =>
@@ -105,16 +106,7 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
                 store.getState()
               )
           ),
-        ].some((state) =>
-          Object.values(state?.tasks ?? {}).some(
-            (task) =>
-              task.type !== 'replay' &&
-              task.type !== 'share' &&
-              (['running', 'pause'].includes(task.status) ||
-                task.isPending ||
-                Boolean(task.activeAsk))
-          )
-        );
+        ]);
       const timeout = window.setTimeout(
         () =>
           controller.abort(

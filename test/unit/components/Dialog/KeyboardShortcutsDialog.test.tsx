@@ -40,7 +40,7 @@ describe('KeyboardShortcutsDialog', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Minimize: ⌘+M')).toBeInTheDocument();
     expect(screen.getByLabelText('Quit Eigent: ⌘+Q')).toBeInTheDocument();
-    expect(screen.getByLabelText('Toggle Dev Mode: ⌘+⇧+L')).toBeInTheDocument();
+    expect(screen.getByLabelText('Toggle dev mode: ⌘+⇧+L')).toBeInTheDocument();
     expect(
       screen.getByLabelText('Open Browser in Preview: ⌘+⇧+B')
     ).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('KeyboardShortcutsDialog', () => {
     );
 
     expect(
-      screen.queryByLabelText('Toggle Dev Mode: ⌘+⇧+L')
+      screen.queryByLabelText('Toggle dev mode: ⌘+⇧+L')
     ).not.toBeInTheDocument();
     expect(
       screen.getByLabelText('Open Browser in Preview: ⌘+⇧+B')

@@ -58,9 +58,8 @@ import { reportError } from '@/lib/notifyError';
 import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
-  normalizeRemoteSubAgentProvider,
-  REMOTE_SUB_AGENT_PROVIDER_ID,
-  toRemoteSubAgentRuntimeConfig,
+  enabledRemoteSubAgentRuntimeConfig,
+  rememberSentRemoteSubAgentProvider,
 } from '@/lib/remoteSubAgent';
 import { createSSEAdmissionError } from '@/lib/responseError';
 import {
@@ -84,6 +83,13 @@ import {
   type ResolvedSpaceModel,
   type SpaceModelSelection,
 } from '@/lib/spaceModelBinding';
+import {
+  getSpaceModelChoice,
+  resolveSpaceModelChoice,
+  sameSpaceModelChoice,
+  setSpaceModelChoice,
+  type SpaceModelChoice,
+} from '@/lib/spaceModelChoice';
 import {
   createPlaybackUserWaitTracker,
   settleTaskElapsedMs,
@@ -3392,12 +3398,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       let spaceModelSelection: SpaceModelSelection | null = null;
       let adoptingSpaceDefault = false;
+      // A new Session starting on its Space's saved model.
+      let usingSpaceModel = false;
+      // Save the model a new Session adopts as its Space's model, unless the
+      // Space already has one (or a newer pick replaced this stale one).
+      let saveAdoptedSpaceModel: { replaces: SpaceModelChoice | null } | null =
+        null;
       // Only the actual Session model owns this gate. A global Cloud choice
       // must not block custom/local recovery, nor may another account's cached
       // incidents be consumed during an account transition.
       const assertCloudQuota = (candidateModelType: string | undefined) => {
         if (
-          (!adoptingSpaceDefault && !startOptions.resumeRequestId) ||
+          (!adoptingSpaceDefault &&
+            !usingSpaceModel &&
+            !startOptions.resumeRequestId) ||
           candidateModelType !== 'cloud'
         )
           return;
@@ -3489,12 +3503,38 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 ?.spaceModelAdmissionRunId
             )
               throw spaceModelError('unconfirmed');
-            adoptingSpaceDefault = true;
-            spaceModelSelection = await fetchSpaceModelSelection(
-              spaceId,
-              identity,
-              assertModelSelectionCurrent
-            );
+            // Precedence for a new Session: its Space's saved model, then
+            // the Space configuration's model, then the global default.
+            const savedChoice = getSpaceModelChoice(spaceId);
+            const spaceChoice = savedChoice
+              ? await resolveSpaceModelChoice(
+                  savedChoice,
+                  assertModelSelectionCurrent
+                )
+              : null;
+            if (spaceChoice) {
+              usingSpaceModel = true;
+              pinnedModelSelection = spaceChoice;
+              if (!sameSpaceModelChoice(spaceChoice, savedChoice))
+                void setSpaceModelChoice(spaceId, spaceChoice);
+            } else {
+              if (savedChoice) {
+                const message = i18next.t('chat.space-model-fallback');
+                console.warn(message);
+                toast.warning(message);
+              }
+              adoptingSpaceDefault = true;
+              spaceModelSelection = await fetchSpaceModelSelection(
+                spaceId,
+                identity,
+                assertModelSelectionCurrent
+              );
+              if (
+                !spaceModelSelection ||
+                spaceModelSelection.model_ref === 'provider://default'
+              )
+                saveAdoptedSpaceModel = { replaces: savedChoice };
+            }
           }
         }
         const ref =
@@ -3756,6 +3796,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           expectedModelSelection = JSON.stringify(
             projectStore.getProjectModel(project_id)
           );
+          if (
+            saveAdoptedSpaceModel &&
+            spaceId &&
+            sameSpaceModelChoice(
+              getSpaceModelChoice(spaceId),
+              saveAdoptedSpaceModel.replaces
+            )
+          )
+            void setSpaceModelChoice(spaceId, modelSelection);
         };
         // An admission failure (including a stale materialization) must not
         // turn an unaccepted Space default into an existing Session pin.
@@ -3790,15 +3839,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         try {
           const providersRes = await proxyFetchGet(
             '/api/v1/remote-sub-agent-providers',
-            { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+            { enabled: true }
           );
           const providerList = Array.isArray(providersRes)
             ? providersRes
             : providersRes.items || [];
-          const remoteSubAgentProvider = providerList[0];
-          remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
-            normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
-          );
+          remoteSubAgentConfig =
+            enabledRemoteSubAgentRuntimeConfig(providerList);
+          rememberSentRemoteSubAgentProvider(remoteSubAgentConfig?.provider);
         } catch (error) {
           console.error(
             'Failed to load remote sub agent configuration:',
@@ -4578,6 +4626,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             ),
             resume_request_id: startOptions.resumeRequestId,
             review_handoff_ids: startOptions.reviewHandoffIds ?? [],
+            // Trigger text is not the user's words; Memory must not learn it.
+            ...(triggerExecutionId ? { source: 'scheduled' } : {}),
           }
         : undefined;
 

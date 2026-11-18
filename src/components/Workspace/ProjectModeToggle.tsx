@@ -12,12 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { FOOTER_COMPACT_TRIGGER_CLASS } from '@/components/ChatBox/BottomBox/footerCompact';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
-import { ChevronDown, ChevronUp, Gamepad2, Joystick } from 'lucide-react';
+import { ChevronsUpDown, Gamepad2, Joystick } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -64,7 +65,7 @@ export interface ProjectModeToggleProps {
    * bar (see model read-only chip).
    */
   readOnly?: boolean;
-  /** When true, hides the text label and shows only the leading icon (narrow footer). */
+  /** When true, shows only the leading icon: no label, no chevron (narrow footer). */
   compact?: boolean;
 }
 
@@ -99,28 +100,15 @@ export function ProjectModeToggle({
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
-    'bg-ds-neutral-default-default text-ds-ink-default-default',
+    'bg-ds-neutral-subtle-default text-ds-ink-default-default',
+    compact && FOOTER_COMPACT_TRIGGER_CLASS,
     className
   );
 
-  const chevronClass = 'opacity-80';
-
+  // One 16px chevron, like the approval and model controls beside it, so all
+  // three footer controls share one height and icon size.
   const endChevrons = (
-    <span
-      className="inline-flex shrink-0 flex-col items-center justify-center gap-0 leading-none"
-      aria-hidden
-    >
-      <DsIcon
-        icon={ChevronUp}
-        recipe="main-compact"
-        className={cn(chevronClass, '-mb-ds-4')}
-      />
-      <DsIcon
-        icon={ChevronDown}
-        recipe="main-compact"
-        className={chevronClass}
-      />
-    </span>
+    <DsIcon icon={ChevronsUpDown} className="shrink-0 opacity-80" aria-hidden />
   );
 
   if (readOnly) {
@@ -151,12 +139,12 @@ export function ProjectModeToggle({
       className={cn(
         shellClass,
         'cursor-pointer border-0 border-x-0 border-y-0 text-left',
-        'hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none'
+        'hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none'
       )}
-      onPointerDown={pulseChevrons}
+      onPointerDown={compact ? undefined : pulseChevrons}
       onClick={toggle}
     >
-      <span className="relative inline-flex min-h-[1.25rem] min-w-0 flex-1 items-center overflow-hidden">
+      <span className="relative inline-flex min-w-0 flex-1 items-center overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={value}
@@ -176,13 +164,15 @@ export function ProjectModeToggle({
         </AnimatePresence>
       </span>
 
-      <motion.span
-        className="inline-flex origin-center will-change-transform"
-        initial={{ scale: 1 }}
-        animate={chevronScale}
-      >
-        {endChevrons}
-      </motion.span>
+      {!compact && (
+        <motion.span
+          className="inline-flex origin-center will-change-transform"
+          initial={{ scale: 1 }}
+          animate={chevronScale}
+        >
+          {endChevrons}
+        </motion.span>
+      )}
     </motion.button>
   );
 }

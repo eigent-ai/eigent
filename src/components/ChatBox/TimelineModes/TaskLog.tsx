@@ -287,10 +287,20 @@ export function TaskLogDescription({
  */
 export function TaskLogContent({
   indent = true,
+  blockInset = 'top',
   className,
   children,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { indent?: boolean; children: ReactNode }) {
+}: HTMLAttributes<HTMLDivElement> & {
+  indent?: boolean;
+  /**
+   * `top` leaves a small gap under the trigger; `even` pads the content
+   * equally above and below. Set here rather than through `className`,
+   * which cannot override the default `ds` padding.
+   */
+  blockInset?: 'top' | 'even';
+  children: ReactNode;
+}) {
   const { open, contentId, reducedMotion } =
     useTaskLogCollapsible('TaskLogContent');
   return (
@@ -309,7 +319,11 @@ export function TaskLogContent({
             <span aria-hidden className="w-ds-icon-main" data-task-log-indent />
           ) : null}
           <div
-            className={cn('flex w-full min-w-0 flex-col pt-ds-4', className)}
+            className={cn(
+              'flex w-full min-w-0 flex-col',
+              blockInset === 'even' ? 'py-ds-8' : 'pt-ds-4',
+              className
+            )}
             {...props}
           >
             {children}

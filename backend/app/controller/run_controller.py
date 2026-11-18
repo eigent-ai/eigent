@@ -531,13 +531,35 @@ async def list_project_runs(
 
 @router.get("/runs/active")
 async def active_local_execution():
-    """One local registry read across every Space and Session."""
+    """One local registry read across every Space and Session.
+
+    A Run that is still being admitted has no Attempt yet, so the journal
+    alone cannot tell it apart from a row a refused admission left behind.
+    """
+    if get_default_run_coordinator().has_admission_in_progress():
+        return {"active": True}
     service = get_default_execution_service()
     active = await asyncio.to_thread(
         get_default_run_journal().has_active_local_execution,
         admission_owner_id=service.owner_id if service is not None else None,
     )
     return {"active": active}
+
+
+@router.get("/runs/attention")
+async def project_attention():
+    """Which Sessions have active work, across every Space.
+
+    Read-only. ``waiting`` means a Run waits for the user's reply or decision;
+    it outranks ``running`` when a Session has both.
+    """
+    rows = await asyncio.to_thread(
+        get_default_run_journal().list_project_attention
+    )
+    return [
+        {"project_id": project_id, "state": state}
+        for project_id, state in rows
+    ]
 
 
 @router.get("/runs/{run_id}")

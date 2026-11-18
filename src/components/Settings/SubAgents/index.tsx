@@ -12,469 +12,398 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchPost,
-  proxyFetchDelete,
-  proxyFetchGet,
-  proxyFetchPost,
-  proxyFetchPut,
-} from '@/api/http';
-import geminiImage from '@/assets/model/gemini.svg';
+import { proxyFetchDelete, proxyFetchGet } from '@/api/http';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
-import { Input } from '@/components/ui/input';
+import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
 import {
-  createDefaultRemoteSubAgentForm,
-  isRemoteSubAgentConfigured,
-  normalizeRemoteSubAgentProvider,
-  REMOTE_SUB_AGENT_DEFAULT_AGENT,
-  REMOTE_SUB_AGENT_PROVIDER,
-  REMOTE_SUB_AGENT_PROVIDER_ID,
-  toRemoteSubAgentProviderPayload,
+  GEMINI_REMOTE_SUB_AGENT_PROVIDER,
+  hasRemoteSubAgentSettings,
+  normalizeRemoteSubAgentProviders,
+  REMOTE_SUB_AGENT_PROVIDERS,
+  remoteSubAgentProviderDefinition,
   type RemoteSubAgentFormState,
+  type RemoteSubAgentProviderName,
 } from '@/lib/remoteSubAgent';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import {
+  getModelImage,
+  needsInvertModelImage,
+} from '@/shared/modelProviderImages';
+import { useAuthStore } from '@/store/authStore';
+import { LoaderCircle, MoreHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import SettingsSection from '../SettingsSection';
 import SettingsSectionPage from '../SettingsSectionPage';
+import {
+  checkRemoteSubAgentConnection,
+  REMOTE_SUB_AGENT_PROVIDERS_PATH,
+  remoteSubAgentErrorMessage,
+  saveRemoteSubAgentForm,
+} from './requests';
+import { SubAgentConfigurationDialog } from './SubAgentConfigurationDialog';
+
+const detailRowClass =
+  'flex min-h-[var(--ds-row-comfortable-min-height)] items-center justify-between gap-ds-12 px-ds-12 py-ds-12';
 
 export default function SubAgents() {
   const { t } = useTranslation();
-  const [remoteSubAgentForm, setRemoteSubAgentForm] = useState(
-    createDefaultRemoteSubAgentForm
+  const appearance = useAuthStore((state) => state.appearance);
+  const [forms, setForms] = useState(() =>
+    normalizeRemoteSubAgentProviders([])
   );
-  const [showRemoteSubAgentKey, setShowRemoteSubAgentKey] = useState(false);
-  const [remoteSubAgentSaving, setRemoteSubAgentSaving] = useState(false);
-  const [remoteSubAgentLoading, setRemoteSubAgentLoading] = useState(true);
-  const [remoteSubAgentError, setRemoteSubAgentError] = useState<string | null>(
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [editing, setEditing] = useState<RemoteSubAgentProviderName | null>(
     null
   );
-  const [selectedProvider, setSelectedProvider] = useState(
-    REMOTE_SUB_AGENT_PROVIDER
+  const [removing, setRemoving] = useState<RemoteSubAgentProviderName | null>(
+    null
   );
+  const [removeError, setRemoveError] = useState('');
+  const [busy, setBusy] = useState<RemoteSubAgentProviderName | null>(null);
 
-  const loadRemoteSubAgentProvider = useCallback(async () => {
-    const res = await proxyFetchGet('/api/v1/remote-sub-agent-providers', {
-      provider_name: REMOTE_SUB_AGENT_PROVIDER_ID,
-    });
-    const providerList = Array.isArray(res) ? res : res.items || [];
-    setRemoteSubAgentForm(normalizeRemoteSubAgentProvider(providerList[0]));
+  const load = useCallback(async () => {
+    const res = await proxyFetchGet(REMOTE_SUB_AGENT_PROVIDERS_PATH);
+    const providerList = Array.isArray(res) ? res : res?.items || [];
+    setForms(normalizeRemoteSubAgentProviders(providerList));
   }, []);
 
-  useEffect(() => {
-    let isActive = true;
-    setRemoteSubAgentLoading(true);
-    loadRemoteSubAgentProvider()
-      .catch((error) => {
-        console.error('Error fetching remote sub agent providers:', error);
-        if (isActive) {
-          setRemoteSubAgentError(
-            error instanceof Error
-              ? error.message
-              : t('setting.validate-failed')
-          );
-        }
-      })
-      .finally(() => {
-        if (isActive) setRemoteSubAgentLoading(false);
-      });
-    return () => {
-      isActive = false;
-    };
-  }, [loadRemoteSubAgentProvider, t]);
-
-  const remoteSubAgentValidateMessage = (error: any) => {
-    const detail = error?.response?.data?.detail;
-    if (typeof detail === 'string') return detail;
-    if (detail?.message) return detail.message;
-    if (error?.response?.data?.message) return error.response.data.message;
-    if (error?.message) return error.message;
-    return t('setting.validate-failed');
-  };
-
-  const getRemoteSubAgentRequiredError = (
-    form: RemoteSubAgentFormState,
-    requireFields = form.enabled
-  ) => {
-    const maxWallTimeSeconds = Number(form.maxWallTimeSeconds.trim());
-    const pollIntervalSeconds = Number(form.pollIntervalSeconds.trim());
-
-    if (
-      requireFields &&
-      (!form.apiKey.trim() ||
-        !form.baseUrl.trim() ||
-        !form.agentName.trim() ||
-        !Number.isFinite(maxWallTimeSeconds) ||
-        maxWallTimeSeconds <= 0 ||
-        !Number.isFinite(pollIntervalSeconds) ||
-        pollIntervalSeconds <= 0)
-    ) {
-      return t('setting.remote-sub-agent-required-fields');
-    }
-    return null;
-  };
-
-  const validateRemoteSubAgentConfig = async (
-    form: RemoteSubAgentFormState
-  ) => {
-    const res = await fetchPost('/remote-sub-agent/validate', {
-      provider: form.provider,
-      api_key: form.apiKey.trim(),
-      base_url: form.baseUrl.trim(),
-      agent_name: form.agentName.trim(),
-    });
-
-    if (!res?.is_valid) {
-      throw new Error(res?.message || t('setting.validate-failed'));
-    }
-
-    toast.success(t('setting.validate-success'), {
-      description: res.message,
-      closeButton: true,
-    });
-  };
-
-  const persistRemoteSubAgentForm = async (
-    form: RemoteSubAgentFormState,
-    {
-      requireFields = form.enabled,
-      validateConnection = form.enabled,
-    }: {
-      requireFields?: boolean;
-      validateConnection?: boolean;
-    } = {}
-  ) => {
-    const requiredError = getRemoteSubAgentRequiredError(form, requireFields);
-    if (requiredError) {
-      setRemoteSubAgentError(requiredError);
-      toast.error(requiredError);
-      return false;
-    }
-
-    setRemoteSubAgentSaving(true);
-    setRemoteSubAgentError(null);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
-      if (validateConnection) {
-        await validateRemoteSubAgentConfig(form);
-      }
-
-      const data = toRemoteSubAgentProviderPayload(form);
-      if (form.provider_id) {
-        await proxyFetchPut(
-          `/api/v1/remote-sub-agent-providers/${form.provider_id}`,
-          data
-        );
-      } else {
-        await proxyFetchPost('/api/v1/remote-sub-agent-providers', data);
-      }
-
-      await loadRemoteSubAgentProvider();
-      toast.success(t('setting.configuration-saved-successfully'));
-      return true;
+      await load();
     } catch (error) {
-      console.error('Error saving remote sub agent:', error);
-      const message = remoteSubAgentValidateMessage(error);
-      setRemoteSubAgentError(message);
-      toast.error(message);
-      return false;
+      console.error('Error fetching remote sub agent providers:', error);
+      setLoadError(true);
     } finally {
-      setRemoteSubAgentSaving(false);
+      setLoading(false);
     }
-  };
+  }, [load]);
 
-  const handleRemoteSubAgentSave = async () => {
-    await persistRemoteSubAgentForm(remoteSubAgentForm, {
-      requireFields: true,
-      validateConnection: true,
-    });
-  };
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const handleRemoteSubAgentToggle = async (checked: boolean) => {
-    const previousForm = remoteSubAgentForm;
-    const nextForm = {
-      ...remoteSubAgentForm,
-      enabled: checked,
-    };
+  const providerName = (provider: RemoteSubAgentProviderName) =>
+    provider === GEMINI_REMOTE_SUB_AGENT_PROVIDER
+      ? t('setting.gemini-agent')
+      : t('setting.sub-agent-list.modelark-name');
+  const providerDescription = (provider: RemoteSubAgentProviderName) =>
+    provider === GEMINI_REMOTE_SUB_AGENT_PROVIDER
+      ? t('setting.sub-agent-list.gemini-description')
+      : t('setting.sub-agent-list.modelark-description');
 
-    if (!checked && !remoteSubAgentForm.provider_id) {
-      setRemoteSubAgentForm(nextForm);
-      setRemoteSubAgentError(null);
+  async function toggle(provider: RemoteSubAgentProviderName, on: boolean) {
+    const form = forms[provider];
+    if (on && !hasRemoteSubAgentSettings(form)) {
+      setEditing(provider);
       return;
     }
-
-    const requiredError = getRemoteSubAgentRequiredError(nextForm, checked);
-    if (requiredError) {
-      setRemoteSubAgentError(requiredError);
-      toast.error(requiredError);
-      return;
-    }
-
-    setRemoteSubAgentForm(nextForm);
-    const saved = await persistRemoteSubAgentForm(nextForm, {
-      requireFields: checked,
-      validateConnection: checked,
-    });
-    if (!saved) {
-      setRemoteSubAgentForm(previousForm);
-    }
-  };
-
-  const handleRemoteSubAgentReset = async () => {
+    setBusy(provider);
     try {
-      if (remoteSubAgentForm.provider_id) {
-        await proxyFetchDelete(
-          `/api/v1/remote-sub-agent-providers/${remoteSubAgentForm.provider_id}`
-        );
+      const next = { ...form, enabled: on };
+      if (on) {
+        await checkRemoteSubAgentConnection(next, t('setting.validate-failed'));
       }
-      setRemoteSubAgentForm(createDefaultRemoteSubAgentForm());
-      setRemoteSubAgentError(null);
-      toast.success(t('setting.reset-success'));
+      await saveRemoteSubAgentForm(next);
+      // Turning one provider on turns the others off on the server.
+      await load();
     } catch (error) {
-      console.error('Error resetting remote sub agent:', error);
-      toast.error(t('setting.reset-failed'));
+      toast.error(
+        remoteSubAgentErrorMessage(error, t('setting.validate-failed'))
+      );
+    } finally {
+      setBusy(null);
     }
-  };
+  }
 
-  const isConfigured = isRemoteSubAgentConfigured(remoteSubAgentForm);
+  async function remove() {
+    const form = removing ? forms[removing] : null;
+    if (!removing || !form?.provider_id) return;
+    setBusy(removing);
+    setRemoveError('');
+    try {
+      await proxyFetchDelete(
+        `${REMOTE_SUB_AGENT_PROVIDERS_PATH}/${form.provider_id}`
+      );
+      setRemoving(null);
+      toast.success(t('setting.sub-agent-list.removed'));
+      await load();
+    } catch (error) {
+      console.error('Error removing remote sub agent provider:', error);
+      setRemoveError(t('setting.reset-failed'));
+    } finally {
+      setBusy(null);
+    }
+  }
 
-  const renderProviderItem = () => {
-    const isActive = selectedProvider === REMOTE_SUB_AGENT_PROVIDER;
+  function logo(provider: RemoteSubAgentProviderName) {
+    const id = remoteSubAgentProviderDefinition(provider).logo;
+    const src = getModelImage(id);
+    return src ? (
+      <img
+        src={src}
+        alt=""
+        className={`size-ds-24 shrink-0 object-contain ${needsInvertModelImage(id, appearance) ? 'invert' : ''}`}
+      />
+    ) : null;
+  }
 
-    return (
-      <button
-        key={REMOTE_SUB_AGENT_PROVIDER}
-        onClick={() => setSelectedProvider(REMOTE_SUB_AGENT_PROVIDER)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-200 ${
-          isActive
-            ? 'bg-ds-neutral-subtle-default'
-            : 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-subtle-default'
-        }`}
-      >
-        <div className="flex min-w-0 items-center justify-center gap-3">
-          <img
-            src={geminiImage}
-            alt={t('setting.gemini-agent')}
-            className="h-5 w-5 shrink-0"
-          />
-          <span
-            className={`truncate text-ds-text-base font-medium ${
-              isActive
-                ? 'text-ds-ink-default-default'
-                : 'text-ds-ink-muted-default'
-            }`}
-          >
-            {t('setting.gemini-agent')}
-          </span>
-        </div>
-        {remoteSubAgentLoading ? (
+  function status(form: RemoteSubAgentFormState) {
+    if (loading) {
+      return (
+        <Badge variant="secondary" size="xs" role="status">
           <DsIcon
-            icon={Loader2}
+            icon={LoaderCircle}
             recipe="main-compact"
-            className="m-0.5 shrink-0 animate-spin text-ds-ink-muted-default motion-reduce:animate-none"
-            aria-hidden
+            className="motion-safe:animate-spin"
           />
-        ) : isConfigured ? (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
-        ) : (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-neutral-muted-default opacity-10" />
+          <span className="sr-only">{t('setting.sub-agent-list.loading')}</span>
+        </Badge>
+      );
+    }
+    // Without the saved list the status is unknown, not "Not configured".
+    if (loadError) return null;
+    if (!hasRemoteSubAgentSettings(form)) {
+      return (
+        <Badge variant="secondary" size="xs">
+          {t('setting.not-configured')}
+        </Badge>
+      );
+    }
+    return (
+      <>
+        <Badge variant="secondary" size="xs" tone="success">
+          {t('setting.configured')}
+        </Badge>
+        {form.enabled && (
+          <Badge variant="secondary" size="xs" tone="information">
+            {t('setting.sub-agent-list.in-use')}
+          </Badge>
         )}
-      </button>
+      </>
     );
-  };
+  }
 
-  const renderGeminiProviderContent = () => (
-    <div
-      aria-busy={remoteSubAgentLoading}
-      className="flex w-full flex-col rounded-2xl bg-ds-neutral-subtle-default"
-    >
-      <div className="mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default px-6 pt-2 pb-4">
-        <div className="inline-flex items-center justify-between gap-2 self-stretch">
-          <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
-            {t('setting.gemini-remote-sub-agent')}
-          </div>
-          <div className="flex items-center gap-3">
-            {isConfigured ? (
-              <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
-            ) : (
-              <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-neutral-muted-default opacity-10" />
-            )}
-            <Switch
-              checked={remoteSubAgentForm.enabled}
-              disabled={remoteSubAgentLoading || remoteSubAgentSaving}
-              onCheckedChange={handleRemoteSubAgentToggle}
-            />
-          </div>
-        </div>
-        <div className="text-ds-text-base text-ds-ink-muted-default">
-          {t('setting.remote-sub-agent-description')}
-        </div>
-        {remoteSubAgentLoading ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-2 flex items-center gap-2 text-ds-text-base text-ds-ink-muted-default"
-          >
-            <DsIcon
-              icon={Loader2}
-              recipe="main-compact"
-              className="animate-spin motion-reduce:animate-none"
-              aria-hidden
-            />
-            <span>
-              {t('setting.loading', {
-                defaultValue: 'Loading provider configuration',
-              })}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="flex w-full flex-col items-center gap-4 px-6">
-        <Input
-          size="default"
-          title={t('setting.api-key-setting')}
-          type={showRemoteSubAgentKey ? 'text' : 'password'}
-          value={remoteSubAgentForm.apiKey}
-          placeholder={`${t('setting.enter-your-api-key')} Gemini ${t(
-            'setting.key'
-          )}`}
-          state={remoteSubAgentError ? 'error' : 'default'}
-          disabled={remoteSubAgentLoading}
-          className="w-full"
-          backIcon={
-            showRemoteSubAgentKey ? (
-              <DsIcon icon={Eye} />
-            ) : (
-              <DsIcon icon={EyeOff} />
-            )
-          }
-          onBackIconClick={() =>
-            setShowRemoteSubAgentKey((visible) => !visible)
-          }
-          onChange={(e) => {
-            setRemoteSubAgentForm((prev) => ({
-              ...prev,
-              apiKey: e.target.value,
-            }));
-            setRemoteSubAgentError(null);
-          }}
-        />
-
-        <Input
-          size="default"
-          title={t('setting.api-host-setting')}
-          value={remoteSubAgentForm.baseUrl}
-          placeholder="https://generativelanguage.googleapis.com/v1beta"
-          state={remoteSubAgentError ? 'error' : 'default'}
-          disabled={remoteSubAgentLoading}
-          onChange={(e) => {
-            setRemoteSubAgentForm((prev) => ({
-              ...prev,
-              baseUrl: e.target.value,
-            }));
-            setRemoteSubAgentError(null);
-          }}
-        />
-
-        <Input
-          size="default"
-          title={t('setting.agent-id')}
-          value={remoteSubAgentForm.agentName}
-          placeholder={REMOTE_SUB_AGENT_DEFAULT_AGENT}
-          state={remoteSubAgentError ? 'error' : 'default'}
-          disabled={remoteSubAgentLoading}
-          onChange={(e) => {
-            setRemoteSubAgentForm((prev) => ({
-              ...prev,
-              agentName: e.target.value,
-            }));
-            setRemoteSubAgentError(null);
-          }}
-        />
-
-        <div className="grid w-full grid-cols-2 gap-4">
-          <Input
-            size="default"
-            title={t('setting.max-wall-time-seconds')}
-            value={remoteSubAgentForm.maxWallTimeSeconds}
-            disabled={remoteSubAgentLoading}
-            onChange={(e) =>
-              setRemoteSubAgentForm((prev) => ({
-                ...prev,
-                maxWallTimeSeconds: e.target.value,
-              }))
-            }
-          />
-          <Input
-            size="default"
-            title={t('setting.poll-interval-seconds')}
-            value={remoteSubAgentForm.pollIntervalSeconds}
-            disabled={remoteSubAgentLoading}
-            onChange={(e) =>
-              setRemoteSubAgentForm((prev) => ({
-                ...prev,
-                pollIntervalSeconds: e.target.value,
-              }))
-            }
-          />
-        </div>
-
-        {remoteSubAgentError && (
-          <span className="w-full !text-ds-text-base text-ds-text-error-strong-default">
-            {remoteSubAgentError}
-          </span>
-        )}
-      </div>
-
-      <div className="flex justify-end gap-2 px-6 py-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          buttonRadius="full"
-          className="!text-ds-ink-muted-default"
-          onClick={handleRemoteSubAgentReset}
-          disabled={remoteSubAgentLoading || remoteSubAgentSaving}
+  function detail(label: string, value: string) {
+    return (
+      <div className={detailRowClass}>
+        <DsText className="shrink-0 text-ds-ink-muted-default">{label}</DsText>
+        <DsText
+          channel="code"
+          className="min-w-0 truncate text-right"
+          title={value}
         >
-          {t('setting.reset')}
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          buttonRadius="full"
-          onClick={handleRemoteSubAgentSave}
-          disabled={remoteSubAgentLoading || remoteSubAgentSaving}
-        >
-          {remoteSubAgentSaving ? t('setting.configuring') : t('setting.save')}
-        </Button>
+          {value}
+        </DsText>
       </div>
-    </div>
+    );
+  }
+
+  const editingForm = editing ? forms[editing] : null;
+  const otherProviderEnabled = REMOTE_SUB_AGENT_PROVIDERS.some(
+    ({ id }) => id !== editing && forms[id].enabled
   );
 
   return (
-    <SettingsSectionPage>
-      <SettingsSection
-        title={t('setting.models-configuration')}
-        boxClassName="items-start gap-2"
+    <>
+      <SettingsSectionPage className="gap-ds-24 py-ds-24">
+        <DsText className="text-ds-ink-muted-default">
+          {t('setting.sub-agent-list.intro')}
+        </DsText>
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-ds-control-gap"
+          >
+            <DsText>{t('setting.sub-agent-list.load-error')}</DsText>
+            <Button variant="secondary" size="sm" onClick={refresh}>
+              {t('setting.sub-agent-list.retry')}
+            </Button>
+          </div>
+        )}
+        <div className="flex flex-col gap-ds-16">
+          {REMOTE_SUB_AGENT_PROVIDERS.map(({ id, requiresEnvironment }) => {
+            const form = forms[id];
+            const name = providerName(id);
+            const configured = hasRemoteSubAgentSettings(form);
+            const controlsDisabled = loading || loadError || busy !== null;
+            return (
+              <section
+                key={id}
+                data-sub-agent-provider={id}
+                aria-label={name}
+                aria-busy={busy === id}
+                className="overflow-hidden rounded-2xl bg-ds-neutral-default-default"
+              >
+                <header className="flex flex-wrap items-center justify-between gap-ds-control-gap px-ds-card-inset py-ds-12">
+                  <div className="flex min-w-0 items-center gap-ds-control-gap">
+                    {logo(id)}
+                    <div className="flex min-w-0 flex-wrap items-center gap-ds-8">
+                      <DsText as="h2" role="body-large" weight="semibold">
+                        {name}
+                      </DsText>
+                      {status(form)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-ds-8">
+                    <Button
+                      id={`sub-agent-configure-${id}`}
+                      variant="secondary"
+                      size="sm"
+                      disabled={controlsDisabled}
+                      onClick={() => setEditing(id)}
+                    >
+                      {t(
+                        configured
+                          ? 'setting.edit'
+                          : 'setting.sub-agent-list.set-up'
+                      )}
+                    </Button>
+                    {form.provider_id !== undefined && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            buttonContent="icon-only"
+                            disabled={controlsDisabled}
+                            aria-label={t('setting.sub-agent-list.actions', {
+                              provider: name,
+                            })}
+                          >
+                            <DsIcon icon={MoreHorizontal} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setRemoveError('');
+                              setRemoving(id);
+                            }}
+                          >
+                            {t('setting.sub-agent-list.remove')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    <Switch
+                      size="sm"
+                      variant="outline"
+                      aria-label={t('setting.sub-agent-list.use-provider', {
+                        provider: name,
+                      })}
+                      checked={form.enabled}
+                      disabled={controlsDisabled}
+                      onCheckedChange={(checked) => void toggle(id, checked)}
+                    />
+                  </div>
+                </header>
+                {!loading && !loadError && (
+                  <div className="mx-ds-16 flex flex-col divide-y divide-ds-hairline-subtle-disabled border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default">
+                    {configured ? (
+                      <>
+                        {detail(t('setting.agent-id'), form.agentName.trim())}
+                        {requiresEnvironment &&
+                          detail(
+                            t('setting.sub-agent-list.environment-id'),
+                            form.environmentId.trim()
+                          )}
+                        {detail(
+                          t('setting.sub-agent-list.api-host'),
+                          form.baseUrl.trim()
+                        )}
+                      </>
+                    ) : (
+                      <DsText className="px-ds-12 py-ds-12 text-ds-ink-muted-default">
+                        {providerDescription(id)}{' '}
+                        {t('setting.sub-agent-list.not-configured-hint')}
+                      </DsText>
+                    )}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      </SettingsSectionPage>
+      {editingForm && (
+        <SubAgentConfigurationDialog
+          key={editingForm.provider}
+          form={editingForm}
+          providerName={providerName(editingForm.provider)}
+          description={providerDescription(editingForm.provider)}
+          enableOnSave={!otherProviderEnabled}
+          onClose={() => setEditing(null)}
+          onSaved={load}
+        />
+      )}
+      <Dialog
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open && busy === null) setRemoving(null);
+        }}
       >
-        <div className="flex w-full flex-row items-start justify-between">
-          <div className="mr-4 -ml-2 h-full w-[240px] rounded-2xl bg-ds-neutral-muted-default">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <div className="px-3 py-2 !text-ds-text-base font-bold text-ds-ink-default-default">
-                  {t('setting.agent-provider')}
-                </div>
-                {renderProviderItem()}
+        <DialogContent
+          size="sm"
+          overlayVariant="dimmed"
+          showCloseButton={busy === null}
+        >
+          <DialogHeader
+            title={
+              removing
+                ? t('setting.sub-agent-list.remove-title', {
+                    provider: providerName(removing),
+                  })
+                : undefined
+            }
+            subtitle={
+              removing
+                ? t('setting.sub-agent-list.remove-hint', {
+                    provider: providerName(removing),
+                  })
+                : undefined
+            }
+          />
+          <div className="flex flex-col gap-ds-stack-related p-ds-panel-inset">
+            {removeError && (
+              <div role="alert">
+                <DsText className="text-ds-text-error-default-default">
+                  {removeError}
+                </DsText>
               </div>
+            )}
+            <div className="flex justify-end gap-ds-control-gap">
+              <Button
+                variant="secondary"
+                disabled={busy !== null}
+                onClick={() => setRemoving(null)}
+              >
+                {t('setting.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                tone="error"
+                disabled={busy !== null}
+                onClick={remove}
+              >
+                {t('setting.sub-agent-list.remove')}
+              </Button>
             </div>
           </div>
-          <div className="sticky top-[136px] z-10 min-w-0 flex-1">
-            {renderGeminiProviderContent()}
-          </div>
-        </div>
-      </SettingsSection>
-    </SettingsSectionPage>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

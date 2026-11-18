@@ -28,11 +28,11 @@ import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useControlOperations } from '../ControlRecovery';
-import type {
-  BottomBoxApprovalScope,
-  BottomBoxContextItem,
-  BottomBoxVariant,
-} from './types';
+import {
+  displayArgumentsDetails,
+  humanControlContextItems,
+} from './legacyHumanControl';
+import type { BottomBoxApprovalScope, BottomBoxVariant } from './types';
 
 const DECISION_STORAGE_PREFIX = 'eigent:human-control-decision:v1';
 const DECISION_STORAGE_INDEX_KEY = `${DECISION_STORAGE_PREFIX}:index`;
@@ -309,65 +309,17 @@ function humanize(value: string): string {
     .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-function displayArgumentsDetail(
-  interaction: HumanControlInteraction,
-  t: Translate
-): ControlledBottomBoxVariant['header']['details'] {
-  if (Object.keys(interaction.displayArguments).length === 0) return undefined;
-  let content = '';
-  try {
-    content = JSON.stringify(interaction.displayArguments, null, 2);
-  } catch {
-    content = t('chat.control-arguments-unavailable');
-  }
-  const maxCharacters = 16_000;
-  if (content.length > maxCharacters) {
-    content = `${content.slice(0, maxCharacters)}\n… truncated`;
-  }
-  return [
-    {
-      id: 'display-arguments',
-      label: t('chat.control-review-arguments'),
-      content,
-    },
-  ];
-}
-
 function headerFor(
   interaction: HumanControlInteraction,
   submitError: string | null,
   t: Translate
 ): ControlledBottomBoxVariant['header'] {
-  const contextItems: BottomBoxContextItem[] = [];
-  if (interaction.agent) {
-    contextItems.push({
-      id: `agent:${interaction.agent}`,
-      label: interaction.agent,
-      kind: 'agent',
-    });
-  }
-  if (interaction.operation) {
-    contextItems.push({
-      id: `operation:${interaction.operation}`,
-      label: interaction.operation,
-      kind: 'operation',
-    });
-  }
-  interaction.targetResources.forEach((resource, index) => {
-    contextItems.push({
-      id: `target:${index}:${resource}`,
-      label: resource,
-      description: resource,
-      kind: 'external-context',
-    });
-  });
-
   return {
     eyebrow: t('chat.control-input-required'),
     title: interaction.title || humanize(interaction.interactionType),
     description: [interaction.prompt, submitError].filter(Boolean).join(' '),
-    contextItems,
-    details: displayArgumentsDetail(interaction, t),
+    contextItems: humanControlContextItems(interaction),
+    details: displayArgumentsDetails(interaction.displayArguments, t),
   };
 }
 

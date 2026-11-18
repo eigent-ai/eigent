@@ -190,6 +190,8 @@ export interface ChatInteractionNode extends ChatProjectionNodeBase {
   resolutionEventId?: string;
   agentName?: string;
   options?: ChatInteractionOption[];
+  /** Files, URLs or command lines an approval acts on, as shown on its card. */
+  targets?: string[];
 }
 
 export interface ChatPlanTask {

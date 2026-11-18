@@ -204,8 +204,16 @@ export class CloseCoordinator {
     this.markRendererReady('responsive');
   };
 
-  private readonly handleRendererLoading = () => {
-    this.markRendererUnavailable('did-start-loading');
+  private readonly handleRendererNavigation = (event: {
+    isMainFrame?: boolean;
+    isSameDocument?: boolean;
+  }) => {
+    // An embedded preview (file, PDF, diff) loading in an iframe also starts
+    // loading the WebContents. Only a new main document removes the listener
+    // that answers close requests; treating a preview as one silently moved
+    // every later Quit to the no-renderer path.
+    if (!event?.isMainFrame || event.isSameDocument) return;
+    this.markRendererUnavailable('main-frame-navigation');
   };
 
   private readonly handleRendererGone = () => {
@@ -226,7 +234,7 @@ export class CloseCoordinator {
     }
 
     if (webContents.isDestroyed()) return;
-    webContents.off('did-start-loading', this.handleRendererLoading);
+    webContents.off('did-start-navigation', this.handleRendererNavigation);
     webContents.off('render-process-gone', this.handleRendererGone);
     webContents.off('destroyed', this.handleRendererDestroyed);
   }
@@ -248,7 +256,7 @@ export class CloseCoordinator {
     window.on('close', this.handleWindowClose);
     window.on('unresponsive', this.handleRendererUnresponsive);
     window.on('responsive', this.handleRendererResponsive);
-    webContents.on('did-start-loading', this.handleRendererLoading);
+    webContents.on('did-start-navigation', this.handleRendererNavigation);
     webContents.on('render-process-gone', this.handleRendererGone);
     webContents.on('destroyed', this.handleRendererDestroyed);
   }

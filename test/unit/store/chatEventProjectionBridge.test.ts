@@ -21,6 +21,8 @@ import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import { composeTimelineRuns } from '@/lib/projector/chat/presentation';
 import {
   enqueueChatEventProjection,
+  isChatEventProjectionEnabled,
+  isChatEventTimelineEnabled,
   type ChatEventProjectionInput,
 } from '@/store/chatEventProjectionBridge';
 import {
@@ -28,7 +30,7 @@ import {
   releaseProjectEventStore,
   type ProjectEventStoreSnapshot,
 } from '@/store/projectEventStore';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const projectId = 'project-mixed-replay';
 const runId = 'run-mixed-replay';
@@ -723,4 +725,30 @@ describe('mixed history retained across snapshot replacement', () => {
       expectReconciledHistory();
     }
   );
+});
+
+describe('ChatBox timeline flag', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['unset', true, undefined],
+    ['empty', true, ''],
+    ['"true"', true, 'true'],
+    ['"false"', false, 'false'],
+  ] as const)('reads %s as enabled: %s', (_label, enabled, value) => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', value);
+    expect(isChatEventTimelineEnabled()).toBe(enabled);
+  });
+
+  it('keeps the projection bridge on for the default timeline', () => {
+    vi.stubEnv('VITE_SESSION_SIDE_PANEL_EVENT_BUS', 'false');
+    vi.stubEnv('VITE_CHATBOX_EVENT_SHADOW', '');
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+    expect(isChatEventProjectionEnabled()).toBe(true);
+
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    expect(isChatEventProjectionEnabled()).toBe(false);
+  });
 });
