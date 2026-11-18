@@ -60,8 +60,14 @@ export function TopBarPrimaryNavigation({
     leadingInset
   );
 
+  // The header is the window's only title bar on macOS and Windows, so the
+  // space between these controls stays draggable; each control opts out
+  // with `no-drag` itself.
   return (
-    <div className="no-drag relative z-50 flex min-w-0 items-center">
+    <div
+      data-topbar-primary-navigation
+      className="relative z-50 flex min-w-0 items-center"
+    >
       <div
         data-topbar-sidebar-controls
         className={cn(

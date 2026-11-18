@@ -50,6 +50,20 @@ describe('getTopBarSidebarControlsWidth', () => {
 });
 
 describe('TopBarPrimaryNavigation', () => {
+  it('leaves the space between controls draggable as window title bar', () => {
+    const { container } = renderNavigation(false, 8);
+    const navigation = container.querySelector(
+      '[data-topbar-primary-navigation]'
+    );
+
+    expect(navigation?.classList.contains('no-drag')).toBe(false);
+    expect(
+      container
+        .querySelector('[data-topbar-sidebar-controls]')
+        ?.classList.contains('no-drag')
+    ).toBe(false);
+  });
+
   it('aligns expanded controls to the sidebar and content edges', () => {
     const { container } = renderNavigation(false);
     const sidebarControls = container.querySelector(
