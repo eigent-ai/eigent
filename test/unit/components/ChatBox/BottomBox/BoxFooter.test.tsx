@@ -19,17 +19,37 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/Workspace/ProjectModeToggle', () => ({
-  ProjectModeToggle: ({ readOnly }: { readOnly?: boolean }) => (
+  ProjectModeToggle: ({
+    readOnly,
+    className,
+  }: {
+    readOnly?: boolean;
+    className?: string;
+  }) => (
     <div
       data-testid="session-mode-toggle"
       data-readonly={String(Boolean(readOnly))}
+      className={className}
     />
   ),
 }));
 
 vi.mock('@/components/ChatBox/BottomBox/ApprovalModeSelect', () => ({
-  ApprovalModeSelect: ({ disabled }: { disabled?: boolean }) => (
-    <button data-testid="approval-mode-select" disabled={disabled} />
+  ApprovalModeSelect: ({
+    disabled,
+    spaceId,
+    className,
+  }: {
+    disabled?: boolean;
+    spaceId?: string | null;
+    className?: string;
+  }) => (
+    <button
+      data-testid="approval-mode-select"
+      data-space-id={spaceId ?? ''}
+      disabled={disabled}
+      className={className}
+    />
   ),
 }));
 
@@ -40,12 +60,14 @@ vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
     disabled,
     readOnly,
     projectId,
+    spaceId,
   }: {
     thinkingEffort?: string;
     onThinkingEffortChange?: (effort: string | undefined) => void;
     disabled?: boolean;
     readOnly?: boolean;
     projectId?: string | null;
+    spaceId?: string | null;
   }) => (
     <>
       <button
@@ -55,6 +77,7 @@ vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
         data-inherited={String(thinkingEffort === undefined)}
         data-readonly={String(Boolean(readOnly))}
         data-project-id={projectId ?? ''}
+        data-space-id={spaceId ?? ''}
         disabled={disabled}
         onClick={() => onThinkingEffortChange?.('high')}
       />
@@ -174,5 +197,39 @@ describe('BoxFooter', () => {
       'false'
     );
     expect(screen.getByTestId('approval-mode-select')).toBeDisabled();
+  });
+
+  it('keeps mode and approval at half strength until engaged', () => {
+    render(<BoxFooter sessionMode={SessionMode.SINGLE_AGENT} interactive />);
+
+    for (const control of [
+      screen.getByTestId('session-mode-toggle'),
+      screen.getByTestId('approval-mode-select'),
+    ]) {
+      expect(control).toHaveClass(
+        'opacity-50',
+        'hover:opacity-100',
+        'focus:opacity-100',
+        'data-[state=open]:opacity-100'
+      );
+    }
+  });
+
+  it("edits a Space page's own access and model without a project", () => {
+    render(
+      <BoxFooter
+        sessionMode={SessionMode.SINGLE_AGENT}
+        interactive
+        spaceId="space-research"
+      />
+    );
+    expect(screen.getByTestId('approval-mode-select')).toHaveAttribute(
+      'data-space-id',
+      'space-research'
+    );
+    expect(screen.getByTestId('model-thinking-select')).toHaveAttribute(
+      'data-space-id',
+      'space-research'
+    );
   });
 });

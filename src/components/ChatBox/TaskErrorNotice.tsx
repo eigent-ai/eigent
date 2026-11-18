@@ -12,26 +12,58 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
-import { isCreditRecoveryReason, openPricing } from '@/lib/creditRecovery';
-import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
+import {
+  isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
+  openPricing,
+} from '@/lib/creditRecovery';
+import {
+  errorCopy,
+  isSpaceFolderReason,
+  type ErrorReason,
+} from '@/lib/usageErrors';
 import {
   contactSupport,
+  presentedUsageReason,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { useTranslation } from 'react-i18next';
 import { CreditRecoveryActions } from './CreditRecoveryActions';
 
+/** The way out of a Space whose folder can't hold Tasks: a new folder Space. */
+function SpaceFolderAction() {
+  const { t } = useTranslation();
+  const { createSpaceFromFolder } = useNewSpaceCreation('task_error_notice');
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => void createSpaceFromFolder()}
+    >
+      {t('layout.workspace-use-local-folder')}
+    </Button>
+  );
+}
+
 /**
  * Historical task outcome. Sonner owns the live announcement and interruption.
  * The copy records what happened; balance blockers offer the live notices' actions.
  */
-export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
+export function TaskErrorNotice({
+  reason: recordedReason,
+}: {
+  reason: ErrorReason;
+}) {
   const { t } = useTranslation();
+  const reason = useUsageNoticeStore((state) =>
+    presentedUsageReason(recordedReason, state)
+  );
   const refreshing = useUsageNoticeStore((state) => state.refreshing);
-  const creditRecovery = isCreditRecoveryReason(reason);
+  const creditRecovery = isOwnKeyRecoveryReason(reason);
   const sharedRefreshError = useUsageNoticeStore((state) => state.refreshError);
   const refreshError =
     sharedRefreshError === 'chat.notice-availability-unverified'
@@ -45,6 +77,7 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
         : reason !== 'service'
           ? sharedRefreshError
           : null;
+  const spaceFolder = isSpaceFolderReason(reason);
   const usage = [
     'credits',
     'trial-daily',
@@ -65,6 +98,11 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
           {reason === 'service' && (
             <DsText role="base">{t('chat.notice-contact-description')}</DsText>
           )}
+          {spaceFolder && (
+            <DsText role="base">
+              {t('chat.notice-space-folder-description')}
+            </DsText>
+          )}
           {usage && (
             <DsText role="base">{t('chat.notice-refresh-description')}</DsText>
           )}
@@ -72,12 +110,18 @@ export function TaskErrorNotice({ reason }: { reason: ErrorReason }) {
             <DsText role="meta">{t(refreshError)}</DsText>
           )}
         </div>
+        {spaceFolder && (
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
+            <SpaceFolderAction />
+          </div>
+        )}
         {(usage || reason === 'service') && (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
             {creditRecovery ? (
               <CreditRecoveryActions
                 refreshing={refreshing}
                 onRefresh={() => void refreshUsage()}
+                upgrade={isCreditRecoveryReason(reason)}
               />
             ) : (
               <>

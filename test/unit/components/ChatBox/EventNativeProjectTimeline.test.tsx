@@ -814,6 +814,56 @@ describe('EventNativeProjectTimeline', () => {
     expect(container.querySelector('[data-narrative-plan-id]')).toBeNull();
   });
 
+  it('shows a reloaded workforce Run without the splitting card', () => {
+    const user = messageNode(0, 'user');
+    const plan: ChatPlanNode = {
+      ...messageNode(1),
+      kind: 'plan',
+      eventType: 'legacy.to_sub_tasks',
+      legacyStep: 'to_sub_tasks',
+      status: 'completed',
+      title: 'Research plan',
+      tasks: [
+        { id: 'task-1', title: 'Inspect the components', status: 'done' },
+      ],
+    };
+    mocks.projection = projection([user, plan]);
+    // History replay records its plan as already confirmed.
+    const chatStore = {
+      getState: () => ({
+        activeTaskId: 'run-1',
+        tasks: {
+          'run-1': {
+            type: 'replay',
+            messages: [
+              {
+                id: 'legacy-plan-message',
+                role: 'agent',
+                content: '',
+                step: 'to_sub_tasks',
+                isConfirm: true,
+              },
+            ],
+          },
+        },
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+
+    const { container } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
+    expect(screen.getByText('Message 0')).toBeInTheDocument();
+  });
+
   it.each(['narrative', 'trajectory'] as const)(
     'marks a model change between Tasks from the recorded Run models in %s',
     (detailLevel) => {

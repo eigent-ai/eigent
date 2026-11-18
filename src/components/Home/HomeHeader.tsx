@@ -88,7 +88,7 @@ export default function HomeHeader() {
       })}
       headingLevel={1}
       width="wide"
-      title={t('layout.spaces')}
+      title={t('layout.all-spaces')}
       count={
         <Badge variant="secondary" size="xs">
           {sectionCounts.spaces}

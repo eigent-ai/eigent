@@ -132,7 +132,7 @@ function LibraryProbe() {
 }
 
 function Library({
-  initialEntry = '/home?section=settings&tab=skills',
+  initialEntry = '/settings?tab=skills',
   active = true,
 }: {
   initialEntry?: string;
@@ -519,9 +519,7 @@ describe('Skills library state', () => {
         finishRefresh = resolve;
       })
     );
-    render(
-      <Library initialEntry="/home?section=settings&tab=skills&skillAction=create" />
-    );
+    render(<Library initialEntry="/settings?tab=skills&skillAction=create" />);
     await waitFor(() =>
       expect(mocks.skillState.syncFromDisk).toHaveBeenCalledTimes(1)
     );
@@ -533,7 +531,7 @@ describe('Skills library state', () => {
     await act(async () => finishRefresh());
     await waitFor(() => expect(library.uploadMode).toBe('create'));
     expect(screen.getByLabelText('Current route').textContent).toBe(
-      '/home?section=settings&tab=skills'
+      '/settings?tab=skills'
     );
   });
 
@@ -593,7 +591,7 @@ describe('Skills library state', () => {
     'only leaves the deleted skill detail and preserves overview filters ($skillId)',
     async ({ skillId, remainingSkillId }) => {
       const overview =
-        '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global';
+        '/settings?tab=skills&skillSearch=research&skillFilter=global';
       render(
         <Library
           initialEntry={`${overview}&skillId=${encodeURIComponent(skillId)}`}

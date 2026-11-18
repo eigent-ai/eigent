@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from '@/store/settingsStore';
 import { matchPath } from 'react-router-dom';
 
 /**
@@ -73,10 +77,52 @@ export function withoutShellDetailBackState(
   return next;
 }
 
-/** Match the canonical Home management surface and its legacy Settings URL. */
+/** Pages that hide the Workspace while keeping it mounted: Home and Settings. */
 export function isSettingsRoutePath(pathname: string): boolean {
-  return Boolean(
-    matchPath({ path: '/home', end: true }, pathname) ||
-    matchPath({ path: '/settings', end: true }, pathname)
-  );
+  return isHomePagePath(pathname) || isSettingsPagePath(pathname);
+}
+
+/** The Home page: every Space and each Space's details. */
+export function isHomePagePath(pathname: string): boolean {
+  return Boolean(matchPath({ path: '/home', end: true }, pathname));
+}
+
+/** The Settings page: app-wide setup and the Skill / Connector details. */
+export function isSettingsPagePath(pathname: string): boolean {
+  return Boolean(matchPath({ path: '/settings', end: true }, pathname));
+}
+
+export function isSettingsSection(
+  value: string | null
+): value is SettingsSectionId {
+  return SETTINGS_SECTIONS.includes(value as SettingsSectionId);
+}
+
+/**
+ * Home and Settings used to share one page, so older links address Settings
+ * through `section` (`/home?section=settings&tab=models`, or the earlier
+ * `/settings?section=models`). Fold either form into the Settings page's own
+ * `?tab=` search and keep every other parameter (provider, skillId, …).
+ */
+export function settingsPageSearch(search: string | URLSearchParams): string {
+  const params = new URLSearchParams(search);
+  const section = params.get('section');
+  params.delete('section');
+  if (
+    !isSettingsSection(params.get('tab')) &&
+    section !== 'settings' &&
+    isSettingsSection(section)
+  ) {
+    params.set('tab', section);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+/** Whether a `/home` search addresses Settings rather than the Spaces hub. */
+export function isLegacyHomeSettingsSearch(
+  search: string | URLSearchParams
+): boolean {
+  const section = new URLSearchParams(search).get('section');
+  return section !== null && section !== 'spaces';
 }

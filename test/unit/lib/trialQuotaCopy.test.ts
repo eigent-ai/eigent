@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { trialQuotaCopy, usageNoticeCopy } from '@/lib/trialQuotaCopy';
+import {
+  trialAwareUsageReason,
+  trialQuotaCopy,
+  usageNoticeCopy,
+} from '@/lib/trialQuotaCopy';
 import { errorCopy } from '@/lib/usageErrors';
 import { buildUsageLimitBannerState } from '@/lib/usageLimitBanner';
 import i18n from 'i18next';
@@ -210,5 +214,60 @@ describe('trial quota presentation', () => {
     expect(errorCopy('trial-daily')).not.toMatch(/Pro|free/i);
     expect(usageNoticeCopy('credits', trial)).toBe(errorCopy('credits'));
     expect(usageNoticeCopy('service', trial)).toBe(errorCopy('service'));
+  });
+});
+
+describe('spend-limit reason during a trial', () => {
+  it('names the trial allowance instead of an empty balance', () => {
+    expect(trialAwareUsageReason('credits', trial)).toBe('trial-daily');
+    expect(
+      trialAwareUsageReason('credits', {
+        ...trial,
+        trial_total_credits_remaining: 0,
+      })
+    ).toBe('trial-total');
+  });
+
+  it('keeps out of credits when the balance is empty and allowance is left', () => {
+    const allowanceLeft = {
+      ...trial,
+      trial_daily_credits_remaining: 159,
+      trial_total_credits_remaining: 859,
+    };
+    expect(trialAwareUsageReason('credits', allowanceLeft, 0)).toBe('credits');
+    // A positive or unknown balance still points at the trial's allowance.
+    expect(trialAwareUsageReason('credits', allowanceLeft, 500)).toBe(
+      'trial-daily'
+    );
+    expect(trialAwareUsageReason('credits', allowanceLeft, null)).toBe(
+      'trial-daily'
+    );
+    // A used-up allowance is the blocker even with an empty balance.
+    expect(
+      trialAwareUsageReason(
+        'credits',
+        { ...allowanceLeft, trial_daily_credits_remaining: 0 },
+        0
+      )
+    ).toBe('trial-daily');
+    expect(
+      trialAwareUsageReason(
+        'credits',
+        { ...allowanceLeft, trial_total_credits_remaining: 0 },
+        0
+      )
+    ).toBe('trial-total');
+  });
+
+  it('leaves other accounts and other reasons unchanged', () => {
+    expect(trialAwareUsageReason('credits', null)).toBe('credits');
+    expect(
+      trialAwareUsageReason('credits', { plan_key: 'pro', is_trialing: false })
+    ).toBe('credits');
+    expect(trialAwareUsageReason('free-credits', trial)).toBe('free-credits');
+    expect(trialAwareUsageReason('provider-credits', trial)).toBe(
+      'provider-credits'
+    );
+    expect(trialAwareUsageReason('service', trial)).toBe('service');
   });
 });
