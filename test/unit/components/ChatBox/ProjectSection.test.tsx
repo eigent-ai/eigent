@@ -58,6 +58,32 @@ const structuredAsk = (id: string, question: string) => ({
 });
 
 describe('legacy Run query grouping', () => {
+  it('keeps non-adjacent correlated replies with their question after completion', () => {
+    const prompt = userMessage('prompt', 'Save my colour');
+    const ask = structuredAsk('ask', 'Which colour?');
+    const reply = {
+      ...userMessage('reply', 'teal'),
+      interactionResponseTo: 'interaction-ask',
+    };
+    const messages = [
+      prompt,
+      ask,
+      {
+        id: 'tool',
+        role: 'agent',
+        step: AgentStep.ACTIVATE_TOOLKIT,
+        content: '',
+      },
+      reply,
+      { id: 'final', role: 'agent', step: AgentStep.END, content: 'Done' },
+    ];
+    const groups = groupMessagesByQuery(messages);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].interactionResponses?.ask).toEqual(reply);
+    expect(groups[0].otherMessages.at(-1)?.content).toBe('Done');
+    expect(isUserMessageReplyToAsk(messages as Message[], 'reply')).toBe(true);
+  });
+
   it.each([true, false])(
     'renders retained legacy evidence without extra main entries (canonical: %s)',
     (canonical) => {

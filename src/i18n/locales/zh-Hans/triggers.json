@@ -165,7 +165,7 @@
   "execution-in-progress": "正在执行...",
   "waiting-to-execute": "正在等待执行...",
   "execution-cancelled": "执行已取消",
-  "execution-missed": "错过执行",
+  "execution-missed": "Eigent 未能及时收到这次运行，因此没有开始。请保持 Eigent 打开并已登录，然后重试。",
   "unknown-status": "未知状态",
   "trigger-label": "自动化",
   "execution-started-toast": "执行已开始：{{name}}",

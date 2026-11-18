@@ -34,6 +34,83 @@ function approvalVariant(
   };
 }
 
+describe('BottomBox feedback answer field', () => {
+  it('renders a question answer without an inner focus ring', () => {
+    render(
+      <ControlInputRouter
+        variant={{
+          kind: 'feedback',
+          presentation: 'question',
+          header: { title: 'Question' },
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        inputProps={{}}
+      />
+    );
+    const answer = screen.getByRole('textbox', { name: 'Feedback' });
+
+    expect(answer).toHaveClass(
+      'p-0',
+      'border-0',
+      'shadow-none',
+      'min-h-[var(--ds-textarea-sm-min-height)]',
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0'
+    );
+    expect(answer).not.toHaveClass('border-ds-hairline-default-default');
+  });
+
+  it('hides the question placeholder while the answer is focused', () => {
+    render(
+      <ControlInputRouter
+        variant={{
+          kind: 'feedback',
+          presentation: 'question',
+          header: { title: 'Question' },
+          placeholder: 'Type your response',
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        inputProps={{}}
+      />
+    );
+    const answer = screen.getByRole('textbox', { name: 'Feedback' });
+    // The placeholder text stays for assistive technology; CSS hides it on focus.
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
+    expect(answer).toHaveClass('focus:placeholder:opacity-0');
+    fireEvent.focus(answer);
+    expect(answer).toHaveAttribute('placeholder', 'Type your response');
+  });
+
+  it('keeps the framed field for feedback that is not a question', () => {
+    render(
+      <ControlInputRouter
+        variant={{
+          kind: 'feedback',
+          header: { title: 'What should change?' },
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        inputProps={{}}
+      />
+    );
+    const field = screen.getByRole('textbox', { name: 'Feedback' });
+
+    expect(field).toHaveClass(
+      'border',
+      'border-ds-hairline-default-default',
+      'py-2',
+      'pl-3',
+      'shadow-sm'
+    );
+    expect(field).not.toHaveClass('p-0', 'border-0');
+  });
+});
+
 describe('BottomBox approval keyboard safety', () => {
   it('does not approve from window or body Enter', () => {
     const onApprove = vi.fn();
@@ -119,11 +196,10 @@ describe('BottomBox approval keyboard safety', () => {
       name: 'Send feedback',
     });
     expect(within(sendFeedback).getByText('Enter')).toHaveClass(
-      'bg-ds-accent-subtle-default',
+      'bg-transparent',
       'rounded-full',
-      'opacity-60',
       '!text-ds-text-meta',
-      'text-ds-accent-default-default',
+      '!text-inherit',
       'ring-ds-hairline-muted-default'
     );
 

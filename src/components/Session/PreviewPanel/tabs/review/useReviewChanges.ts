@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 import { selectProjectSpaceId } from '@/lib/projectWorkspaceRoot';
@@ -32,7 +33,6 @@ import {
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
 import {
-  usePageTabStore,
   type SessionReviewIdentity,
   type SessionReviewTarget,
 } from '@/store/pageTabStore';
@@ -233,7 +233,9 @@ export function useReviewChanges(
   const host = useHost();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const reviewScope = reviewTarget.scope;
   const focusRequestId = reviewTarget.focusRequestId;
   const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;

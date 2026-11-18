@@ -21,6 +21,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
@@ -331,7 +332,7 @@ export default function CDP() {
                 textWeight="semibold"
                 onClick={handleOpenNewBrowser}
               >
-                <Plus className="h-4 w-4" />
+                <DsIcon icon={Plus} />
                 {t('layout.open-new-browser')}
               </Button>
               <Button
@@ -344,7 +345,7 @@ export default function CDP() {
                 size="sm"
                 onClick={handleConnectExistingBrowser}
               >
-                <Link2 />
+                <DsIcon icon={Link2} />
                 {t('layout.connect-existing-browser')}
               </Button>
             </div>
@@ -428,8 +429,10 @@ export default function CDP() {
                     className="ml-3 shrink-0"
                     aria-label={t('layout.remove-browser')}
                   >
-                    <Trash2
-                      className="h-4 w-4 text-ds-text-error-default-default"
+                    <DsIcon
+                      recipe="main-compact"
+                      icon={Trash2}
+                      className="text-ds-text-error-default-default"
                       aria-hidden
                     />
                   </Button>
@@ -438,7 +441,12 @@ export default function CDP() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Globe className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+              <DsIcon
+                icon={Globe}
+                recipe="illustration"
+                illustrationSize={48}
+                className="mb-4 text-ds-ink-muted-default opacity-50"
+              />
               <span className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
                 {t('layout.no-browsers-in-pool')}
               </span>
@@ -524,9 +532,9 @@ export default function CDP() {
               disabled={connectChecking}
             >
               {connectChecking ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
               ) : (
-                <Link2 className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Link2} aria-hidden />
               )}
               {t('layout.check-and-connect')}
             </Button>

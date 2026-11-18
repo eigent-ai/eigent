@@ -21,6 +21,7 @@ import {
   isBaseWorkflowAgent,
 } from '@/components/Workspace/FoldedAgentCard';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { AgentStep, ChatTaskStatus, TaskStatus } from '@/types/constants';
@@ -106,6 +107,7 @@ export default function FoldedPanel({
   const { t } = useTranslation();
   const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const workerList = useWorkerList();
   const { setWorkerList } = useAuthStore();
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
@@ -142,7 +144,9 @@ export default function FoldedPanel({
   const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
   const taskAssigning = activeTask?.taskAssigning ?? EMPTY_TASK_ASSIGNING;
 
-  const activeChatStore = projectStore.getActiveChatStore();
+  const activeChatStore = sessionProjectId
+    ? projectStore.getActiveChatStore(sessionProjectId)
+    : null;
   const streamingDecomposeText = useSyncExternalStore(
     (callback) => {
       if (!activeChatStore) return () => {};
@@ -158,7 +162,7 @@ export default function FoldedPanel({
     () => ''
   );
 
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const taskPanelChatId =
     activeProjectId && projectStore.projects[activeProjectId]
       ? (projectStore.projects[activeProjectId].activeChatId ?? undefined)
@@ -452,7 +456,7 @@ export default function FoldedPanel({
                         chatStore.updateTaskInfo(taskIndex, content);
                       }}
                       onSaveTask={() => {
-                        chatStore.saveTaskInfo();
+                        chatStore.saveTaskInfo(sessionProjectId);
                       }}
                       onDeleteTask={(taskIndex) => {
                         chatStore.deleteTaskInfo(taskIndex);

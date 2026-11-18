@@ -17,7 +17,8 @@ export interface BottomBoxContextItem {
   id: string;
   label: string;
   description?: string;
-  kind?: 'file' | 'external-context' | 'agent' | 'operation' | 'other';
+  kind?:
+    'file' | 'command' | 'external-context' | 'agent' | 'operation' | 'other';
   removable?: boolean;
 }
 
@@ -73,6 +74,7 @@ export interface BottomBoxApprovalOption {
 /** A permission request. Only options supplied by the backend are rendered. */
 export interface BottomBoxApprovalVariant extends ControlledVariantBase {
   kind: 'approval';
+  error?: string;
   options: readonly BottomBoxApprovalOption[];
   rejectLabel?: string;
   onApprove: (scope: BottomBoxApprovalScope) => void;

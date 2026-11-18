@@ -409,7 +409,7 @@ describe('Memory Center', () => {
   it('shows searchable Space and Project Memory directories', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/home?section=settings&tab=memory']}>
+      <MemoryRouter initialEntries={['/settings?tab=memory']}>
         <Memory homeOverview />
         <LocationProbe />
       </MemoryRouter>

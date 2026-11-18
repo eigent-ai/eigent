@@ -22,20 +22,25 @@ import {
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
+import HomeSidebar from '@/components/Home/HomeSidebar';
+import { HomeSidebarSlot } from '@/components/Home/HomeSidebarHost';
+import { NewSessionSpaceChip } from '@/components/Home/NewSessionSpaceChip';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
 } from '@/components/Layout/AppShellLayout';
 import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
 import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
-import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useMarkSessionOutcomeSeen } from '@/hooks/useMarkSessionOutcomeSeen';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -45,11 +50,27 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  displayedWorkspaceTab,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
+import { SessionSplitView } from '@/components/Session/SplitView';
+import { SessionInOwnWindow } from '@/components/SessionWindow/SessionInOwnWindow';
+import { useSessionSplitFocusTracking } from '@/hooks/useSessionSplitView';
+import { useMainWindowSessionWindows } from '@/hooks/useSessionWindows';
+import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
+
+// The Workspace page reuses Home's Space overview; load it on first open.
+const SpaceWorkspacePage = lazy(() =>
+  import('@/components/Workspace/SpaceWorkspacePage').then((module) => ({
+    default: module.SpaceWorkspacePage,
+  }))
+);
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -64,8 +85,17 @@ export default function WorkspacePage() {
     activeProjectId ? state.getProjectMeta(activeProjectId) : null
   );
 
-  const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
-    usePageTabStore();
+  const storedWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const setHasAgentFiles = usePageTabStore((s) => s.setHasAgentFiles);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const shellPlace = usePageTabStore((s) => s.shellPlace);
+  const inHome = shellPlace === 'home';
+  // The composer landing is New session everywhere, and Home shows only a
+  // Session or New session.
+  const activeWorkspaceTab =
+    inHome && storedWorkspaceTab !== WorkspaceTab.Project
+      ? WorkspaceTab.NewProject
+      : displayedWorkspaceTab(storedWorkspaceTab);
   const workspaceSidebarHidden = usePageTabStore(
     (s) => s.workspaceSidebarHidden
   );
@@ -83,6 +113,17 @@ export default function WorkspacePage() {
   const userId = useAuthStore((s) => s.user_id);
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
+  );
+
+  const activeProjectWindowed = useSessionWindowsStore((s) =>
+    activeProjectId ? s.openProjectIds.includes(activeProjectId) : false
+  );
+  useSessionSplitFocusTracking();
+  useMainWindowSessionWindows();
+  useMarkSessionOutcomeSeen(
+    activeWorkspaceTab === WorkspaceTab.Project && !activeProjectWindowed
+      ? activeProjectId
+      : null
   );
 
   const [, setActiveWebviewId] = useState<string | null>(null);
@@ -117,6 +158,14 @@ export default function WorkspacePage() {
   useEffect(() => {
     checkLocalServerStale();
   }, []);
+
+  // Keep the stored tab in step with what Home shows, so shortcuts and the
+  // Session header read New session there too.
+  useLayoutEffect(() => {
+    if (activeWorkspaceTab !== storedWorkspaceTab) {
+      setActiveWorkspaceTab(activeWorkspaceTab);
+    }
+  }, [activeWorkspaceTab, setActiveWorkspaceTab, storedWorkspaceTab]);
 
   // Project-scoped tabs (except new-project shell) require an active project.
   // When opening files/triggers/runs/project from the workspace tab without a
@@ -343,9 +392,7 @@ export default function WorkspacePage() {
   const mainPanelContentClass = APP_SHELL_CONTENT_CLASS;
 
   const useWorkspacePatternBg =
-    activeWorkspaceTab === 'workforce' ||
-    activeWorkspaceTab === 'project' ||
-    activeWorkspaceTab === 'new-project';
+    activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -391,21 +438,21 @@ export default function WorkspacePage() {
 
   const renderActiveWorkspaceTab = () => {
     switch (activeWorkspaceTab) {
-      case 'workforce':
-        return (
-          <div className={workspaceMainContentClass}>
-            {workspacePatternOverlayEl}
-            <div className={workspaceMainForegroundClass}>
-              <Workspace />
-            </div>
-          </div>
-        );
       case 'project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session />
+              {activeProjectWindowed && activeProjectId && activeSpaceId ? (
+                <SessionInOwnWindow
+                  target={{
+                    spaceId: activeSpaceId,
+                    projectId: activeProjectId,
+                  }}
+                />
+              ) : (
+                <SessionSplitView />
+              )}
             </div>
           </div>
         );
@@ -414,8 +461,25 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session isNewProject />
+              <Session
+                isNewProject
+                newSessionComposer={
+                  inHome
+                    ? {
+                        footerLeading: <NewSessionSpaceChip />,
+                      }
+                    : undefined
+                }
+              />
             </div>
+          </div>
+        );
+      case 'space-workspace':
+        return (
+          <div className={mainPanelContentClass}>
+            <Suspense fallback={null}>
+              <SpaceWorkspacePage />
+            </Suspense>
           </div>
         );
       case 'dispatch':
@@ -462,7 +526,15 @@ export default function WorkspacePage() {
   return (
     <ReactFlowProvider>
       <AppShellLayout
-        sidebar={<SpaceSidebar chatStore={chatStore} />}
+        sidebar={
+          inHome ? (
+            <HomeSidebarSlot workspace>
+              <HomeSidebar />
+            </HomeSidebarSlot>
+          ) : (
+            <SpaceSidebar />
+          )
+        }
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project

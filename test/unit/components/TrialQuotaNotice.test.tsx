@@ -87,17 +87,21 @@ describe('live trial quota notices', () => {
         reason === 'trial-daily'
           ? 'You’ve used today’s Pro trial credits.'
           : 'You’ve used all your Pro trial credits.';
-      expect(screen.getByText(copy)).toBeVisible();
       expect(mocks.error).toHaveBeenCalledWith(
         copy,
         expect.objectContaining({ duration: Infinity, closeButton: true })
       );
+      // The open toast is the one live notice; the composer waits for its dismissal.
+      expect(document.querySelector('[data-usage-notice]')).toBeNull();
+      act(() => acknowledgeUsageNotice());
+      expect(screen.getByText(copy)).toBeVisible();
       expect(document.querySelector('[data-task-error]')).not.toHaveTextContent(
         /Pro|free trial/i
       );
+      // Only an exhausted total can be cleared by upgrading; the daily cap resets.
       expect(
-        screen.queryByRole('button', { name: /upgrade/i })
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole('button', { name: /upgrade/i })
+      ).toHaveLength(reason === 'trial-total' ? 2 : 0);
       expect(screen.getAllByRole('button', { name: 'Refresh' })).toHaveLength(
         2
       );
@@ -108,13 +112,13 @@ describe('live trial quota notices', () => {
   it('updates an existing toast when subscription data arrives, but does not repeat identical or dismissed reminders', async () => {
     reportUsageIncident({ reason: 'trial-daily' });
     render(<LiveNotice />);
-    expect(
-      screen.getByText('You’ve used today’s trial credits.')
-    ).toBeVisible();
+    expect(mocks.error.mock.calls.at(-1)?.[0]).toBe(
+      'You’ve used today’s trial credits.'
+    );
     await act(() => refreshUsage());
-    expect(
-      screen.getByText('You’ve used today’s Pro trial credits.')
-    ).toBeVisible();
+    expect(mocks.error.mock.calls.at(-1)?.[0]).toBe(
+      'You’ve used today’s Pro trial credits.'
+    );
     expect(mocks.error).toHaveBeenCalledTimes(2);
     await act(() => refreshUsage());
     expect(mocks.error).toHaveBeenCalledTimes(2);
@@ -131,13 +135,14 @@ describe('live trial quota notices', () => {
     render(<LiveNotice />);
     respond({ plan_key: 'pro', is_trialing: false }, 0);
     await act(() => refreshUsage());
+    expect(mocks.error.mock.calls.at(-1)?.[0]).toBe(
+      'You’ve used today’s trial credits.'
+    );
+    act(() => acknowledgeUsageNotice());
     expect(screen.queryByText(/Pro trial/)).not.toBeInTheDocument();
     expect(
       screen.getByText('You’ve used today’s trial credits.')
     ).toBeVisible();
-    expect(mocks.error.mock.calls.at(-1)?.[0]).toBe(
-      'You’ve used today’s trial credits.'
-    );
     expect(useUsageNoticeStore.getState().incidents).toEqual([
       { reason: 'trial-daily' },
     ]);
@@ -148,6 +153,7 @@ describe('live trial quota notices', () => {
 
   it('uses neutral copy after a failed refresh and keeps the Refresh action accessible', async () => {
     await refreshUsage();
+    acknowledgeUsageNotice();
     render(<LiveNotice />);
     mocks.get.mockRejectedValue(new Error('offline'));
     const user = userEvent.setup();
@@ -196,6 +202,7 @@ describe('live trial quota notices', () => {
 
   it('retains the account blocker during refresh and hides it for non-cloud models', async () => {
     await refreshUsage();
+    acknowledgeUsageNotice();
     useUsageNoticeStore.setState({ refreshing: true });
     const view = render(<LiveNotice />);
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled();

@@ -441,6 +441,62 @@ try {
       frame.getByRole('heading', { name: 'Preview survives delivery' })
     ).toBeVisible();
   });
+  await phase('two pane browser focus and bounds', async () => {
+    if (!siteServer.listening) await serveSite(port);
+    await electron.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.setSize(1600, 900);
+      win.webContents.setZoomFactor(1);
+    });
+    await page.evaluate(() => {
+      document.documentElement.setAttribute('dir', 'ltr');
+      window.previewTest.showSplit();
+    });
+    await expect(page.locator('webview')).toHaveCount(2);
+    await expect
+      .poll(() =>
+        electron.evaluate(
+          ({ webContents }) =>
+            webContents
+              .getAllWebContents()
+              .filter(
+                (w) =>
+                  w.getType() === 'webview' &&
+                  !w.isLoading() &&
+                  w.getURL().includes('?pane=')
+              ).length
+        )
+      )
+      .toBe(2);
+    const guests = page.locator('[data-preview-webview-id]');
+    await expect
+      .poll(() => guests.nth(1).evaluate((el) => el.style.opacity))
+      .toBe('1');
+    const boundsA = await guests.nth(0).boundingBox();
+    const boundsB = await guests.nth(1).boundingBox();
+    expect(boundsB.x).toBeGreaterThanOrEqual(boundsA.x + boundsA.width);
+    await page
+      .locator('[data-browser-pane="session-a"]')
+      .getByRole('textbox')
+      .focus();
+    await page.mouse.click(boundsB.x + 100, boundsB.y + 60);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.previewTest.projects.getState().activeProjectId
+        )
+      )
+      .toBe('session-b');
+    await page.mouse.click(boundsA.x + 100, boundsA.y + 60);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.previewTest.projects.getState().activeProjectId
+        )
+      )
+      .toBe('session-a');
+    await page.screenshot({ path: path.join(out, '07-two-pane-browsers.png') });
+  });
   console.log(
     JSON.stringify(
       {
@@ -461,6 +517,7 @@ try {
           'RTL keyboard retry at narrow 200% zoom',
           'keyboard retry after restart',
           'offline HTML with relative CSS/image/script',
+          'two pane browser focus and bounds',
         ],
       },
       null,

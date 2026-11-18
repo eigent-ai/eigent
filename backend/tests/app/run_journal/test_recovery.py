@@ -243,9 +243,12 @@ def test_terminal_tool_before_dispatch_cancels_its_pending_approval(tmp_path):
         )
         assert journal.get_run("run-1").status == "interrupted"
         assert journal.get_active_project_run("project-1") is None
-        assert "approval.cancelled" in {
-            event.event_type for event in journal.list_events("run-1")
-        }
+        [cancelled] = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.cancelled"
+        ]
+        assert cancelled.payload["remaining_interaction_count"] == 0
 
         resumed = journal.create_run_attempt(
             "run-1",
@@ -254,6 +257,58 @@ def test_terminal_tool_before_dispatch_cancels_its_pending_approval(tmp_path):
             now=5,
         )
         assert resumed.status == "pending"
+
+
+def test_cancelled_approval_keeps_the_run_waiting_for_another(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        tools = {}
+        for index in (1, 2):
+            tools[index] = dict(
+                tool_call_id=f"tool-{index}",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                tool_name="send_message_to_user",
+                safety_class=ToolSafetyClass.UNSAFE_WRITE,
+                request={"message": f"hello {index}"},
+            )
+            journal.checkpoint_tool_call(
+                status="prepared", now=2, **tools[index]
+            )
+            journal.create_approval(
+                approval_id=f"approval:tool-{index}",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Allow message?"},
+                now=3,
+            )
+
+        journal.checkpoint_tool_call(
+            status="failed",
+            outcome="failed",
+            result={"error": "tool execution cancelled or timed out"},
+            now=4,
+            **tools[1],
+        )
+
+        [cancelled] = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.cancelled"
+        ]
+        assert cancelled.payload["approval_id"] == "approval:tool-1"
+        assert cancelled.payload["remaining_interaction_count"] == 1
+        assert journal.get_run_attempt(attempt.attempt_id).status == (
+            "waiting_for_user"
+        )
+        assert journal.get_run("run-1").status == "waiting_for_user"
 
 
 def test_resume_repairs_legacy_terminal_tool_with_pending_approval(tmp_path):

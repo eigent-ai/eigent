@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { useId, useMemo } from 'react';
@@ -211,12 +212,13 @@ export function ProviderModelCombobox({
           className="shrink-0 text-ds-text-base"
         >
           {loading ? (
-            <Loader2
+            <DsIcon
+              icon={Loader2}
               className="animate-spin motion-reduce:animate-none"
               aria-hidden
             />
           ) : (
-            <RotateCcw aria-hidden />
+            <DsIcon icon={RotateCcw} aria-hidden />
           )}
           {t('setting.refresh')}
         </Button>

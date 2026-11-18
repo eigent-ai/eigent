@@ -99,10 +99,15 @@ vi.mock('@/store/spaceStore', () => ({
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (selector?: any) =>
-    selector ? selector(mocks.runtime) : mocks.runtime,
+  useProjectRuntimeStore: Object.assign(
+    (selector?: any) => (selector ? selector(mocks.runtime) : mocks.runtime),
+    { getState: () => mocks.runtime }
+  ),
 }));
-vi.mock('@/store/pageTabStore', () => ({
+vi.mock('@/store/pageTabStore', async (importOriginal) => ({
+  displayedWorkspaceTab: (
+    await importOriginal<typeof import('@/store/pageTabStore')>()
+  ).displayedWorkspaceTab,
   usePageTabStore: (selector: any) => selector(mocks.page),
 }));
 vi.mock('@/store/triggerStore', () => ({
@@ -125,7 +130,7 @@ vi.mock('@/service/workspaceApi', () => ({
   deleteWorkspaceProjectWorkdir: mocks.deleteWorkdir,
 }));
 vi.mock('@/lib/sessionStop', () => ({
-  stopSessionAndWait: mocks.stop,
+  stopSessionForDeletion: mocks.stop,
   SessionStopError: mocks.SessionStopError,
 }));
 vi.mock('@/lib/projectAchievement', () => ({
@@ -145,6 +150,9 @@ vi.mock('@/lib/spaceLabel', async (importOriginal) => ({
 }));
 vi.mock('@/lib/workspaceConfigurationNavigationGuard', () => ({
   runAfterWorkspaceConfigurationSave: vi.fn(),
+}));
+vi.mock('@/components/Home/SpaceHeaderMenu', () => ({
+  SpaceHeaderMenu: () => null,
 }));
 vi.mock('@/components/GlobalSearch', () => ({
   GlobalSearchDialog: () => null,
@@ -166,6 +174,9 @@ vi.mock('@/components/Layout/AppSidebar', () => {
     SidebarSection: Container,
     SidebarNavGroup: Container,
     SidebarSeparator: () => null,
+    SidebarRailSpacer: () => (
+      <span aria-hidden="true" data-sidebar-rail-spacer />
+    ),
     NavTab: () => null,
   };
 });
@@ -190,7 +201,7 @@ vi.mock('sonner', () => ({
 async function openDialog() {
   render(
     <MemoryRouter>
-      <SpaceSidebar chatStore={null} />
+      <SpaceSidebar />
     </MemoryRouter>
   );
   fireEvent.click(
@@ -283,6 +294,21 @@ describe('Sidebar Session deletion', () => {
     await act(async () => {
       finish({ success: true });
     });
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    );
+  });
+
+  it('removes offline history and closes the dialog while retaining local files', async () => {
+    mocks.stop.mockResolvedValueOnce(true);
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(mocks.runtime.removeProject).toHaveBeenCalledWith('session-a')
+    );
+    expect(proxyFetchDelete).toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.deleteWorkdir).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     );
@@ -419,7 +445,7 @@ describe('Sidebar Session names', () => {
       mocks.meta.metadata = { historyId: 'history-a' };
       render(
         <MemoryRouter>
-          <SpaceSidebar chatStore={null} />
+          <SpaceSidebar />
         </MemoryRouter>
       );
 
@@ -435,7 +461,7 @@ describe('Sidebar Session names', () => {
     mocks.meta.name = 'Launch plan';
     render(
       <MemoryRouter>
-        <SpaceSidebar chatStore={null} />
+        <SpaceSidebar />
       </MemoryRouter>
     );
 

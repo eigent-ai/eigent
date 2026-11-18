@@ -31,25 +31,28 @@ export function useSessionNavStatuses(
   useEffect(() => {
     const lifetime = new AbortController();
     const ids = JSON.parse(idsKey) as string[];
-    const refreshIds = (targets: string[]) =>
+    const refreshIds = (targets: string[], skipFresh: boolean) =>
       void refreshSessionNavStatuses(
         targets,
         accountKey,
         (projectId) =>
           useSpaceStore.getState().getProjectMeta(projectId)?.spaceId ===
           spaceId,
-        lifetime.signal
+        lifetime.signal,
+        { skipFresh }
       );
-    const refresh = () => refreshIds(ids);
+    // Mounting and refocusing happen often, so a recent read answers them.
+    const refresh = () => refreshIds(ids, true);
+    const refreshAll = () => refreshIds(ids, false);
     const onStatusChanged = (event: Event) => {
       const projectId = (event as CustomEvent<{ projectId?: string }>).detail
         ?.projectId;
-      if (projectId && ids.includes(projectId)) refreshIds([projectId]);
+      if (projectId && ids.includes(projectId)) refreshIds([projectId], false);
     };
     refresh();
     window.addEventListener('focus', refresh);
     window.addEventListener(DURABLE_RUN_STATUS_CHANGED_EVENT, onStatusChanged);
-    ipcRenderer?.on('backend-ready', refresh);
+    ipcRenderer?.on('backend-ready', refreshAll);
     return () => {
       lifetime.abort();
       window.removeEventListener('focus', refresh);
@@ -57,7 +60,7 @@ export function useSessionNavStatuses(
         DURABLE_RUN_STATUS_CHANGED_EVENT,
         onStatusChanged
       );
-      ipcRenderer?.off('backend-ready', refresh);
+      ipcRenderer?.off('backend-ready', refreshAll);
     };
   }, [accountKey, spaceId, idsKey, ipcRenderer]);
 }

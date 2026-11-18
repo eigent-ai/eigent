@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import i18n from '@/i18n';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Component, ErrorInfo, ReactNode } from 'react';
@@ -64,7 +65,12 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex h-screen w-full items-center justify-center bg-ds-neutral-subtle-default p-4">
           <div className="flex max-w-md flex-col items-center gap-6 rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-8 text-center shadow-lg">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-warning-subtle-default">
-              <AlertTriangle className="h-8 w-8 text-ds-text-warning-strong-default" />
+              <DsIcon
+                icon={AlertTriangle}
+                recipe="illustration"
+                illustrationSize={32}
+                className="text-ds-text-warning-strong-default"
+              />
             </div>
             <div className="flex flex-col gap-2">
               <h1 className="!text-ds-text-section font-bold text-ds-ink-default-default">
@@ -98,7 +104,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleReset}
                 className="gap-2"
               >
-                <RefreshCw className="h-4 w-4" />
+                <DsIcon icon={RefreshCw} />
                 {i18n.t('layout.refresh-page', {
                   defaultValue: 'Refresh Page',
                 })}

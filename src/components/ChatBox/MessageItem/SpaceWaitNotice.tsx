@@ -16,6 +16,7 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import type { ProjectedWriterWait } from '@/lib/projector';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { usePageTabStore, WorkspaceTab } from '@/store/pageTabStore';
@@ -36,9 +37,7 @@ function openSession(projectId: string) {
 /** Explains why a task waits to write to its Space instead of "Preparing". */
 export function SpaceWaitNotice({ wait }: { wait: ProjectedWriterWait }) {
   const { t } = useTranslation();
-  const activeProjectId = useProjectRuntimeStore(
-    (state) => state.activeProjectId
-  );
+  const activeProjectId = useSessionProjectId();
   // Offer only another Session the sidebar lists; this one is already open.
   const blockerProjectId = useSpaceStore((state) =>
     wait.blockerProjectId &&

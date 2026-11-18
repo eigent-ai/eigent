@@ -209,7 +209,11 @@ import {
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ExecutionStatus } from '../../../src/types';
-import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+} from '../../../src/types/constants';
 import completedRunDisplay from '../../fixtures/completed-run-display.json';
 import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
 
@@ -227,6 +231,21 @@ import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-d
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('saves plan edits to the supplied non-active Session', async () => {
+    const store = createChatStoreInstance();
+    store.getState().create('pane-run');
+    store
+      .getState()
+      .setTaskInfo('pane-run', [
+        { id: 'step', content: 'Keep the plan scoped' },
+      ] as any);
+    vi.mocked(fetchPut).mockResolvedValueOnce({});
+    await store.getState().savePlan('pane-run', 'pane-b');
+    expect(fetchPut).toHaveBeenCalledWith('/task/pane-b', {
+      task: [expect.objectContaining({ content: 'Keep the plan scoped' })],
+    });
   });
 
   describe('Confirmed user prompt resolution', () => {
@@ -1441,6 +1460,8 @@ describe('ChatStore - Core Functionality', () => {
 
       const beginStartup = ({
         separateOwner = false,
+        deferred = false,
+        previousHistoryId = null as string | null,
         replay = false,
         resume = false,
         triggerExecutionId = undefined as string | undefined,
@@ -1450,6 +1471,16 @@ describe('ChatStore - Core Functionality', () => {
         stores.push(caller, ...(separateOwner ? [owner] : []));
         const runId = owner.getState().create('attachment-run');
         owner.getState().setAttaches(runId, [file('submitted.txt')] as any);
+        if (deferred) {
+          owner.getState().removeTask(runId);
+          owner.getState().create('previous-run');
+          owner.getState().addMessages('previous-run', {
+            id: 'original',
+            role: 'user',
+            content: 'Original task',
+          });
+        }
+
         if (resume) {
           owner.getState().setStatus(runId, ChatTaskStatus.FINISHED);
           owner.getState().setDurableRunStatus(runId, 'interrupted');
@@ -1500,7 +1531,7 @@ describe('ChatStore - Core Functionality', () => {
             mode: 'single',
             spaceId: 'space-1',
           }),
-          getHistoryId: () => null,
+          getHistoryId: () => previousHistoryId,
           getAllChatStores: () => [{ chatId: 'primary', chatStore: owner }],
           setActiveChatStore: vi.fn(),
           getProjectModel: () => null,
@@ -1520,12 +1551,17 @@ describe('ChatStore - Core Functionality', () => {
           resume ? undefined : ([file('submitted.txt')] as any),
           undefined,
           'project-1',
-          'single' as any,
+          SessionMode.SINGLE_AGENT,
           replay
             ? undefined
             : {
                 preserveTaskId: true,
                 awaitAdmission: true,
+                ...(deferred
+                  ? {
+                      deferPresentationUntilAdmission: true,
+                    }
+                  : {}),
                 ...(resume
                   ? {
                       resumeRequestId: 'resume-existing-draft',
@@ -1649,6 +1685,544 @@ describe('ChatStore - Core Functionality', () => {
         ).toContain(executionId);
       });
 
+      it.each([false, true])(
+        'sends the local timezone for resume=%s',
+        async (resume) => {
+          const startup = beginStartup({ resume });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          expect(JSON.parse(stream.body).timezone).toBe(
+            Intl.DateTimeFormat().resolvedOptions().timeZone
+          );
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        }
+      );
+
+      it('keeps queued admission invisible and leaves the previous task selected after a busy refusal', async () => {
+        const startup = beginStartup({ deferred: true });
+        const outcome = startup.admission.catch((error) => error);
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        const rejection = new Response(
+          JSON.stringify({
+            detail: { code: 'project_run_active', message: 'Still running' },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } }
+        );
+        await expect(stream.onopen(rejection)).rejects.toMatchObject({
+          code: 'project_run_active',
+        });
+        startup.finishStream();
+        await outcome;
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(startup.owner.getState().tasks[startup.runId]).toBeUndefined();
+        expect(
+          startup.owner
+            .getState()
+            .tasks['previous-run'].messages.map((m) => m.content)
+        ).toEqual(['Original task']);
+      });
+
+      it('creates a queued cold task history after acceptance and never updates its predecessor', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(project.setHistoryId).not.toHaveBeenCalled();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { task_id: startup.runId, question: 'Submit this task' },
+          }),
+        });
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.PROJECT_METADATA,
+            data: {
+              task_id: startup.runId,
+              project_name: 'Existing Session',
+              project_summary: 'Follow-up summary',
+            },
+          }),
+        });
+        expect(proxyFetchPost).toHaveBeenCalledWith(
+          '/api/v1/chat/history',
+          expect.objectContaining({
+            task_id: startup.runId,
+            run_id: startup.runId,
+            question: 'Submit this task',
+          }),
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
+        expect(project.setHistoryId).toHaveBeenCalledWith(
+          'project-1',
+          'mock-history-id'
+        );
+        expect(proxyFetchPut).toHaveBeenCalledWith(
+          '/api/v1/chat/history/mock-history-id',
+          expect.objectContaining({ summary: 'Follow-up summary' })
+        );
+        expect(proxyFetchPut).not.toHaveBeenCalledWith(
+          '/api/v1/chat/history/previous-history',
+          expect.anything()
+        );
+        await stream.onopen(response());
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(1);
+        startup.finishStream();
+      });
+
+      it('acknowledges an accepted queue request while its history is delayed', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        let resolveHistory!: (value: unknown) => void;
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((resolve) => {
+                resolveHistory = resolve;
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const opening = stream.onopen(response());
+          await startup.admission;
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          resolveHistory({ id: 'queued-history' });
+          await opening;
+          expect(projectStoreState().setHistoryId).toHaveBeenCalledWith(
+            'project-1',
+            'queued-history'
+          );
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('keeps accepted queued work admitted when history fails and never falls back to the previous history', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockRejectedValueOnce(
+          new Error('history service unavailable')
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          await expect(stream.onopen(response())).resolves.toBeUndefined();
+          await expect(startup.admission).resolves.toBeUndefined();
+          await stream.onmessage({
+            data: JSON.stringify({
+              step: AgentStep.PROJECT_METADATA,
+              data: {
+                task_id: startup.runId,
+                project_name: 'Existing Session',
+                project_summary: 'Follow-up summary',
+              },
+            }),
+          });
+          await stream.onopen(response());
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(
+            startup.owner
+              .getState()
+              .tasks[startup.runId].messages.filter(
+                (message) => message.role === 'user'
+              )
+          ).toHaveLength(1);
+          expect(project.setHistoryId).not.toHaveBeenCalled();
+          expect(proxyFetchPut).not.toHaveBeenCalled();
+          expect(
+            vi
+              .mocked(proxyFetchPost)
+              .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+          ).toHaveLength(1);
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it.each([false, true])(
+        'binds delayed history independently of viewed tasks and preserves a newer history (newer=%s)',
+        async (newer) => {
+          const startup = beginStartup({
+            deferred: true,
+            previousHistoryId: 'previous-history',
+          });
+          const project = projectStoreState();
+          let resolveHistory!: (value: unknown) => void;
+          const originalPost = vi
+            .mocked(proxyFetchPost)
+            .getMockImplementation()!;
+          vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+            url === '/api/v1/chat/history'
+              ? new Promise((resolve) => {
+                  resolveHistory = resolve;
+                })
+              : originalPost(url, ...args)
+          );
+          try {
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const opening = stream.onopen(response());
+            await startup.admission;
+            startup.owner.getState().setActiveTaskId('previous-run');
+            if (newer) project.getHistoryId = () => 'newer-history';
+            resolveHistory({ id: 'queued-history' });
+            await opening;
+            if (newer) expect(project.setHistoryId).not.toHaveBeenCalled();
+            else
+              expect(project.setHistoryId).toHaveBeenCalledWith(
+                'project-1',
+                'queued-history'
+              );
+            startup.finishStream();
+          } finally {
+            vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+          }
+        }
+      );
+
+      it('bounds a stalled accepted-task history request without undoing admission', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((_, reject) => {
+                const options = args[2] as { signal: AbortSignal };
+                options.signal.addEventListener(
+                  'abort',
+                  () => reject(new Error('history timed out')),
+                  { once: true }
+                );
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          vi.useFakeTimers();
+          const opening = stream.onopen(response());
+          await expect(startup.admission).resolves.toBeUndefined();
+          await vi.advanceTimersByTimeAsync(5000);
+          await expect(opening).resolves.toBeUndefined();
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          startup.finishStream();
+        } finally {
+          vi.useRealTimers();
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('publishes a queued message once only after successful admission', async () => {
+        const startup = beginStartup({ deferred: true });
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onopen(response());
+        const state = startup.owner.getState();
+        expect(state.activeTaskId).toBe(startup.runId);
+        expect(
+          state.tasks[startup.runId].messages.filter(
+            (message) => message.role === 'user'
+          )
+        ).toEqual([
+          expect.objectContaining({
+            id: startup.runId,
+            content: 'Submit this task',
+          }),
+        ]);
+        startup.finishStream();
+      });
+      it.each([
+        ['Use the browser to read the heading', false, true, false],
+        ['Read the heading', true, true, false],
+        ['Read the heading', true, false, false],
+        ['Read the heading', true, true, true],
+      ] as const)(
+        'restores Resume browser access for %s (recorded=%s, available=%s)',
+        async (prompt, usedBrowser, available, foreign) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: available,
+                targets: available
+                  ? [
+                      {
+                        url: 'about:blank#eigent-browser-toolkit=resume',
+                        webContentsId: 7,
+                      },
+                    ]
+                  : [],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          try {
+            vi.mocked(fetchGet).mockResolvedValue({
+              run_id: 'attachment-run',
+              project_id: foreign ? 'foreign-session' : 'project-1',
+              used_browser: usedBrowser,
+            });
+            const startup = beginStartup({ resume: true });
+            startup.owner.getState().addMessages(startup.runId, {
+              id: 'original',
+              role: 'user',
+              content: prompt,
+            });
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const body = JSON.parse(stream.body);
+            expect(fetchGet).toHaveBeenCalledWith(
+              '/runs/attachment-run',
+              { include_browser_evidence: true },
+              undefined,
+              expect.objectContaining({ signal: expect.any(AbortSignal) })
+            );
+            if (foreign)
+              expect(invoke).not.toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            else
+              expect(invoke).toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            expect(body.cdp_browsers).toEqual(
+              available && !foreign
+                ? [
+                    expect.objectContaining({
+                      managedBy: 'electron',
+                      targetUrl: 'about:blank#eigent-browser-toolkit=resume',
+                    }),
+                  ]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(
+              !available && !foreign
+            );
+            await stream.onopen(response());
+            await startup.admission;
+            startup.finishStream();
+          } finally {
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it.each([
+        ['Use the browser to read the heading', true, 'resolve'],
+        ['Read the heading', false, 'resolve'],
+        ['Read the heading', false, 'reject'],
+      ] as const)(
+        'bounds a stalled Resume browser hint for %s (browser=%s), ignores late %s',
+        async (prompt, needsBrowser, lateOutcome) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          let resolveHint!: (value: unknown) => void;
+          let rejectHint!: (error: Error) => void;
+          let lookupSignal: AbortSignal | undefined;
+          let lookupOptions: Parameters<typeof fetchGet>[3];
+          let lookupStarted!: () => void;
+          const requested = new Promise<void>((resolve) => {
+            lookupStarted = resolve;
+          });
+          const hint = new Promise((resolve, reject) => {
+            resolveHint = resolve;
+            rejectHint = reject;
+          });
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: true,
+                targets: [
+                  {
+                    url: 'about:blank#eigent-browser-toolkit=resume',
+                    webContentsId: 7,
+                  },
+                ],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          vi.mocked(fetchGet).mockImplementationOnce(
+            (_path, _params, _headers, options) => {
+              lookupOptions = options;
+              lookupSignal = options?.signal;
+              lookupStarted();
+              return hint;
+            }
+          );
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: prompt,
+          });
+          let stream: any;
+          try {
+            vi.useFakeTimers();
+            startup.releaseReady();
+            await requested;
+            expect(lookupOptions).toMatchObject({
+              expectedAccountKey: expect.any(String),
+              beforeRequest: expect.any(Function),
+            });
+            expect(lookupSignal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1499);
+            expect(fetchPost).not.toHaveBeenCalledWith(
+              expect.stringContaining('/resume'),
+              expect.anything(),
+              expect.anything(),
+              expect.anything()
+            );
+            await vi.advanceTimersByTimeAsync(1);
+            expect(lookupSignal?.aborted).toBe(true);
+            vi.useRealTimers();
+            stream = await startup.getStream();
+            const sentBody = stream.body;
+            const body = JSON.parse(sentBody);
+            expect(body.cdp_browsers).toEqual(
+              needsBrowser
+                ? [expect.objectContaining({ managedBy: 'electron' })]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(false);
+            await stream.onopen(response());
+            await startup.admission;
+            const callsAfterAdmission = invoke.mock.calls.length;
+            if (lateOutcome === 'resolve')
+              resolveHint({
+                run_id: startup.runId,
+                project_id: 'project-1',
+                used_browser: !needsBrowser,
+              });
+            else rejectHint(new Error('late history failure'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(stream.body).toBe(sentBody);
+            expect(invoke).toHaveBeenCalledTimes(callsAfterAdmission);
+          } finally {
+            vi.useRealTimers();
+            resolveHint({});
+            if (!stream) {
+              stream = await startup.getStream();
+              await stream.onopen(response());
+              await startup.admission;
+            }
+            startup.finishStream();
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it('still resumes when the earlier browser use cannot be read', async () => {
+        const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+        const invoke = vi.fn(async (channel: string) => {
+          if (channel === 'get-browser-port') return 9222;
+          if (channel === 'get-embedded-browser-runtime')
+            return {
+              port: 9222,
+              targetAvailable: true,
+              targets: [
+                {
+                  url: 'about:blank#eigent-browser-toolkit=resume',
+                  webContentsId: 7,
+                },
+              ],
+            };
+          if (channel === 'get-env-path') return '';
+          return undefined;
+        });
+        injectHost({ ipcRenderer: { invoke } } as any);
+        try {
+          vi.mocked(fetchGet).mockRejectedValue(new Error('Brain busy'));
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: 'Use the browser to read the heading',
+          });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const body = JSON.parse(stream.body);
+          expect(body.cdp_browsers).toEqual([
+            expect.objectContaining({ managedBy: 'electron' }),
+          ]);
+          expect(body.browser_unavailable_on_resume).toBe(false);
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        } finally {
+          injectHost(null);
+          vi.mocked(fetchGet).mockReset();
+          if (originalFetch)
+            vi.mocked(fetchGet).mockImplementation(originalFetch);
+        }
+      });
+
       it.each([
         ['a Trigger run as scheduled', 'memory-trigger', 'scheduled'],
         ['a user run without a source', undefined, undefined],
@@ -1756,9 +2330,9 @@ describe('ChatStore - Core Functionality', () => {
         expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
           originalDraft
         );
-        expect(startup.owner.getState().tasks[startup.runId].messages).toEqual(
-          []
-        );
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
       });
 
       it('does not clear an unrelated active draft when replay opens', async () => {
@@ -1918,6 +2492,58 @@ describe('ChatStore - Core Functionality', () => {
           [...streams.entries()].find(([url]) => url.includes(path))?.[1];
         return { store, streamContaining };
       };
+
+      it.each([
+        AgentStep.PROJECT_METADATA,
+        AgentStep.TO_SUB_TASKS,
+        AgentStep.DEACTIVATE_AGENT,
+        AgentStep.END,
+      ])(
+        'preserves a renamed Session in history writes from %s',
+        async (step) => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const project = {
+            id: 'project-1',
+            name: 'My saved title',
+            metadata: { nameSource: 'manual' },
+          };
+          const current = projectStoreState();
+          projectStoreState.mockReturnValue({
+            ...current,
+            getProjectById: () => project,
+          } as any);
+          store
+            .getState()
+            .setSummaryTask('live-run', 'Generated task title|Task summary');
+          store
+            .getState()
+            .setTaskAssigning('live-run', [
+              { agent_id: 'agent-1', agent_name: 'worker', tasks: [], log: [] },
+            ] as any);
+          vi.mocked(proxyFetchPut).mockClear();
+
+          await streamContaining('/chat').onmessage({
+            data: JSON.stringify({
+              step,
+              data: {
+                task_id: 'live-run',
+                project_name: 'Generated task title',
+                summary_task: 'Generated task title|Task summary',
+                sub_tasks: [],
+                agent_id: 'agent-1',
+                agent_name: 'worker',
+                content: 'Done',
+              },
+            }),
+          });
+
+          expect(proxyFetchPut).toHaveBeenCalledWith(
+            expect.stringContaining('/api/v1/chat/history/'),
+            expect.objectContaining({ project_name: 'My saved title' })
+          );
+          expect(project.name).toBe('My saved title');
+        }
+      );
 
       const switchLegacyStreamToFollowUp = async ({
         store,
@@ -3627,6 +4253,7 @@ describe('ChatStore - Core Functionality', () => {
               let journalSignal!: AbortSignal;
               vi.mocked(fetchGet).mockImplementation(
                 (_path, _params, _headers, options) => {
+                  if (!_path.endsWith('/events')) return Promise.resolve({});
                   journalSignal = options!.signal!;
                   return new Promise((resolve) => {
                     resolvePage = resolve;
@@ -4255,8 +4882,8 @@ describe('ChatStore - Core Functionality', () => {
         let sequence = 0;
 
         beforeEach(() => {
-          // Installed builds render the legacy chat view.
-          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+          // The legacy chat view, as a rollback build renders it.
+          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
           vi.useFakeTimers({ toFake: ['Date'] });
           vi.setSystemTime(startedAt);
           sequence = 0;
@@ -4459,6 +5086,121 @@ describe('ChatStore - Core Functionality', () => {
           );
           advance(3_000);
           expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('continues after the remaining approval is answered when another one was cancelled', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(10_000);
+          // The other request is still open, so the task is not interrupted.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            remaining_interaction_count: 1,
+          });
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+          advance(10_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+        });
+
+        it.each(['active', 'queued'] as const)(
+          'closes the %s card of a cancelled approval and keeps the other one',
+          async (cancelledCard) => {
+            const { store, streamContaining } = await startWorking();
+            for (const id of ['approval:call-1', 'approval:call-2']) {
+              await deliver(
+                streamContaining,
+                'approval.requested',
+                approvalRequested(id)
+              );
+              await sendLegacy(streamContaining, AgentStep.ASK, {
+                agent: 'single_agent',
+                interaction_id: id,
+                interaction_type: 'approval',
+                approval_id: id,
+                question: 'Allow the write?',
+              });
+            }
+            const lastAsk = () =>
+              taskOf(store).messages.findLast(
+                (message) => message.step === AgentStep.ASK
+              )?.interaction?.interaction_id;
+            expect(lastAsk()).toBe('approval:call-1');
+            expect(
+              taskOf(store).askList.map(
+                (message) => message.interaction?.interaction_id
+              )
+            ).toEqual(['approval:call-2']);
+
+            const cancelled =
+              cancelledCard === 'active'
+                ? 'approval:call-1'
+                : 'approval:call-2';
+            const remaining =
+              cancelledCard === 'active'
+                ? 'approval:call-2'
+                : 'approval:call-1';
+            await deliver(streamContaining, 'approval.cancelled', {
+              approval_id: cancelled,
+              interaction_id: cancelled,
+              decision: 'rejected',
+              continued_attempt: false,
+              remaining_interaction_count: 1,
+            });
+
+            expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+            expect(taskOf(store).activeAsk).toBe('single_agent');
+            expect(lastAsk()).toBe(remaining);
+            expect(taskOf(store).askList).toEqual([]);
+          }
+        );
+
+        it('ends as cancelled when stopped while an approval waits', async () => {
+          const { store, streamContaining } = await startWorking();
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(streamContaining, 'run.cancel_requested');
+          // The backend closes the open request with the Run's own end.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            reason: 'run_terminal:cancelled',
+            source: 'system',
+          });
+          expect(taskOf(store).durableRunStatus).not.toBe('interrupted');
+          await deliver(streamContaining, 'run.cancelled');
+          await vi.waitFor(() =>
+            expect(taskOf(store).durableRunStatus).toBe('cancelled')
+          );
         });
 
         it('holds the time worked while a question waits for an answer', async () => {

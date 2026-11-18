@@ -21,6 +21,7 @@ import { errorCopy, errorPresentationReason } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { proxyFetchTriggerExecutions } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import {
   ExecutionStatus,
   Trigger,
@@ -66,7 +67,7 @@ function DetailCardHeading({
     <div className="flex flex-col items-start gap-ds-12">
       <DsIcon
         icon={icon}
-        recipe="detailed"
+        recipe="illustration"
         aria-hidden
         className="text-ds-ink-muted-default"
       />
@@ -83,6 +84,9 @@ const UNFINISHED_RUN_STATUSES = [
   ExecutionStatus.Failed,
   ExecutionStatus.Missed,
 ];
+// The server closes runs nobody started without telling the app; refresh the
+// list while a run is still pending or running.
+const ACTIVE_RUN_REFRESH_MS = 15 * 1000;
 
 type RunStyle = { icon: LucideIcon; iconClass: string; surfaceClass: string };
 
@@ -154,7 +158,13 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const loadedTriggerId = useRef<number | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const activityLogs = useActivityLogStore((state) => state.logs);
+  const hasActiveRun = executions.some((execution) =>
+    [ExecutionStatus.Pending, ExecutionStatus.Running].includes(
+      execution.status
+    )
+  );
 
   // Terminal delivery can update an older log in place while a newer run exists.
   const executionActivityVersion = activityLogs
@@ -193,7 +203,16 @@ export function AutomationDashboard({ trigger }: AutomationDashboardProps) {
     return () => {
       current = false;
     };
-  }, [executionActivityVersion, trigger.id]);
+  }, [executionActivityVersion, refreshTick, trigger.id]);
+
+  useEffect(() => {
+    if (!hasActiveRun) return;
+    const timer = setTimeout(
+      () => setRefreshTick((tick) => tick + 1),
+      ACTIVE_RUN_REFRESH_MS
+    );
+    return () => clearTimeout(timer);
+  }, [hasActiveRun, executions]);
 
   return (
     <AutomationDashboardView
@@ -218,6 +237,14 @@ export function AutomationDashboardView({
   loadError = false,
 }: AutomationDashboardViewProps) {
   const { t, i18n } = useTranslation();
+  const projects = useProjectRuntimeStore((state) => state.projects);
+  const queuedExecutions = new Set(
+    Object.values(projects).flatMap((project) =>
+      project.queuedMessages
+        .map((message) => message.executionId)
+        .filter(Boolean)
+    )
+  );
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const needsAuth =
     trigger.status === TriggerStatus.PendingAuth &&
@@ -453,7 +480,7 @@ export function AutomationDashboardView({
           </DsText>
         ) : runs.length === 0 ? (
           <div className="flex flex-col items-center gap-ds-4 px-ds-16 py-ds-40 text-center text-ds-ink-muted-default">
-            <DsIcon icon={Terminal} recipe="detailed" aria-hidden />
+            <DsIcon icon={Terminal} recipe="illustration" aria-hidden />
             <DsText as="p" role="base">
               {t('triggers.no-executions-yet')}
             </DsText>
@@ -474,8 +501,20 @@ export function AutomationDashboardView({
         ) : (
           <ol className="m-0 list-none p-0">
             {runs.map((run, index) => {
-              const style = RUN_STYLES[run.status] ?? RUN_STYLES.pending;
-              const message = runMessage(run);
+              const waiting =
+                queuedExecutions.has(run.execution_id) &&
+                [ExecutionStatus.Pending, ExecutionStatus.Running].includes(
+                  run.status
+                );
+              const displayStatus = waiting
+                ? ExecutionStatus.Pending
+                : run.status;
+              const style = RUN_STYLES[displayStatus] ?? RUN_STYLES.pending;
+              const message = waiting
+                ? t('triggers.waiting-to-execute') +
+                  ' ' +
+                  t('triggers.task-queued-description')
+                : runMessage(run);
               const duration =
                 run.status === ExecutionStatus.Completed
                   ? formatDuration(run.duration_seconds)
@@ -509,7 +548,6 @@ export function AutomationDashboardView({
                     >
                       <DsIcon
                         icon={style.icon}
-                        recipe="main-compact"
                         aria-hidden
                         className={style.iconClass}
                       />
@@ -518,7 +556,7 @@ export function AutomationDashboardView({
                       <div className="flex flex-wrap items-baseline gap-x-ds-8">
                         <DsText as="span" role="base" weight="semibold">
                           {t(
-                            RUN_LABEL_KEYS[run.status] ??
+                            RUN_LABEL_KEYS[displayStatus] ??
                               'triggers.unknown-status'
                           )}
                         </DsText>
@@ -561,7 +599,7 @@ export function AutomationDashboardView({
                       >
                         {message ||
                           t(
-                            RUN_LABEL_KEYS[run.status] ??
+                            RUN_LABEL_KEYS[displayStatus] ??
                               'triggers.unknown-status'
                           )}
                       </DsText>

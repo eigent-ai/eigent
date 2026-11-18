@@ -27,6 +27,12 @@ import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { useSessionPane } from '@/hooks/useSessionPane';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
@@ -52,6 +58,10 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
@@ -65,6 +75,7 @@ import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   invalidatePendingFollowUps,
+  isQueueAdmissionWait,
   listPendingFollowUpRequests,
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
@@ -90,12 +101,18 @@ import {
 } from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
+import {
+  isSessionStarting,
+  useSessionStartStore,
+} from '@/store/sessionStartStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
+  dismissUsageBanner,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -113,15 +130,22 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BlockedWorkspaceOperationNotice } from './BlockedWorkspaceOperationCard';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
-import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
+import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
+import {
+  createLegacyApprovalVariant,
+  createLegacyConfirmationVariant,
+  isLegacyConfirmationInteraction,
+} from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
-  BottomBoxInputVariant,
+  BottomBoxFeedbackVariant,
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { isChatTimelineNearBottom } from './chatTimelineScroll';
 import { ControlRecovery, useControlOperations } from './ControlRecovery';
 import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
 import {
@@ -129,6 +153,7 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { FloatingAction } from './MessageItem/FloatingAction';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   canUseLegacyControlWithoutCanonicalOwner,
@@ -142,6 +167,7 @@ import {
   SessionExecutionChat,
   SessionExecutionStatus,
 } from './SessionExecutionChat';
+import { useReportSessionLoading } from './SessionLoadingHalo';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -202,13 +228,18 @@ function selectLatestReadOnlyEventNativeRun(
   );
 }
 
+/** Longest wait between admissions while a Session is still busy. */
+const QUEUE_WAIT_RETRY_MAX_MS = 30_000;
+/** Busy refusals after which the queued message explains its wait. */
+const QUEUE_WAIT_NOTICE_ATTEMPTS = 4;
+
 function getCurrentTimestamp() {
   return Date.now();
 }
 
 export default function ChatBox(): JSX.Element {
-  const { projectStore } = useChatStoreAdapter();
-  const projectId = projectStore.activeProjectId;
+  const sessionProjectId = useSessionProjectId();
+  const projectId = sessionProjectId;
   const { scope, state } = useSessionExecution(projectId);
   if (!projectId) return <></>;
   if (state.managed)
@@ -224,33 +255,49 @@ export default function ChatBox(): JSX.Element {
 }
 
 function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
+  const [editingSource, setEditingSource] = useState<{
+    projectId: string;
+    sourceId: string;
+  } | null>(null);
   const host = useHost();
+  const overlaySlotId = useSessionPane()?.overlaySlotId ?? PLAN_OVERLAY_SLOT_ID;
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
+  // Send in the Workspace composer opens this Session while its first task
+  // is still being created and admitted there.
+  const isSessionStartPending = useSessionStartStore((s) =>
+    Boolean(sessionProjectId && s.startingProjectIds[sessionProjectId])
+  );
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
   const handledChatDraftRequestRef = useRef<number | null>(null);
-  const workspaceChatFocusRequestId = usePageTabStore(
+  const workspaceChatFocusProjectId = useSessionPageTabStore(
+    (s) => s.workspaceChatFocusProjectId
+  );
+  const workspaceChatFocusRequestId = useSessionPageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const workspaceChatDraftRequest = usePageTabStore(
+  const handledChatFocusRequestRef = useRef(0);
+  const workspaceChatDraftRequest = useSessionPageTabStore(
     (s) => s.workspaceChatDraftRequest
   );
-  const consumeWorkspaceChatDraft = usePageTabStore(
+  const consumeWorkspaceChatDraft = useSessionPageTabStore(
     (s) => s.consumeWorkspaceChatDraft
   );
-  const acknowledgeWorkspaceReviewHandoffs = usePageTabStore(
+  const acknowledgeWorkspaceReviewHandoffs = useSessionPageTabStore(
     (s) => s.acknowledgeWorkspaceReviewHandoffs
   );
-  const discardWorkspaceReviewHandoffs = usePageTabStore(
+  const discardWorkspaceReviewHandoffs = useSessionPageTabStore(
     (s) => s.discardWorkspaceReviewHandoffs
   );
-  const chatTimelineDetailLevel = usePageTabStore(
+  const chatTimelineDetailLevel = useSessionPageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   // Switching Sessions remounts this composer; keep each Session's draft.
   const {
     text: message,
@@ -259,9 +306,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     setReviewHandoffIds: setPendingReviewHandoffIds,
   } = useSessionDraft(accountKey, activeProjectId);
   const composerRevisionRef = useRef(0);
+  const previousDraft = useRef({ projectId: activeProjectId, text: message });
+  useEffect(() => {
+    const previous = previousDraft.current;
+    previousDraft.current = { projectId: activeProjectId, text: message };
+    if (previous.projectId === activeProjectId && previous.text && !message) {
+      setEditingSource((current) =>
+        current?.projectId === activeProjectId ? null : current
+      );
+    }
+  }, [activeProjectId, message]);
   const setMessage = useCallback<typeof setDraftMessage>(
     (value) => {
       composerRevisionRef.current += 1;
+      if (value === '') setEditingSource(null);
       setDraftMessage(value);
     },
     [setDraftMessage]
@@ -325,13 +383,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const displaySessionMode =
     activeProjectMode ?? inferredSessionMode ?? undefined;
   const ensureActiveProjectMode = useCallback(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || activeProjectMode) return;
     updateProjectMeta(projectId, { mode: effectiveSessionMode });
   }, [
     activeProjectMode,
     effectiveSessionMode,
-    projectStore,
+    sessionProjectId,
     updateProjectMeta,
   ]);
   const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
@@ -343,6 +401,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType, token, user_id } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const sessionModelSelection =
     (activeProjectId
       ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
@@ -352,6 +411,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     : null;
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
+  );
+  // The blocked-operation card only needs the Session's Space, which its
+  // metadata knows before the runtime project has loaded.
+  const blockedOperationSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId ?? activeProjectMeta?.spaceId)
   );
   const canUseSessionSpace = Boolean(
     token &&
@@ -372,17 +436,23 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
-  const composerModelType = sessionModelSelection?.modelType ?? modelType;
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
   const incident = activeUsageIncident(usage);
-  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
-    useState<string | null>(null);
   const {
     run: interruptedRun,
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
+    settled: interruptedRunSettled,
   } = useInterruptedRunStatus(activeProjectId);
   const pendingModelAdmission =
     activeProject?.metadata?.spaceModelAdmissionRunId;
@@ -439,12 +509,32 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null;
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
+  // A closed reminder stays closed across Sessions and restarts, until the
+  // reminder changes; once none applies, the next one shows again.
+  const dismissedUsageLimitBannerId = usage.dismissedBanner;
+  // Credits and the plan must both be known: a failed plan request also
+  // yields no reminder, and must not reopen the one that was closed.
+  useEffect(() => {
+    if (
+      currentCredits !== null &&
+      subscriptionUsage !== null &&
+      !bannerId &&
+      dismissedUsageLimitBannerId
+    )
+      dismissUsageBanner(null);
+  }, [
+    bannerId,
+    currentCredits,
+    dismissedUsageLimitBannerId,
+    subscriptionUsage,
+  ]);
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
-  const usageLimitBanner =
-    incidentBanner ??
-    (composerModelType !== 'cloud' ||
-    !usageLimitBannerState ||
-    bannerId === dismissedUsageLimitBannerId
+  // An open incident owns this slot even while its toast hides the banner.
+  const usageLimitBanner = incident
+    ? incidentBanner
+    : composerModelType !== 'cloud' ||
+        !usageLimitBannerState ||
+        bannerId === dismissedUsageLimitBannerId
       ? null
       : {
           message: usageLimitBannerState.message,
@@ -456,10 +546,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
           onAction: () => void refreshUsage(),
           onDismiss: () => {
-            setDismissedUsageLimitBannerId(bannerId ?? null);
+            dismissUsageBanner(bannerId ?? null);
             acknowledgeUsageNotice();
           },
-        });
+        };
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -475,12 +565,26 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     }
   }, [modelType]);
   useEffect(() => {
-    if (workspaceChatFocusRequestId === 0) return;
+    if (handledChatFocusRequestRef.current === workspaceChatFocusRequestId)
+      return;
+    handledChatFocusRequestRef.current = workspaceChatFocusRequestId;
+    if (
+      workspaceChatFocusRequestId === 0 ||
+      (workspaceChatFocusProjectId
+        ? workspaceChatFocusProjectId !== activeProjectId
+        : !isFocusedPane)
+    )
+      return;
     const focusTimer = window.setTimeout(() => {
       textareaRef.current?.focus();
     }, 180);
     return () => clearTimeout(focusTimer);
-  }, [workspaceChatFocusRequestId]);
+  }, [
+    workspaceChatFocusRequestId,
+    workspaceChatFocusProjectId,
+    activeProjectId,
+    isFocusedPane,
+  ]);
 
   useEffect(() => {
     if (
@@ -491,6 +595,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    if (
+      workspaceChatDraftRequest.ifEmpty &&
+      (message.trim() || activeTask?.attaches?.length)
+    ) {
+      toast.info(t('chat.message-draft-exists'));
+      consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+      return;
+    }
     setMessage((current) => {
       const existing = current.trimEnd();
       return existing
@@ -506,10 +618,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
   }, [
     activeProjectId,
+    activeTask?.attaches?.length,
     consumeWorkspaceChatDraft,
-    workspaceChatDraftRequest,
+    message,
     setMessage,
     setPendingReviewHandoffIds,
+    t,
+    workspaceChatDraftRequest,
   ]);
 
   useEffect(() => {
@@ -533,6 +648,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const [queueRetryAt, setQueueRetryAt] = useState(0);
+  const [queueRetryRevision, setQueueRetryRevision] = useState(0);
+  const queueWaitRef = useRef<{ key: string; attempts: number } | null>(null);
   // Shared across mounts: a composer remounted by a Session switch must still
   // see an admission that an earlier mount has not finished.
   const followUpAdmissionsRef = useRef(followUpAdmissionClaims);
@@ -719,13 +837,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       ? legacyApprovalCheck.pending
       : undefined;
   const isLegacyApproval = activeInteraction?.interaction_type === 'approval';
+  // A reopened Session restores its Run for playback. When that Run still
+  // waits for this question, it is answered here like a live one.
+  const isRestoredQuestionWaiting =
+    activeAskTask?.type === 'replay' &&
+    activeInteraction?.interaction_type === 'question' &&
+    !activeInteractionReadOnly;
   const canAnswerActiveAsk =
     !legacyInteractionExpired &&
     !activeInteractionReadOnly &&
     !!activeAskTask &&
-    activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
-    activeAskTask.status !== ChatTaskStatus.FINISHED;
+    (isRestoredQuestionWaiting ||
+      (activeAskTask.type !== 'replay' &&
+        activeAskTask.status !== ChatTaskStatus.FINISHED));
   const isInteractiveHumanReply =
     canAnswerActiveAsk && (!isLegacyApproval || legacyApprovalPending === true);
   const isLegacyApprovalUnconfirmed =
@@ -745,7 +870,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const taskId = activeTaskId;
     if (
       !interaction ||
-      interaction.interaction_type !== 'approval' ||
+      (interaction.interaction_type !== 'approval' &&
+        !isLegacyConfirmationInteraction(interaction)) ||
       !taskId ||
       legacyApprovalSubmitting ||
       !isInteractiveHumanReply
@@ -773,9 +899,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         await refreshInterruptedRun();
         return;
       }
-      const currentTask = projectStore.getActiveChatStore()?.getState().tasks[
-        taskId
-      ];
+      const currentTask = projectStore
+        .getActiveChatStore(sessionProjectId ?? undefined)
+        ?.getState().tasks[taskId];
       if (
         !currentTask ||
         isHumanInteractionReadOnly({
@@ -785,8 +911,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 message.interaction?.interaction_id ===
                 interaction.interaction_id
             )?.interaction || interaction,
-          activeTaskId: projectStore.getActiveChatStore()?.getState()
-            .activeTaskId,
+          activeTaskId: projectStore
+            .getActiveChatStore(sessionProjectId ?? undefined)
+            ?.getState().activeTaskId,
           taskType: currentTask.type,
           taskStatus: currentTask.status,
           durableRunStatus: readOnlyRunStatus(
@@ -798,7 +925,10 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         return;
       await decideHumanInteraction(interaction, {
         decisionRequestId: generateUniqueId(),
-        decision: { decision, scope },
+        decision:
+          interaction.interaction_type === 'approval'
+            ? { decision, scope }
+            : { decision },
         actorId: user_id,
         projectId: projectId ?? undefined,
       });
@@ -887,9 +1017,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   });
 
   const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
+    if (!sessionProjectId) return [];
+    return projectStore.getAllChatStores(sessionProjectId);
+  }, [projectStore, sessionProjectId]);
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
@@ -927,6 +1057,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     eventNativeTimelineEnabled &&
     activeProjectId &&
     (hasEventNativeTimelineContent || !hasAnyMessages)
+  );
+  // The replayed history is what this view shows only while the event
+  // timeline has nothing durable yet (an older or cloud-restored Session), so
+  // only then does the Session's first load wait for the replay.
+  const isHistoryReplayLoading = useProjectRuntimeStore((state) =>
+    activeProjectId
+      ? Boolean(state.historyLoadingProjectIds[activeProjectId])
+      : false
+  );
+  useReportSessionLoading(
+    'history-replay',
+    eventNativeTimelineEnabled &&
+      !hasEventNativeTimelineContent &&
+      isHistoryReplayLoading
   );
   const shouldRenderBottomBoxOverlay =
     shouldRenderChatTimeline &&
@@ -997,6 +1141,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       [],
   });
 
+  // A failed write surfaces once its Task stops, on either timeline renderer.
+  const blockedWorkspaceRefreshKey = `${activeProjectId ?? ''}:${
+    chatStore?.activeTaskId ?? ''
+  }:${queueExecution.busy || isTaskBusy}`;
+
   const isCloudUsageLimited =
     composerModelType === 'cloud' && cloudUsageLimitReached;
 
@@ -1005,6 +1154,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return true;
 
     const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // A message sent before that start settles would start the task again.
+    if (isSessionStartPending) return true;
 
     // If ask human is active, allow input
     if (task.activeAsk) return false;
@@ -1019,6 +1171,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isSessionStartPending,
     isCloudUsageLimited,
     canUseSessionModel,
     useCloudModelInDev,
@@ -1028,7 +1181,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     async (token: string) => {
       if (!chatStore) return;
       if (!token) return;
-      if (!projectStore.activeProjectId) {
+      if (!sessionProjectId) {
         console.warn("Can't send share due to no active projectId");
         return;
       }
@@ -1062,11 +1215,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         try {
           await chatStore.startTask(taskId, 'share', _token, 0.1);
           chatStore.setActiveTaskId(taskId);
-          chatStore.handleConfirmTask(
-            projectStore.activeProjectId,
-            taskId,
-            'share'
-          );
+          chatStore.handleConfirmTask(sessionProjectId, taskId, 'share');
         } catch (err: any) {
           console.error('Failed to start shared task:', err);
           notifyError(
@@ -1078,7 +1227,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     },
     [
       chatStore,
-      projectStore.activeProjectId,
+      sessionProjectId,
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
@@ -1127,6 +1276,57 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     };
   }, []);
 
+  // Whether the timeline is scrolled up from its latest content, which offers
+  // the floating scroll-to-bottom action. Content growth changes the distance
+  // without a scroll event, so resizes are observed as well.
+  const [isTimelineScrolledUp, setIsTimelineScrolledUp] = useState(false);
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const update = () =>
+      setIsTimelineScrolledUp(
+        !isChatTimelineNearBottom(
+          scrollContainer.scrollHeight -
+            scrollContainer.scrollTop -
+            scrollContainer.clientHeight,
+          0
+        )
+      );
+    update();
+    scrollContainer.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver === 'undefined') {
+      return () => scrollContainer.removeEventListener('scroll', update);
+    }
+    const resizeObserver = new ResizeObserver(update);
+    const observeChildren = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(scrollContainer);
+      Array.from(scrollContainer.children).forEach((child) =>
+        resizeObserver.observe(child)
+      );
+      update();
+    };
+    observeChildren();
+    const mutationObserver = new MutationObserver(observeChildren);
+    mutationObserver.observe(scrollContainer, { childList: true });
+    return () => {
+      scrollContainer.removeEventListener('scroll', update);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, []);
+  const scrollTimelineToBottom = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+  }, []);
+
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
@@ -1138,6 +1338,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     const composerAttachments =
       queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (isSessionStarting(sessionProjectId)) return;
     if (
       message.trim() === '' &&
       !messageStr &&
@@ -1148,7 +1349,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     const replyingToHuman = Boolean(
       _taskId &&
       chatStore.tasks[_taskId]?.activeAsk &&
-      interruptedRun?.project_id !== projectStore.activeProjectId
+      interruptedRun?.project_id !== sessionProjectId
     );
     if ((isCloudUsageLimited && !replyingToHuman) || !canUseSessionModel) {
       if (isCloudUsageLimited) {
@@ -1164,7 +1365,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
 
-    const targetProjectId = projectStore.activeProjectId;
+    const targetProjectId = sessionProjectId;
     if (!targetProjectId) {
       notifyError(
         t('chat.no-active-session', {
@@ -1265,7 +1466,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       return;
     }
     const requiresApprovalDecision =
-      activeInteraction?.interaction_type === 'approval';
+      activeInteraction?.interaction_type === 'approval' ||
+      isLegacyConfirmationInteraction(activeInteraction);
     const isTaskBusy =
       (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
       task.status === ChatTaskStatus.PAUSE ||
@@ -1413,7 +1615,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         }
       } else if (queuedRequestId) {
         const queuedFiles = queuedAttaches || [];
-        const draftStore = projectStore.getActiveChatStore();
+        const draftStore = projectStore.getActiveChatStore(
+          sessionProjectId ?? undefined
+        );
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const admissionMode = startsAfterInterruption
           ? 'cold'
@@ -1421,8 +1625,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               targetProjectId,
               projectStore.getProjectById(targetProjectId)
             );
+        if (admissionMode === 'busy') {
+          throw Object.assign(
+            new Error('Session is still finishing its current task.'),
+            { code: 'project_run_active' }
+          );
+        }
         if (admissionMode !== 'cold') {
-          // A busy consumer still takes the follow-up on its queue, as before.
+          // An idle consumer observed by this window admits the follow-up warm.
           chatStore.setNextTaskId(queuedRequestId);
           chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
@@ -1457,11 +1667,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             {
               preserveTaskId: true,
               awaitAdmission: true,
+              deferPresentationUntilAdmission: true,
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
-          // Queued payloads do not own the user's current composer. Move
-          // that draft when cold startup synchronously selects its new Run.
+          await admission;
+          // Admission selects the new Run; move the current composer draft
+          // afterward without changing the submitted queued payload.
           const draftTask = draftStore?.getState().tasks[_taskId];
           const nextState = projectStore
             .getChatStore(targetProjectId)
@@ -1485,7 +1697,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
               draftStore.getState().setAttaches(_taskId, []);
           }
-          await admission;
         }
         messageAccepted = true;
       } else if (requiresHumanReply) {
@@ -1662,7 +1873,9 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               followUpAdmission
             );
             const composerRevision = composerRevisionRef.current;
-            const sourceStore = projectStore.getActiveChatStore();
+            const sourceStore = projectStore.getActiveChatStore(
+              sessionProjectId ?? undefined
+            );
             const sourceAttaches =
               sourceStore?.getState().tasks[_taskId]?.attaches;
             const attachesForThisTurn =
@@ -1904,7 +2117,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
-      if (startsAfterInterruption || followUpAdmission)
+      if (!queuedRequestId && (startsAfterInterruption || followUpAdmission))
         notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
@@ -2105,7 +2318,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   // Hide a started row in the same render as its timeline event. Waiting for
   // the admission HTTP response can leave "Starting" visible behind the chat.
   const queuedMessages = useMemo(() => {
-    const pid = projectStore.activeProjectId;
+    const pid = sessionProjectId;
     if (!pid) return [];
     const project = projectStore.getProjectById(pid);
     return (project?.queuedMessages || [])
@@ -2128,7 +2341,13 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           m.source !== 'remote_control' &&
           !interruptedRun,
       }));
-  }, [interruptedRun, projectStore, queueAction, startedQueueRunIds]);
+  }, [
+    interruptedRun,
+    projectStore,
+    sessionProjectId,
+    queueAction,
+    startedQueueRunIds,
+  ]);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -2145,7 +2364,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ]);
 
   useEffect(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId) return;
     let cancelled = false;
     void listPendingFollowUpRequests(projectId)
@@ -2192,12 +2411,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [projectStore, projectStore.activeProjectId]);
+  }, [projectStore, sessionProjectId]);
 
   useEffect(() => {
     if (
       !admittedQueuedRun ||
-      admittedQueuedRun.projectId !== projectStore.activeProjectId
+      admittedQueuedRun.projectId !== sessionProjectId
     ) {
       return;
     }
@@ -2227,16 +2446,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     eventNativeProjectSnapshot?.revision,
     eventNativeProjectSnapshot?.view.runs,
     projectStore,
-    projectStore.activeProjectId,
+    sessionProjectId,
   ]);
 
   useEffect(() => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     const activeId = chatStore?.activeTaskId;
     if (
       !projectId ||
       !activeId ||
       queueExecution.busy ||
+      !interruptedRunSettled ||
+      Date.now() < queueRetryAt ||
       interruptedRun ||
       activeAsk ||
       !canUseSessionModel ||
@@ -2275,6 +2496,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       next.reviewHandoffIds
     )
       .then(() => {
+        queueWaitRef.current = null;
         setAdmittedQueuedRun({ projectId, runId: next.task_id });
         acknowledgeQueuedRequest(projectId, next.task_id);
       })
@@ -2286,6 +2508,38 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )
         )
           return;
+        if (isQueueAdmissionWait(error)) {
+          // Back off while the Session stays busy, and explain the wait once
+          // per queued message instead of on every retry.
+          const waitKey = JSON.stringify([projectId, next.task_id]);
+          const wait =
+            queueWaitRef.current?.key === waitKey
+              ? queueWaitRef.current
+              : { key: waitKey, attempts: 0 };
+          wait.attempts += 1;
+          queueWaitRef.current = wait;
+          setQueueRetryAt(
+            Date.now() +
+              Math.min(1000 * 2 ** (wait.attempts - 1), QUEUE_WAIT_RETRY_MAX_MS)
+          );
+          if (wait.attempts === QUEUE_WAIT_NOTICE_ATTEMPTS)
+            toast.info(
+              t('chat.message-queued', {
+                defaultValue:
+                  'Message queued. Eigent will send it when the current task finishes.',
+              }),
+              { id: `queue-wait:${waitKey}` }
+            );
+          projectStore.setQueuedMessageProcessing(
+            projectId,
+            next.task_id,
+            false
+          );
+          if (chatStore.nextTaskId === next.task_id)
+            chatStore.setNextTaskId(null);
+          return;
+        }
+        queueWaitRef.current = null;
         console.error('[FollowUpQueue] Failed to admit queued message', error);
         const rejection = terminalContinuationAdmissionRejection(error);
         if (rejection) {
@@ -2314,11 +2568,29 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     isCloudUsageLimited,
     queueExecution.busy,
     interruptedRun,
+    interruptedRunSettled,
+    queueRetryAt,
+    queueRetryRevision,
+    chatStore,
     projectStore,
     queuedMessages,
+    t,
     queueAction,
     followUpAdmissionRevision,
+    sessionProjectId,
   ]);
+
+  useEffect(() => {
+    if (!queueRetryAt) return;
+    const timer = window.setTimeout(
+      () => {
+        setQueueRetryRevision((value) => value + 1);
+        void refreshInterruptedRun();
+      },
+      Math.max(0, queueRetryAt - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [queueRetryAt, refreshInterruptedRun]);
 
   useEffect(() => {
     if (share_token && isConfigLoaded) {
@@ -2332,11 +2604,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (!_taskId || !projectStore.activeProjectId) {
+    if (!_taskId || !sessionProjectId) {
       return;
     }
     setLoading(true);
-    await chatStore.handleConfirmTask(projectStore.activeProjectId, _taskId);
+    await chatStore.handleConfirmTask(sessionProjectId, _taskId);
     setLoading(false);
   };
 
@@ -2424,7 +2696,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
 
   const handleTaskControl = async (action: 'pause' | 'resume') => {
     const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!taskId || !projectId || isPauseResumeLoading) return;
     setIsPauseResumeLoading(true);
     try {
@@ -2451,7 +2723,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     expectedTaskId?: string
   ) => {
     const state = projectStore;
-    const projectId = state.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || queueActionRef.current || queueWaitingReason) return;
     const queued = state
       .getProjectById(projectId)
@@ -2529,7 +2801,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   // Edit query handler
   const handleEditQuery = async () => {
     const taskId = chatStore.activeTaskId as string;
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
 
     // Early validation
     if (!projectId) {
@@ -2626,14 +2898,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   };
 
   const handleReorderTaskQueue = (id: string, targetId: string) => {
-    const projectId = projectStore.activeProjectId;
+    const projectId = sessionProjectId;
     if (!projectId || queueActionRef.current || queuedDispatchRef.current)
       return;
     projectStore.reorderQueuedMessage(projectId, id, targetId);
   };
 
   const handleRemoveTaskQueue = async (task_id: string) => {
-    const project_id = projectStore.activeProjectId;
+    const project_id = sessionProjectId;
     if (queueActionRef.current?.projectId === project_id) return;
     if (!project_id) {
       console.error('No active project ID found');
@@ -2802,32 +3074,112 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   ) {
     legacyApprovalVariant.disabled = true;
   }
-  const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
-    activeAsk && isInteractiveHumanReply && activeAskMessage
+  const legacyConfirmationVariant =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    isInteractiveHumanReply &&
+    activeAskMessage
+      ? createLegacyConfirmationVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onConfirm: () =>
+            void handleLegacyApprovalDecision('approved', 'once'),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  if (
+    legacyConfirmationVariant &&
+    controlOperations.some(
+      (op) =>
+        op.kind === 'interaction' &&
+        op.runId === activeInteraction?.run_id &&
+        op.interactionId === activeInteraction?.interaction_id
+    )
+  ) {
+    legacyConfirmationVariant.disabled = true;
+  }
+  const legacyQuestionVariant: BottomBoxFeedbackVariant | null =
+    !eventNativeTimelineEnabled &&
+    activeAsk &&
+    !isLegacyApproval &&
+    !isLegacyConfirmationInteraction(activeInteraction) &&
+    isInteractiveHumanReply &&
+    activeAskMessage
       ? {
-          kind: 'input',
+          kind: 'feedback',
+          presentation: 'question',
           header: {
-            eyebrow: t('chat.control-input-required'),
-            title:
+            title: t('chat.timeline-question'),
+            description:
               activeInteraction?.question || activeAskMessage.content.trim(),
           },
+          value: message,
+          placeholder: t('chat.control-response-placeholder'),
+          submitting: activeAskTask?.isPending,
+          onChange: setMessage,
+          onSubmit: () => void handleSend(),
         }
-      : 'input';
+      : null;
   // Timeline density is presentation-only. Select one shared BottomBox control
   // from the active authority before rendering Normal, Detailed, or Summarised.
   const bottomBoxControl = selectBottomBoxControl({
     humanInteractionVariant: eventNativeTimelineEnabled
       ? eventNativeHumanControl.variant
-      : legacyApprovalVariant,
+      : (legacyApprovalVariant ??
+        legacyConfirmationVariant ??
+        legacyQuestionVariant),
     runControlVariant: eventNativeTimelineEnabled
       ? eventNativeRunControlVariant
       : null,
-    composerVariant: eventNativeTimelineEnabled
-      ? 'input'
-      : legacyHumanInputVariant,
+    composerVariant: 'input',
   });
-  const bottomBoxVariant = bottomBoxControl.variant;
+  // The editing note decorates only the plain composer. An open approval or
+  // question keeps its own controls, so an edited copy never reads as an answer.
+  const bottomBoxVariant =
+    bottomBoxControl.source === 'composer' &&
+    bottomBoxControl.variant === 'input' &&
+    editingSource?.projectId === activeProjectId
+      ? {
+          kind: 'input' as const,
+          header: {
+            eyebrow: t('chat.message-editing-copy'),
+          },
+        }
+      : bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const humanDecisionVariant =
+    bottomBoxControl.source === 'human_interaction' &&
+    typeof bottomBoxVariant !== 'string' &&
+    bottomBoxVariant.kind !== 'input' &&
+    bottomBoxVariant.kind !== 'run_control'
+      ? bottomBoxVariant
+      : null;
+  const humanDecisionKey = humanDecisionVariant
+    ? eventNativeTimelineEnabled && eventNativeHumanControl.interaction
+      ? `${activeProjectId}:${eventNativeHumanControl.interaction.runId}:${eventNativeHumanControl.interaction.interactionId}:${eventNativeHumanControl.interaction.version ?? 0}`
+      : `${activeProjectId}:${activeTaskId}:${activeInteraction?.interaction_id ?? activeAskMessage?.id ?? ''}`
+    : null;
+  const handleEditUserMessage = (source: EditUserMessageSource) => {
+    // A legacy question answers through the composer text, so an earlier
+    // message must not land there while any request is open.
+    if (humanDecisionVariant) {
+      toast.info(t('chat.message-edit-after-request'));
+      return;
+    }
+    if (message.trim() || activeTask?.attaches?.length) {
+      toast.info(t('chat.message-draft-exists'));
+      return;
+    }
+    setMessage(source.content);
+    if (activeProjectId)
+      setEditingSource({ projectId: activeProjectId, sourceId: source.id });
+    if (source.attaches?.length) {
+      toast.info(t('chat.message-reattach-files'));
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
     legacyControlRunId: legacyControlTaskId,
@@ -2845,6 +3197,8 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         op.runId === (eventNativeActiveRunId ?? activeTaskId) &&
         op.phase !== 'pending'
     );
+  const isFloatingTaskRunning =
+    shouldRenderChatTimeline && composerTaskControlState === 'running';
   const handleFloatingStop = () => {
     if (eventNativeActiveProjectedRun?.status === 'running') {
       void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
@@ -2897,23 +3251,36 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           shouldRenderEventNativeTimeline &&
           activeProjectId ? (
             <EventNativeProjectTimeline
-              chatStore={projectStore.getActiveChatStore() ?? undefined}
+              chatStore={
+                projectStore.getActiveChatStore(
+                  sessionProjectId ?? undefined
+                ) ?? undefined
+              }
               detailLevel={chatTimelineDetailLevel}
               paused={composerTaskControlState === 'paused'}
               projectId={activeProjectId}
               sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
             />
           ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
+              onEditUserMessage={handleEditUserMessage}
+              sessionMode={displaySessionMode}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+            <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   title={t(
@@ -2992,23 +3359,29 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           )}
         </div>
 
-        {showFloatingStop && (
-          <div
-            data-floating-stop-control
-            className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
-            style={{ bottom: scrollBottomInsetPx }}
-          >
-            <FloatingAction
-              className="static mt-0 w-auto"
-              status={ChatTaskStatus.RUNNING}
-              onSkip={handleFloatingStop}
-              loading={isPauseResumeLoading}
-            />
-          </div>
-        )}
+        {shouldRenderChatTimeline &&
+          (showFloatingStop ||
+            isFloatingTaskRunning ||
+            isTimelineScrolledUp) && (
+            <div
+              data-floating-stop-control
+              className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
+              style={{ bottom: scrollBottomInsetPx }}
+            >
+              <FloatingAction
+                className="w-auto"
+                showStop={showFloatingStop}
+                onStop={handleFloatingStop}
+                stopLoading={isPauseResumeLoading}
+                running={isFloatingTaskRunning}
+                scrolledUp={isTimelineScrolledUp}
+                onScrollToBottom={scrollTimelineToBottom}
+              />
+            </div>
+          )}
 
         {chatStore.activeTaskId && hasAnyMessages ? (
-          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+          <div id={overlaySlotId} className="contents" />
         ) : null}
         {shouldRenderBottomBoxOverlay && (
           <div
@@ -3016,7 +3389,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[736px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
+              <HumanDecisionCard
+                key={activeProjectId ?? 'no-session'}
+                requestKey={humanDecisionKey}
+                variant={humanDecisionVariant}
+              />
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
@@ -3054,7 +3438,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                     ? 'running'
                     : getBottomBoxState()
                 }
-                variant={bottomBoxVariant}
+                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
@@ -3083,14 +3467,17 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 onSavePlan={async () => {
                   if (chatStore.activeTaskId) {
                     setLoading(true);
-                    await chatStore.savePlan(chatStore.activeTaskId);
+                    await chatStore.savePlan(
+                      chatStore.activeTaskId,
+                      activeProjectId
+                    );
                     setLoading(false);
                   }
                 }}
                 onEdit={handleEditQuery}
                 loading={loading}
                 inputProps={{
-                  value: message,
+                  value: legacyQuestionVariant ? '' : message,
                   onChange: setMessage,
                   onSend: handleSend,
                   queuesFollowUp: isTaskBusy && !activeAsk,
@@ -3109,7 +3496,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                   },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled,
+                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,

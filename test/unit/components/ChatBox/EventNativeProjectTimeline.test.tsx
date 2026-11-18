@@ -38,16 +38,19 @@ import {
   within,
 } from '@testing-library/react';
 import { animate } from 'framer-motion';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { v104GuiInputEvents } from '../../../fixtures/v104GuiInput';
 
 import {
   EventNativeProjectTimeline,
-  isChatTimelineNearBottom,
   prepareEventNativeTimelineWindow,
   selectWindowedTimelineRuns,
 } from '@/components/ChatBox/EventNativeProjectTimeline';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import {
+  recordResolvedRunModels,
+  resetResolvedRunModelsForTest,
+} from '@/service/projectRunsApi';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -81,6 +84,9 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
         }
       : null,
   }),
+}));
+vi.mock('@/service/sessionNavStatus', () => ({
+  refreshSessionNavStatuses: vi.fn(async () => undefined),
 }));
 vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
   PlanTaskBox: ({ taskId }: { taskId: string }) => (
@@ -216,15 +222,75 @@ function projection(nodes: ChatProjectionState['nodes']): ChatProjectionState {
   };
 }
 
-describe('isChatTimelineNearBottom', () => {
-  it('treats the composer inset as still pinned, not a 120px padding zone', () => {
-    expect(isChatTimelineNearBottom(150, 200)).toBe(true);
-    expect(isChatTimelineNearBottom(120, 128)).toBe(true);
-    expect(isChatTimelineNearBottom(400, 200)).toBe(false);
-  });
-});
-
 describe('EventNativeProjectTimeline', () => {
+  it.each(['narrative', 'trajectory'] as const)(
+    'restores a refused admission from durable events without optimistic messages in %s',
+    async (detailLevel) => {
+      const events = [
+        {
+          event_type: 'user.message',
+          legacy_step: null,
+          payload: {
+            content: 'Reply with the single word ok.',
+            source: 'chat',
+          },
+        },
+        {
+          event_type: 'legacy.error',
+          legacy_step: 'error',
+          payload: {
+            code: 'unsupported_thinking_effort',
+            message:
+              "effort 'max' is not supported by capability 'modelcap_internal'",
+          },
+        },
+        {
+          event_type: 'run.failed',
+          legacy_step: 'error',
+          payload: {
+            reason: 'admission_refused',
+            terminal_reason: 'error',
+            message:
+              "effort 'max' is not supported by capability 'modelcap_internal'",
+          },
+        },
+      ].map((event, index) =>
+        normalizeLocalRunEvent(
+          {
+            ...event,
+            event_id: `refused-${index}`,
+            run_id: 'run-1',
+            sequence: index + 1,
+            run_version: index + 1,
+            created_at: 1000 + index,
+          },
+          'project-1'
+        )
+      );
+      mocks.projection = projectChatEvents('project-1', events);
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel={detailLevel}
+          sessionMode={SessionMode.SINGLE_AGENT}
+          scrollBottomInsetPx={128}
+        />
+      );
+      expect(
+        screen.getAllByText('Reply with the single word ok.')[0]
+      ).toBeVisible();
+      const refusal =
+        'This model doesn’t support the selected thinking effort.';
+      // The work log body fades in after the projection settles.
+      await waitFor(() =>
+        expect(screen.getAllByText(new RegExp(refusal))[0]).toBeVisible()
+      );
+      expect(container.textContent).toContain('Set thinking effort to Default');
+      expect(container.textContent).not.toContain('modelcap_internal');
+      expect(container.textContent).not.toContain('Splitting Tasks');
+    }
+  );
+
   it.each([false, true])(
     'handles a paginated linked mirror in trajectory without its request (conflict: %s)',
     (conflict) => {
@@ -560,7 +626,7 @@ describe('EventNativeProjectTimeline', () => {
     const timelineContent = () =>
       container.querySelector('[data-chat-timeline-content]');
 
-    expect(timelineContent()).toHaveClass('max-w-[600px]');
+    expect(timelineContent()).toHaveClass('max-w-[736px]');
 
     rerender(
       <EventNativeProjectTimeline
@@ -569,7 +635,7 @@ describe('EventNativeProjectTimeline', () => {
         scrollBottomInsetPx={128}
       />
     );
-    expect(timelineContent()).not.toHaveClass('max-w-[600px]');
+    expect(timelineContent()).not.toHaveClass('max-w-[736px]');
     expect(timelineContent()).toHaveClass('w-full');
   });
 
@@ -747,6 +813,103 @@ describe('EventNativeProjectTimeline', () => {
     expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
     expect(container.querySelector('[data-narrative-plan-id]')).toBeNull();
   });
+
+  it('shows a reloaded workforce Run without the splitting card', () => {
+    const user = messageNode(0, 'user');
+    const plan: ChatPlanNode = {
+      ...messageNode(1),
+      kind: 'plan',
+      eventType: 'legacy.to_sub_tasks',
+      legacyStep: 'to_sub_tasks',
+      status: 'completed',
+      title: 'Research plan',
+      tasks: [
+        { id: 'task-1', title: 'Inspect the components', status: 'done' },
+      ],
+    };
+    mocks.projection = projection([user, plan]);
+    // History replay records its plan as already confirmed.
+    const chatStore = {
+      getState: () => ({
+        activeTaskId: 'run-1',
+        tasks: {
+          'run-1': {
+            type: 'replay',
+            messages: [
+              {
+                id: 'legacy-plan-message',
+                role: 'agent',
+                content: '',
+                step: 'to_sub_tasks',
+                isConfirm: true,
+              },
+            ],
+          },
+        },
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+
+    const { container } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
+    expect(screen.getByText('Message 0')).toBeInTheDocument();
+  });
+
+  it.each(['narrative', 'trajectory'] as const)(
+    'marks a model change between Tasks from the recorded Run models in %s',
+    (detailLevel) => {
+      resetResolvedRunModelsForTest();
+      mocks.projection = projection(
+        ['run-1', 'run-2', 'run-3'].map((runId, index) => ({
+          ...messageNode(index, 'user'),
+          id: `query-${runId}`,
+          eventId: `query-${runId}`,
+          runId,
+          runSequence: 1,
+          eventType: 'user.message',
+          purpose: 'query' as const,
+          content: `Query ${runId}`,
+        }))
+      );
+      recordResolvedRunModels('project-1', {
+        project_id: 'project-1',
+        runs: [
+          ['run-1', { platform: 'openai', type: 'gpt-4.1' }],
+          ['run-2', { platform: 'openai', type: 'gpt-4.1' }],
+          ['run-3', { platform: 'anthropic', type: 'claude-sonnet-4' }],
+        ].map(([run_id, resolved_model]) => ({
+          run_id,
+          project_id: 'project-1',
+          resolved_model,
+        })),
+      });
+
+      const { container } = render(
+        <EventNativeProjectTimeline
+          detailLevel={detailLevel}
+          projectId="project-1"
+          scrollBottomInsetPx={128}
+        />
+      );
+
+      const dividers = container.querySelectorAll(
+        '[data-model-change-divider]'
+      );
+      expect(Array.from(dividers, (divider) => divider.textContent)).toEqual([
+        'Model changed to claude-sonnet-4',
+      ]);
+      resetResolvedRunModelsForTest();
+    }
+  );
 
   it('renders semantic event nodes through the event timeline', () => {
     const unknown: ChatUnknownNode = {
@@ -1352,7 +1515,7 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    expect(scrollContainer.scrollTop).toBe(456);
+    expect(scrollContainer.scrollTop).toBe(500);
     expect(scrollContainer.scrollTo).not.toHaveBeenCalledWith({
       top: 2000,
       behavior: 'auto',
@@ -1432,6 +1595,106 @@ describe('EventNativeProjectTimeline', () => {
     );
 
     expect(animate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the anchored query in place while the response resizes the timeline', () => {
+    const scrollContainer = createScrollContainer({
+      scrollTop: 500,
+      clientHeight: 400,
+      scrollHeight: 2000,
+    });
+    const scrollContainerRef = { current: scrollContainer };
+    // Rows sit below the viewport top and move up as the timeline scrolls.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const top =
+          this === scrollContainer ? 0 : 1000 - scrollContainer.scrollTop;
+        return {
+          top,
+          bottom: top + 40,
+          left: 0,
+          right: 0,
+          height: 40,
+          width: 0,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    onTestFinished(() => {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    });
+    const resizeCallbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallbacks.push(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    const fireResize = () =>
+      resizeCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+    mocks.projection = projection([
+      messageNode(0, 'user'),
+      messageNode(1, 'assistant'),
+    ]);
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={200}
+      />
+    );
+    scrollContainer.scrollTop = 500;
+    scrollContainer.dispatchEvent(new Event('scroll'));
+
+    let finish!: () => void;
+    let step!: (value: number) => void;
+    vi.mocked(animate).mockImplementationOnce(((
+      _from: number,
+      _to: number,
+      options: { onComplete?: () => void; onUpdate?: (value: number) => void }
+    ) => {
+      step = (value) => options.onUpdate?.(value);
+      finish = () => options.onComplete?.();
+      return { stop: vi.fn() };
+    }) as unknown as typeof animate);
+    mocks.projection = projection([
+      messageNode(0, 'user'),
+      messageNode(1, 'assistant'),
+      {
+        ...messageNode(2, 'user'),
+        id: 'run-2-user',
+        eventId: 'run-2-user',
+        runId: 'run-2',
+        purpose: 'query',
+      },
+    ]);
+    rerender(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={200}
+      />
+    );
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+
+    // Work-log rows stream in mid-animation; the old position must not win.
+    step(800);
+    fireResize();
+    expect(scrollContainer.scrollTop).toBe(800);
+    step(956);
+    finish();
+    fireResize();
+
+    expect(scrollContainer.scrollTop).toBe(956);
+    expect(scrollContainer.scrollTo).not.toHaveBeenCalled();
   });
 
   it('does not follow a new assistant event when the user has scrolled up', () => {

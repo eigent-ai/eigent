@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -67,7 +68,7 @@ function SectionFallback() {
       aria-live="polite"
       className="flex min-h-[320px] w-full items-center justify-center text-ds-ink-muted-default"
     >
-      <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
+      <DsIcon icon={LoaderCircle} className="animate-spin" aria-hidden />
       <span className="sr-only">
         {t('setting.loading', { defaultValue: 'Loading settings' })}
       </span>
@@ -129,11 +130,8 @@ function AnimatedSettingsSection({
           : { opacity: 0, transform: 'translateY(6px)' }
       }
       animate={{ opacity: 1, transform: 'translateY(0px)' }}
-      exit={
-        shouldReduceMotion
-          ? { opacity: 1 }
-          : { opacity: 0, transform: 'translateY(-3px)' }
-      }
+      // Leaving is instant, so the next section never waits for this one.
+      exit={{ opacity: 0, transition: { duration: 0 } }}
       transition={{
         duration: shouldReduceMotion ? 0 : 0.14,
         ease: [0.23, 1, 0.32, 1],

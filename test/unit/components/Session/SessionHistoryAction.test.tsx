@@ -13,8 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  ActivityHeader,
   SessionHistoryAction,
-  SidePanelHeader,
 } from '@/components/Session/SidePanel/components/Header';
 import type { ProjectEventRuntimeValue } from '@/hooks/useProjectEventRuntime';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -28,15 +28,7 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
 let runtime: ProjectEventRuntimeValue;
 
 function Header() {
-  return (
-    <SidePanelHeader
-      title="Summary"
-      mode="single-agent"
-      isSidePanelVisible
-      onToggle={vi.fn()}
-      end={<SessionHistoryAction />}
-    />
-  );
+  return <ActivityHeader scope="latest" onScopeChange={vi.fn()} />;
 }
 
 describe('Session history header action', () => {

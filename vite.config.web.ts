@@ -19,6 +19,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
+import { emojiData } from './scripts/vite-emoji-data';
 
 const proxyHttpsAgent = new https.Agent({
   keepAlive: true,
@@ -37,7 +38,7 @@ export default defineConfig(({ mode }) => {
         '@': path.join(__dirname, 'src'),
       },
     },
-    plugins: [react()],
+    plugins: [react(), emojiData(__dirname)],
     optimizeDeps: {
       exclude: ['@stackframe/react'],
       force: true,

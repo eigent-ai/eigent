@@ -17,6 +17,17 @@
 from app.run_runtime.coordinator import RunCoordinator
 
 _default_run_coordinator: RunCoordinator | None = None
+_process_shutting_down = False
+
+
+def mark_process_shutting_down() -> None:
+    """Work cancelled from here on is recorded by restart recovery."""
+    global _process_shutting_down
+    _process_shutting_down = True
+
+
+def process_shutting_down() -> bool:
+    return _process_shutting_down
 
 
 def get_default_run_coordinator() -> RunCoordinator:

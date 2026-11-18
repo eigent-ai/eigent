@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatAppDate } from '@/lib/appDate';
 import { clsx, type ClassValue } from 'clsx';
 import { format, parseISO } from 'date-fns';
 import i18next from 'i18next';
@@ -89,13 +90,13 @@ export function formatDateTime(
       utcString.endsWith('Z') ? utcString : utcString + 'Z'
     );
     if (formatStr === 'MMM dd, yyyy HH:mm') {
-      return new Intl.DateTimeFormat(currentLocale(), {
+      return formatAppDate(date, {
         year: 'numeric',
         month: 'short',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      }).format(date);
+      });
     }
     return format(date, formatStr);
   } catch {
@@ -115,11 +116,11 @@ export function formatDate(utcString: string | null | undefined): string {
     const date = parseISO(
       utcString.endsWith('Z') ? utcString : utcString + 'Z'
     );
-    return new Intl.DateTimeFormat(currentLocale(), {
+    return formatAppDate(date, {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
-    }).format(date);
+    });
   } catch {
     return i18next.t('layout.invalid-date', {
       defaultValue: 'Invalid date',

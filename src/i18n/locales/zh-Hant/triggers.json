@@ -165,7 +165,7 @@
   "execution-in-progress": "正在執行...",
   "waiting-to-execute": "正在等待執行...",
   "execution-cancelled": "執行已取消",
-  "execution-missed": "錯過執行",
+  "execution-missed": "Eigent 未能及時收到這次執行，因此沒有開始。請保持 Eigent 開啟並已登入，然後再試一次。",
   "unknown-status": "未知狀態",
   "trigger-label": "自動化",
   "execution-started-toast": "執行已開始：{{name}}",

@@ -18,12 +18,13 @@ import {
   type SessionNavItem,
 } from '@/components/SpaceSidebar/SessionNavListRows';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { ArrowLeft } from 'lucide-react';
 import { useMemo } from 'react';
@@ -47,7 +48,9 @@ export default function Sessions({
   onDeleteSession,
 }: SessionsProps) {
   const { t } = useTranslation();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const setActiveWorkspaceTab = useSessionPageTabStore(
+    (s) => s.setActiveWorkspaceTab
+  );
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip');
 
   const sessions: SessionNavItem[] = useMemo(() => {
@@ -94,7 +97,7 @@ export default function Sessions({
               className="no-drag shrink-0 rounded-lg text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
               aria-label={backToWorkspaceTooltip}
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ArrowLeft} aria-hidden />
             </Button>
           </TooltipSimple>
         }

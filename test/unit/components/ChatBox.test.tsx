@@ -25,6 +25,7 @@ vi.mock('@/hooks/useSessionExecution', () => ({
 }));
 
 import BottomBox from '@/components/ChatBox/BottomBox';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
@@ -32,6 +33,7 @@ import { createChatStoreInstance } from '@/store/chatStore';
 import { resetConnectionConfig } from '@/store/connectionStore';
 import { resetFollowUpAdmissionClaims } from '@/store/followUpAdmissionClaims';
 import { resetSessionDrafts } from '@/store/sessionDraftStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -40,7 +42,7 @@ import {
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router-dom';
@@ -55,6 +57,8 @@ import {
   proxyFetchGet,
 } from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
+import { ProjectChatContainer } from '../../../src/components/ChatBox/ProjectChatContainer';
+import { SessionLoadingCover } from '../../../src/components/ChatBox/SessionLoadingHalo';
 import { useAuthStore } from '../../../src/store/authStore';
 import { usePageTabStore } from '../../../src/store/pageTabStore';
 
@@ -83,7 +87,7 @@ import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { invalidatePendingFollowUps } from '@/service/followUpQueueApi';
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
 }));
 
 // Mock dependencies (use the same relative paths as the imports above)
@@ -256,6 +260,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
           ))}
           <input
             data-testid="message-input"
+            ref={inputProps.textareaRef}
             placeholder={inputProps.placeholder}
             value={inputProps.value}
             disabled={inputProps.disabled}
@@ -421,6 +426,7 @@ describe('ChatBox Component', async () => {
 
   const defaultProjectStoreState = {
     activeProjectId: 'test-project-id',
+    historyLoadingProjectIds: {} as Record<string, true>,
     projects: {},
     createProject: vi.fn(),
     setActiveProject: vi.fn(),
@@ -520,6 +526,8 @@ describe('ChatBox Component', async () => {
     resetSessionDrafts();
     resetFollowUpAdmissionClaims();
     setUsageAccount(null);
+    // A closed usage reminder is kept in the store; start each test without one.
+    useUsageNoticeStore.setState({ dismissedBanner: null });
     setUsageModelType('cloud');
     modelConfigHarness.cloudUsageLimitReached = false;
     // Reset all mocks
@@ -565,7 +573,9 @@ describe('ChatBox Component', async () => {
       projectStore: defaultProjectStoreState as any,
       chatStore: defaultChatStoreState as any,
     });
-    mockUseProjectStore.mockReturnValue(defaultProjectStoreState as any);
+    mockUseProjectStore.mockImplementation((selector: any) =>
+      selector ? selector(defaultProjectStoreState) : defaultProjectStoreState
+    );
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
@@ -618,6 +628,78 @@ describe('ChatBox Component', async () => {
     );
   };
 
+  it('sends from the non-active pane and keeps the other composer draft', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <BrowserRouter>
+        <div data-testid="pane-a">
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+        <div data-testid="pane-b">
+          <SessionPaneProvider projectId="other-session">
+            <ChatBox />
+          </SessionPaneProvider>
+        </div>
+      </BrowserRouter>
+    );
+    const a = within(view.getByTestId('pane-a'));
+    const b = within(view.getByTestId('pane-b'));
+    await user.type(a.getByTestId('message-input'), 'Keep A draft');
+    await user.type(b.getByTestId('message-input'), 'Send from B');
+    await user.click(b.getByTestId('send-button'));
+    await waitFor(() =>
+      expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+    );
+    expect(defaultChatStoreState.startTask.mock.calls[0][7]).toBe(
+      'other-session'
+    );
+    expect(a.getByTestId('message-input')).toHaveValue('Keep A draft');
+    expect(b.getByTestId('message-input')).toHaveValue('');
+    expect(defaultProjectStoreState.activeProjectId).toBe('test-project-id');
+  });
+
+  it('focuses the composer once per chat-focus request, not again when pane focus returns', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const paneTree = () => (
+        <BrowserRouter>
+          <SessionPaneProvider projectId="test-project-id">
+            <ChatBox />
+          </SessionPaneProvider>
+        </BrowserRouter>
+      );
+      const view = render(paneTree());
+      const focus = vi.spyOn(screen.getByTestId('message-input'), 'focus');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatFocusRequestId: 1,
+          workspaceChatFocusProjectId: null,
+        });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      // Focus moves to another Session and back without a new request.
+      defaultProjectStoreState.activeProjectId = 'other-session';
+      view.rerender(paneTree());
+      defaultProjectStoreState.activeProjectId = 'test-project-id';
+      view.rerender(paneTree());
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        usePageTabStore.setState({ workspaceChatFocusRequestId: 2 });
+      });
+      act(() => vi.advanceTimersByTime(200));
+      expect(focus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe('subscription quota copy', () => {
     const trial = {
       plan_key: 'pro',
@@ -669,6 +751,61 @@ describe('ChatBox Component', async () => {
       renderChatBox();
       expect(latestBanner()).toBeNull();
     });
+    it('keeps a closed reminder closed in other Sessions and after a restart, until it no longer applies', () => {
+      const relaxed = {
+        ...trial,
+        trial_daily_credits_used: 10,
+        trial_daily_credits_remaining: 290,
+        trial_total_credits_used: 10,
+        trial_total_credits_remaining: 990,
+      };
+      try {
+        setUsageAccount('user@example.com');
+        useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+        const view = renderChatBox();
+        act(() => latestBanner()?.onDismiss?.());
+        expect(latestBanner()).toBeNull();
+
+        // Another Session mounts a new composer.
+        view.unmount();
+        renderChatBox();
+        expect(latestBanner()).toBeNull();
+
+        // A failed plan request yields no reminder either; it stays closed.
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: null, credits: 472 })
+        );
+        expect(useUsageNoticeStore.getState().dismissedBanner).not.toBeNull();
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 })
+        );
+        expect(latestBanner()).toBeNull();
+
+        // A restart reads the account's closed reminder back.
+        act(() => {
+          setUsageAccount(null);
+          setUsageAccount('user@example.com');
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 });
+        });
+        expect(latestBanner()).toBeNull();
+
+        // Once usage is back under the line, the next crossing shows again.
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: relaxed, credits: 9000 })
+        );
+        expect(latestBanner()).toBeNull();
+        expect(useUsageNoticeStore.getState().dismissedBanner).toBeNull();
+        act(() =>
+          useUsageNoticeStore.setState({ subscription: trial, credits: 472 })
+        );
+        expect(latestBanner()).toMatchObject({ severity: 'warning' });
+      } finally {
+        setUsageAccount(null);
+        window.localStorage.removeItem(
+          'eigent-usage-banner-dismissed:user@example.com'
+        );
+      }
+    });
   });
 
   describe('Initial Render', () => {
@@ -706,6 +843,32 @@ describe('ChatBox Component', async () => {
         );
       });
       expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+    });
+
+    it('keeps an unsent draft when a request asks to fill only an empty composer', async () => {
+      const user = userEvent.setup();
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: '#skill-creator Turn this Task into a skill.',
+            reviewHandoffIds: [],
+            ifEmpty: true,
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+      });
+      expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+      expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
     });
 
     it('marks review comments sent only after Chat accepts the message', async () => {
@@ -861,6 +1024,44 @@ describe('ChatBox Component', async () => {
           : 'wrong-tab-type'
       ).toBeUndefined();
       expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
+    it('holds the first load for the history replay only while the event timeline is empty', () => {
+      eventNativeHarness.enabled = true;
+      const durable = runningEventNativeSnapshot();
+      eventNativeHarness.snapshot = {
+        ...durable,
+        chat: { ...durable.chat, nodes: [] },
+      };
+      const loading = defaultProjectStoreState.historyLoadingProjectIds;
+      loading['test-project-id'] = true;
+      const page = () => (
+        <BrowserRouter>
+          <SessionLoadingCover
+            sessionKey="test-project-id"
+            loading={false}
+            label="Loading conversation"
+          >
+            <ChatBox />
+          </SessionLoadingCover>
+        </BrowserRouter>
+      );
+      const cover = () =>
+        document
+          .querySelector('[data-session-loading-cover]')
+          ?.getAttribute('data-session-loading-cover');
+      try {
+        const view = render(page());
+        // Nothing durable to show yet: the replayed history is the content.
+        expect(cover()).toBe('hidden');
+
+        eventNativeHarness.snapshot = durable;
+        view.rerender(page());
+        // Durable events are on screen; the replay no longer holds the page.
+        expect(cover()).toBe('shown');
+      } finally {
+        delete loading['test-project-id'];
+      }
     });
 
     it('recovers an admitted review handoff from the durable user message', async () => {
@@ -1021,6 +1222,30 @@ describe('ChatBox Component', async () => {
       expect(screen.getByTestId('message-input')).toHaveValue('');
     });
 
+    it('waits to send until the Session that Send opened has started', async () => {
+      const user = userEvent.setup();
+      render(sessionView('session-a'));
+      await user.type(screen.getByTestId('message-input'), 'Early message');
+
+      // Workspace opened this Session and is still creating and starting it.
+      act(() =>
+        useSessionStartStore.getState().markSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+      expect(screen.getByTestId('message-input')).toHaveValue('Early message');
+
+      act(() =>
+        useSessionStartStore.getState().clearSessionStarting('session-a')
+      );
+      expect(screen.getByTestId('message-input')).not.toBeDisabled();
+      await user.click(screen.getByTestId('send-button'));
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1)
+      );
+    });
+
     it('keeps review feedback attached to a restored draft', async () => {
       const user = userEvent.setup();
       const view = render(sessionView('test-project-id'));
@@ -1179,6 +1404,66 @@ describe('ChatBox Component', async () => {
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
+    describe('Edit and resend', () => {
+      const editUserMessage = (
+        source: Parameters<
+          NonNullable<
+            Parameters<typeof ProjectChatContainer>[0]['onEditUserMessage']
+          >
+        >[0]
+      ) => {
+        const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+        expect(props?.onEditUserMessage).toBeTypeOf('function');
+        act(() => props!.onEditUserMessage!(source));
+      };
+      const composerVariant = () =>
+        vi.mocked(BottomBox).mock.calls.at(-1)?.[0].variant;
+
+      it('copies an earlier message into the composer as an edited copy', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Hello');
+        expect(composerVariant()).toEqual({
+          kind: 'input',
+          header: { eyebrow: 'chat.message-editing-copy' },
+        });
+        expect(toast.info).not.toHaveBeenCalled();
+
+        await user.clear(screen.getByTestId('message-input'));
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('keeps an unsent draft instead of replacing it', async () => {
+        const user = userEvent.setup();
+        renderChatBox();
+        await user.type(screen.getByTestId('message-input'), 'Unsent draft');
+
+        editUserMessage({ id: '1', content: 'Hello' });
+
+        expect(screen.getByTestId('message-input')).toHaveValue('Unsent draft');
+        expect(toast.info).toHaveBeenCalledWith('chat.message-draft-exists');
+        expect(composerVariant()).toBe('input');
+      });
+
+      it('asks for files to be attached again', () => {
+        renderChatBox();
+
+        editUserMessage({
+          id: '1',
+          content: 'Summarize this',
+          attaches: [{ fileName: 'report.pdf' }],
+        });
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Summarize this'
+        );
+        expect(toast.info).toHaveBeenCalledWith('chat.message-reattach-files');
+      });
+    });
+
     it.each([
       ['running', 'pause'],
       ['pause', 'resume'],
@@ -1266,6 +1551,150 @@ describe('ChatBox Component', async () => {
           'single-agent',
           undefined
         );
+      });
+    });
+
+    it('asks to confirm a Memory change review instead of a text answer', async () => {
+      const user = userEvent.setup();
+      const review = {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'test-task-id',
+        version: 0,
+        title: 'Review Memory change',
+        question: "Allow the Agent to update Memory 'Favourite drink: coffee'?",
+        agent: 'single_agent',
+        display_arguments: {
+          before: { content: 'Favourite drink: coffee' },
+          after: { content: 'Favourite drink: tea' },
+        },
+      };
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.includes('/interactions?status=pending')
+            ? {
+                interactions: [
+                  {
+                    interaction_id: 'review-1',
+                    status: 'requested',
+                    version: 0,
+                  },
+                ],
+              }
+            : { runs: [] }
+        )
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'single_agent',
+              hasMessages: true,
+              messages: [
+                { id: 'prompt', role: 'user', content: 'Update my drink' },
+                {
+                  id: 'ask-review',
+                  role: 'agent',
+                  step: 'ask',
+                  content: review.question,
+                  agent_name: 'single_agent',
+                  interaction: review,
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByText('Review Memory change')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/runs/test-task-id/interactions/review-1/decisions',
+          expect.objectContaining({ decision: { decision: 'approved' } })
+        )
+      );
+    });
+
+    describe('question still waiting in a reopened Session', () => {
+      const restoredQuestionState = (durableRunStatus: string) => ({
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            type: 'replay',
+            status: 'finished',
+            durableRunStatus,
+            activeAsk: 'single_agent',
+            hasMessages: true,
+            messages: [
+              { id: 'prompt', role: 'user', content: 'Save my colour' },
+              {
+                id: 'ask',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+                agent_name: 'single_agent',
+                interaction: {
+                  interaction_id: 'question-1',
+                  interaction_type: 'question',
+                  run_id: 'test-task-id',
+                  question: 'Which colour?',
+                  agent: 'single_agent',
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      it('answers it above the composer', async () => {
+        const user = userEvent.setup();
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('waiting_for_user') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.getByText('Which colour?')).toBeInTheDocument();
+        await user.type(
+          screen.getByRole('textbox', { name: /feedback/i }),
+          'teal'
+        );
+        await user.click(
+          screen.getByRole('button', { name: /send.feedback/i })
+        );
+
+        await waitFor(() =>
+          expect(_mockFetchPost).toHaveBeenCalledWith(
+            '/chat/test-project-id/human-reply',
+            expect.objectContaining({
+              agent: 'single_agent',
+              reply: 'teal',
+              interaction_id: 'question-1',
+            })
+          )
+        );
+      });
+
+      it('offers nothing once the Run no longer waits', () => {
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: restoredQuestionState('completed') as any,
+        });
+
+        renderChatBox();
+
+        expect(screen.queryByRole('textbox', { name: /feedback/i })).toBeNull();
       });
     });
 
@@ -3021,6 +3450,22 @@ describe('ChatBox Component', async () => {
             expect(screen.queryByText('chat.run-interrupted-title')).toBeNull()
           );
           for (const status of ['pending', 'running', 'completed']) {
+            act(() =>
+              runProjectionStore.upsertRunSummaries('test-project-id', [
+                {
+                  run_id: 'test-unique-id',
+                  project_id: 'test-project-id',
+                  status,
+                  version:
+                    ['pending', 'running', 'completed'].indexOf(status) + 1,
+                  updated_at:
+                    200 + ['pending', 'running', 'completed'].indexOf(status),
+                  origin: 'local',
+                  latest_attempt: { attempt_number: 1, status },
+                },
+              ])
+            );
+
             const nextChat = {
               ...interruptedChat,
               activeTaskId: 'test-unique-id',
@@ -3226,7 +3671,13 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           )
         );
@@ -3452,7 +3903,13 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url === '/chat/test-project-id/status'
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           )
         );
@@ -3592,7 +4049,13 @@ describe('ChatBox Component', async () => {
             });
           return Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done', consumer_alive: true }
+              ? {
+                  has_lock: true,
+                  status: 'done',
+                  consumer_alive: true,
+                  run_id: 'test-task-id',
+                  subscriber_count: 1,
+                }
               : { items: [] }
           );
         });
@@ -3662,6 +4125,184 @@ describe('ChatBox Component', async () => {
       }
     );
 
+    it('quietly retries a busy queued admission once the Session is available', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-busy',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      _mockFetchPost
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        )
+        .mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).toHaveBeenCalledWith('test-project-id', 'queued-busy', false)
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled();
+      expect(defaultChatStoreState.setActiveTaskId).not.toHaveBeenCalledWith(
+        'queued-busy'
+      );
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2), {
+        timeout: 3000,
+      });
+      expect(defaultProjectStoreState.removeQueuedMessage).toHaveBeenCalledWith(
+        'test-project-id',
+        'queued-busy'
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('holds a queued message until the Session run status is reconciled', async () => {
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-held',
+            content: 'Follow up once',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'finished',
+            },
+          },
+        } as any,
+      });
+      let releaseRuns!: (value: unknown) => void;
+      const runs = new Promise((resolve) => {
+        releaseRuns = resolve;
+      });
+      mockFetchGet.mockImplementation((url: string) =>
+        url === '/runs'
+          ? runs
+          : Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? {
+                    has_lock: true,
+                    status: 'done',
+                    run_id: 'test-task-id',
+                    consumer_alive: true,
+                    subscriber_count: 1,
+                  }
+                : { runs: [] }
+            )
+      );
+      _mockFetchPost.mockResolvedValue({ success: true });
+      renderChatBox();
+      await waitFor(() =>
+        expect(mockFetchGet).toHaveBeenCalledWith('/runs', expect.anything())
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(_mockFetchPost).not.toHaveBeenCalled();
+      expect(
+        defaultProjectStoreState.setQueuedMessageProcessing
+      ).not.toHaveBeenCalledWith('test-project-id', 'queued-held', true);
+      await act(async () => {
+        releaseRuns({ runs: [] });
+      });
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: 'queued-held' })
+      );
+    });
+
+    it('backs off a busy queued admission and explains the wait once', async () => {
+      vi.useFakeTimers();
+      try {
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-busy',
+              content: 'Follow up once',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        _mockFetchPost.mockRejectedValue(
+          Object.assign(new Error('Still finishing'), {
+            response: { data: { detail: { code: 'project_run_active' } } },
+          })
+        );
+        const advance = (ms: number) =>
+          act(async () => {
+            await vi.advanceTimersByTimeAsync(ms);
+          });
+        const waitNotices = () =>
+          vi
+            .mocked(toast.info)
+            .mock.calls.filter(([, options]) =>
+              String((options as any)?.id ?? '').startsWith('queue-wait:')
+            );
+        renderChatBox();
+        await advance(50);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+        await advance(1050);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        // The second wait is longer than the first.
+        await advance(1500);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(2);
+        await advance(600);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(3);
+        expect(waitNotices()).toHaveLength(0);
+        await advance(4100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(4);
+        expect(waitNotices()).toHaveLength(1);
+        await advance(8100);
+        expect(_mockFetchPost).toHaveBeenCalledTimes(5);
+        expect(waitNotices()).toHaveLength(1);
+        expect(toast.error).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps an unstarted queue row available when admission fails', async () => {
       defaultProjectStoreState.getProjectById.mockReturnValue({
         queuedMessages: [
@@ -3698,7 +4339,13 @@ describe('ChatBox Component', async () => {
       mockFetchGet.mockImplementation((url: string) =>
         Promise.resolve(
           url.endsWith('/status')
-            ? { has_lock: true, status: 'done', consumer_alive: true }
+            ? {
+                has_lock: true,
+                status: 'done',
+                consumer_alive: true,
+                run_id: 'test-task-id',
+                subscriber_count: 1,
+              }
             : { items: [] }
         )
       );
@@ -4249,6 +4896,140 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Agent Interaction', () => {
+    it('answers a legacy question in a separate card while the composer stays disabled', async () => {
+      const user = userEvent.setup();
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      const response = within(card).getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      expect(within(card).getByText('Which colour?')).toBeInTheDocument();
+      expect(card.querySelector('[data-question-divider]')).not.toBeNull();
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(screen.getByTestId('bottom-box')).not.toContainElement(response);
+
+      await user.type(response, 'green{Shift>}{Enter}{/Shift}please');
+      expect(response).toHaveValue('green\nplease');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      await user.type(response, '{Enter}');
+      await waitFor(() =>
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/human-reply',
+          expect.objectContaining({
+            agent: 'test-agent',
+            reply: 'green\nplease',
+          })
+        )
+      );
+    });
+
+    it('keeps Edit and resend out of an open legacy question answer', () => {
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              activeAsk: 'test-agent',
+              hasMessages: true,
+              messages: [
+                { id: 'earlier', role: 'user', content: 'Earlier request' },
+                {
+                  id: 'legacy-question',
+                  role: 'agent',
+                  step: 'ask',
+                  content: 'Which colour?',
+                },
+              ],
+            },
+          },
+        } as any,
+      });
+      renderChatBox();
+
+      const props = vi.mocked(ProjectChatContainer).mock.calls.at(-1)?.[0];
+      act(() =>
+        props!.onEditUserMessage!({ id: 'earlier', content: 'Earlier request' })
+      );
+
+      const card = screen.getByRole('region', {
+        name: 'chat.control-region-label',
+      });
+      expect(
+        within(card).getByRole('textbox', {
+          name: 'chat.control-feedback-label',
+        })
+      ).toHaveValue('');
+      expect(screen.getByTestId('message-input')).toHaveValue('');
+      expect(toast.info).toHaveBeenCalledWith(
+        'chat.message-edit-after-request'
+      );
+    });
+
+    it('keeps a failed legacy question answer in the card for retry', async () => {
+      const user = userEvent.setup();
+      _mockFetchPost.mockRejectedValueOnce(new Error('Reply unavailable'));
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            status: 'running',
+            activeAsk: 'test-agent',
+            hasMessages: true,
+            messages: [
+              {
+                id: 'legacy-question',
+                role: 'agent',
+                step: 'ask',
+                content: 'Which colour?',
+              },
+            ],
+          },
+        },
+      } as any;
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+      renderChatBox();
+      const response = screen.getByRole('textbox', {
+        name: 'chat.control-feedback-label',
+      });
+      await user.type(response, 'green{Enter}');
+      await waitFor(() => expect(storeObj.removeMessage).toHaveBeenCalled());
+      expect(response).toHaveValue('green');
+      expect(screen.getByTestId('message-input')).toBeDisabled();
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+    });
+
     it('should handle human reply when activeAsk is set', async () => {
       const user = userEvent.setup();
 

@@ -16,6 +16,7 @@ import {
   HumanInteractionCard,
   isHumanInteractionReadOnly,
 } from '@/components/ChatBox/MessageItem/HumanInteractionCard';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 import { HostProvider } from '@/host';
 import { notifyRunStreamReopened } from '@/lib/events/durableRunEvents';
 import { ControlOutcomeUnknown } from '@/service/controlRequest';
@@ -94,6 +95,23 @@ describe('HumanInteractionCard', () => {
     );
     mocks.isHumanInteractionStillPending.mockResolvedValue(true);
     mocks.getHumanInteractionReceipt.mockResolvedValue(null);
+  });
+
+  it('submits an approval with the non-active pane Session identity', async () => {
+    render(
+      <SessionPaneProvider projectId="pane-b">
+        <HumanInteractionCard interaction={interaction} />
+      </SessionPaneProvider>
+    );
+    const approve = screen.getByRole('button', { name: 'Approve once' });
+    await waitFor(() => expect(approve).toBeEnabled());
+    fireEvent.click(approve);
+    await waitFor(() =>
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.decideHumanInteraction.mock.calls[0][1]).toMatchObject({
+      projectId: 'pane-b',
+    });
   });
 
   it('clears a failed submission during recovery and permits retry only after revalidation', async () => {

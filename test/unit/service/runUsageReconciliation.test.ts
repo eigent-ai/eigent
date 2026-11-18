@@ -950,3 +950,73 @@ describe('failure evidence safety boundaries', () => {
     }
   );
 });
+
+describe('interrupted task receipts', () => {
+  it.each(['run.interrupted', 'runtime.interrupted'])(
+    'retains completed actions through %s',
+    async (terminal) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1, 'tool.dispatched', {
+            tool_call_id: 'write',
+            tool_name: 'write_file',
+            input: { path: 'report.md' },
+          }),
+          event(2, 'tool.completed', {
+            tool_call_id: 'write',
+            tool_name: 'write_file',
+            output: 'written',
+          }),
+          event(3, 'tool.outcome_unknown', {
+            tool_call_id: 'uncertain',
+            tool_name: 'send',
+          }),
+          event(4, terminal, { reason: 'provider_failure' }),
+        ])
+      );
+      const result = await readTerminalRunResult({
+        ...input,
+        terminalEventTypes: [terminal],
+        includeFailureFacts: true,
+      });
+      expect(
+        result.failureFacts?.actions.some(
+          (a) => a.id === 'write' && a.outcome === 'completed'
+        )
+      ).toBe(true);
+      expect(result.failureFacts?.finalResponse).toBe('absent');
+      expect(
+        result.failureFacts?.actions.some(
+          (a) => a.id === 'uncertain' && a.outcome === 'outcome_unknown'
+        )
+      ).toBe(true);
+    }
+  );
+});
+
+it('uses the latest interruption while retaining earlier completed side effects', async () => {
+  fetchGetMock.mockResolvedValue(
+    page([
+      event(1, 'tool.completed', {
+        tool_call_id: 'saved',
+        tool_name: 'write_file',
+      }),
+      event(2, 'run.interrupted', {}),
+      event(3, 'run.attempt_created', {}),
+      event(4, 'tool.completed', {
+        tool_call_id: 'new',
+        tool_name: 'read_file',
+      }),
+      event(5, 'run.interrupted', {}),
+    ])
+  );
+  const result = await readTerminalRunResult({
+    ...input,
+    terminalEventTypes: ['run.interrupted'],
+    includeFailureFacts: true,
+  });
+  expect(result.failureFacts?.actions.map((action) => action.id)).toEqual([
+    'saved',
+    'new',
+  ]);
+});

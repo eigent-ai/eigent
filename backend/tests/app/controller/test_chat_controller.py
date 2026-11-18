@@ -209,6 +209,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             # Mock async generator
             async def mock_generator():
@@ -327,10 +333,12 @@ class TestChatController:
                     return_value=coordinator,
                 ),
             ):
-                with pytest.raises(UserException) as error:
+                with pytest.raises(HTTPException) as error:
                     await start_chat_stream(chat_data, mock_request)
 
-            assert error.value.error_code == "project_consumer_active"
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_consumer_active"
+            assert error.value.detail["run_id"] == "existing-run"
         finally:
             release.set()
             await subscription.aclose()
@@ -958,13 +966,16 @@ class TestChatController:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("declared", "queued", "recorded"),
+        ("run_id", "declared", "queued", "recorded"),
         [
-            (None, None, "chat"),
-            (None, "local", "chat"),
-            (None, "remote_control", "chat"),
-            ("scheduled", None, "scheduled"),
-            (None, "scheduled", "scheduled"),
+            ("run-trigger-source", None, None, "chat"),
+            ("run-trigger-source", None, "local", "chat"),
+            ("run-trigger-source", None, "remote_control", "chat"),
+            ("run-trigger-source", "scheduled", None, "scheduled"),
+            # The caller forgot the trigger label; Brain's queue row decides.
+            ("run-trigger-source", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, None, "scheduled"),
         ],
     )
     async def test_trigger_text_is_recorded_with_its_source(
@@ -973,13 +984,13 @@ class TestChatController:
         mock_request,
         mock_task_lock,
         tmp_path,
+        run_id,
         declared,
         queued,
         recorded,
     ):
         """Memory must be able to tell trigger text from the user's words."""
 
-        run_id = "run-trigger-source"
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,
@@ -1297,7 +1308,7 @@ class TestChatController:
         self, sample_chat_data, mock_request, mock_task_lock
     ):
         """Run-scoped values stay in RunContext; CAMEL path keys are published."""
-        chat_data = Chat(**sample_chat_data)
+        chat_data = Chat(**sample_chat_data, timezone="America/New_York")
 
         with (
             patch(
@@ -1315,6 +1326,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1329,6 +1346,8 @@ class TestChatController:
             assert run_context.api_key == "test_key"
             assert run_context.api_base_url == "https://api.openai.com/v1"
             assert run_context.browser_port == 8080
+            assert run_context.timezone == "America/New_York"
+            assert "America/New_York" in run_context.prompt_current_time
             assert os.environ.get("CAMEL_LOG_DIR") == str(
                 run_context.camel_log_dir
             )
@@ -1364,6 +1383,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1408,6 +1433,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://127.0.0.1:9222"},
@@ -1452,6 +1483,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://worker-17:9222"},
@@ -2144,6 +2181,12 @@ class TestChatControllerIntegration:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             mock_task_lock = MagicMock()
             mock_task_lock.put_queue = AsyncMock()
@@ -2566,3 +2609,77 @@ async def test_session_model_still_rejects_a_different_model(
         with pytest.raises(HTTPException) as error:
             await _prepare_chat_run(chat_data, MagicMock())
     assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_conflict", [False, True])
+async def test_refused_initial_admission_is_durably_failed(
+    sample_chat_data, mock_request, tmp_path, monkeypatch, retry_conflict
+):
+    import app.controller.chat_controller as controller
+    from app.workspace_config import UnsupportedThinkingEffortError
+
+    journal = SQLiteRunJournal(tmp_path / "refused.db")
+    coordinator = RunCoordinator(journal=journal)
+    data = Chat(**sample_chat_data)
+    run_id = data.run_id or data.task_id
+
+    async def refuse(*args, **kwargs):
+        journal.ensure_run(
+            run_id=run_id, project_id=data.project_id, status="pending"
+        )
+        if retry_conflict:
+            raise HTTPException(
+                status_code=409, detail={"code": "project_run_active"}
+            )
+        raise UnsupportedThinkingEffortError("Unsupported effort")
+
+    monkeypatch.setattr(controller, "get_default_run_journal", lambda: journal)
+    monkeypatch.setattr(
+        controller, "get_default_run_coordinator", lambda: coordinator
+    )
+    monkeypatch.setattr(controller, "get_task_lock_if_exists", lambda _: None)
+    monkeypatch.setattr(controller, "_prepare_chat_run", refuse)
+    with pytest.raises(HTTPException) as error:
+        await post(data, mock_request)
+    if retry_conflict:
+        assert error.value.status_code == 409
+        assert journal.get_run(run_id).status == "pending"
+        assert journal.list_events(run_id) == []
+        await coordinator.close()
+        return
+    assert error.value.status_code == 422
+    assert journal.get_run(run_id).status == "failed"
+    prompt, notice, failure = journal.list_events(run_id)
+    assert prompt.event_type == "user.message"
+    assert prompt.payload["content"] == data.question
+    assert notice.event_type == "legacy.error"
+    assert notice.payload["code"] == "unsupported_thinking_effort"
+    assert failure.event_type == "run.failed"
+    assert failure.payload["message"] == "Unsupported effort"
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_warm_follow_up_lease_conflict_is_a_typed_409(
+    sample_chat_data, mock_request, monkeypatch
+):
+    import app.controller.chat_controller as controller
+    from app.model.chat import SupplementChat
+    from app.run_journal import ProjectExecutionLeaseConflictError
+
+    async def busy(*args, **kwargs):
+        raise ProjectExecutionLeaseConflictError(
+            project_id="session", owner_run_id="owner"
+        )
+
+    monkeypatch.setattr(controller, "_admit_improve", busy)
+    with pytest.raises(HTTPException) as error:
+        await controller.improve(
+            "session",
+            SupplementChat(question="queued", task_id="next"),
+            mock_request,
+        )
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "project_run_active"
+    assert error.value.detail["run_id"] == "owner"

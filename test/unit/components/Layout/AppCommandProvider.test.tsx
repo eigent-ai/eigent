@@ -27,7 +27,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const setActiveProject = vi.fn();
@@ -55,6 +55,8 @@ const mocks = vi.hoisted(() => {
     activeChatStore,
     closeSettings: vi.fn(),
     ensureProjectRuntimeLoaded: vi.fn(),
+    getCurrentPinnedSpaceIds: vi.fn(() => ['space-a', 'space-b']),
+    openSpaceView: vi.fn(),
     openSettings: vi.fn(),
     openPreviewTab: vi.fn(),
     projectRuntimeState,
@@ -63,12 +65,15 @@ const mocks = vi.hoisted(() => {
     runAfterWorkspaceConfigurationSave: vi.fn(),
     setActiveProject,
     setActiveWorkspaceTab: vi.fn(),
+    setShellPlace: vi.fn(),
+    openSpaceWorkspaceTab: vi.fn(),
     setChatTimelineDetailLevel: vi.fn(),
     setNuwFileNum,
     spaceState,
     toastError: vi.fn(),
     toggleSessionPreview: vi.fn(),
     toggleWorkspaceSidebar: vi.fn(),
+    activeWorkspaceTab: 'project',
   };
 });
 
@@ -105,40 +110,41 @@ vi.mock('@/store/projectRuntimeStore', () => {
   return { useProjectRuntimeStore };
 });
 
-vi.mock('@/store/pageTabStore', () => ({
-  WorkspaceTab: {
-    Dispatch: 'dispatch',
-    Files: 'files',
-    NewProject: 'new-project',
-    Project: 'project',
-    Triggers: 'triggers',
-    Workforce: 'workforce',
-  },
-  usePageTabStore: (
-    selector: (state: {
-      activeWorkspaceTab: string;
-      chatTimelineDetailLevel: string;
-      openPreviewTab: typeof mocks.openPreviewTab;
-      requestToggleSessionSidePanel: typeof mocks.requestToggleSessionSidePanel;
-      setActiveWorkspaceTab: typeof mocks.setActiveWorkspaceTab;
-      setChatTimelineDetailLevel: typeof mocks.setChatTimelineDetailLevel;
-      requestWorkspaceChatFocus: typeof mocks.requestWorkspaceChatFocus;
-      toggleSessionPreview: typeof mocks.toggleSessionPreview;
-      toggleWorkspaceSidebar: typeof mocks.toggleWorkspaceSidebar;
-    }) => unknown
-  ) =>
-    selector({
-      activeWorkspaceTab: 'project',
-      chatTimelineDetailLevel: 'narrative',
-      openPreviewTab: mocks.openPreviewTab,
-      requestToggleSessionSidePanel: mocks.requestToggleSessionSidePanel,
-      setActiveWorkspaceTab: mocks.setActiveWorkspaceTab,
-      setChatTimelineDetailLevel: mocks.setChatTimelineDetailLevel,
-      requestWorkspaceChatFocus: mocks.requestWorkspaceChatFocus,
-      toggleSessionPreview: mocks.toggleSessionPreview,
-      toggleWorkspaceSidebar: mocks.toggleWorkspaceSidebar,
-    }),
-}));
+vi.mock('@/store/pageTabStore', () => {
+  const pageTabState = () => ({
+    activeWorkspaceTab: mocks.activeWorkspaceTab,
+    chatTimelineDetailLevel: 'narrative',
+    openPreviewTab: mocks.openPreviewTab,
+    requestToggleSessionSidePanel: mocks.requestToggleSessionSidePanel,
+    setActiveWorkspaceTab: mocks.setActiveWorkspaceTab,
+    setShellPlace: mocks.setShellPlace,
+    openSpaceWorkspaceTab: mocks.openSpaceWorkspaceTab,
+    setChatTimelineDetailLevel: mocks.setChatTimelineDetailLevel,
+    requestWorkspaceChatFocus: mocks.requestWorkspaceChatFocus,
+    toggleSessionPreview: mocks.toggleSessionPreview,
+    toggleWorkspaceSidebar: mocks.toggleWorkspaceSidebar,
+  });
+  return {
+    displayedWorkspaceTab: (tab: string) =>
+      tab === 'workforce' ? 'new-project' : tab,
+    isHomePlaceTab: (tab: string) =>
+      tab === 'workforce' || tab === 'project' || tab === 'new-project',
+    WorkspaceTab: {
+      Dispatch: 'dispatch',
+      Files: 'files',
+      NewProject: 'new-project',
+      Project: 'project',
+      Triggers: 'triggers',
+      Workforce: 'workforce',
+      SpaceWorkspace: 'space-workspace',
+    },
+    usePageTabStore: Object.assign(
+      (selector: (state: ReturnType<typeof pageTabState>) => unknown) =>
+        selector(pageTabState()),
+      { getState: pageTabState }
+    ),
+  };
+});
 
 vi.mock('@/store/spaceStore', () => {
   const useSpaceStore = Object.assign(
@@ -146,8 +152,15 @@ vi.mock('@/store/spaceStore', () => {
       selector(mocks.spaceState),
     { getState: () => mocks.spaceState }
   );
-  return { useSpaceStore };
+  return {
+    getCurrentPinnedSpaceIds: mocks.getCurrentPinnedSpaceIds,
+    useSpaceStore,
+  };
 });
+
+vi.mock('@/hooks/useSpaceSwitch', () => ({
+  useSpaceSwitch: () => ({ openSpaceView: mocks.openSpaceView }),
+}));
 
 vi.mock('@/store/settingsStore', () => ({
   openSettings: mocks.openSettings,
@@ -176,7 +189,7 @@ function CommandButtons() {
 function LocationProbe() {
   const location = useLocation();
   return (
-    <span data-testid="location">
+    <span data-testid="location" data-location-key={location.key}>
       {location.pathname}
       {location.search}
     </span>
@@ -201,8 +214,13 @@ function renderProvider(
 }
 
 describe('AppCommandProvider', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.activeWorkspaceTab = 'project';
     mocks.projectRuntimeState.activeProjectId = 'project-1';
     mocks.projectRuntimeState.historyLoadIncompleteProjectIds = {};
     mocks.projectRuntimeState.getProjectById.mockReturnValue({ metadata: {} });
@@ -262,6 +280,8 @@ describe('AppCommandProvider', () => {
     expect(mocks.runAfterWorkspaceConfigurationSave).toHaveBeenCalledTimes(1);
     expect(mocks.setActiveProject).toHaveBeenCalledWith(null);
     expect(mocks.setActiveWorkspaceTab).toHaveBeenCalledWith('new-project');
+    // Started from a Home page, New session opens in Home.
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('home');
     expect(mocks.requestWorkspaceChatFocus).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('location')).toHaveTextContent('/');
   });
@@ -289,6 +309,7 @@ describe('AppCommandProvider', () => {
   });
 
   it('routes workspace and project shortcuts to their existing state actions', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     let nativeCommand: ((command: AppCommandId) => void) | undefined;
     renderProvider(
       {
@@ -310,14 +331,69 @@ describe('AppCommandProvider', () => {
     });
 
     expect(mocks.setChatTimelineDetailLevel).toHaveBeenCalledWith('trajectory');
-    expect(mocks.toggleSessionPreview).toHaveBeenCalledOnce();
+    expect(mocks.toggleSessionPreview).toHaveBeenCalledWith({
+      immediate: true,
+    });
     expect(mocks.openPreviewTab.mock.calls).toEqual([
-      ['browser'],
-      ['terminal'],
+      ['browser', { immediate: true }],
+      ['terminal', { immediate: true }],
     ]);
     expect(mocks.toggleWorkspaceSidebar).toHaveBeenCalledOnce();
     expect(mocks.requestToggleSessionSidePanel).toHaveBeenCalledOnce();
   });
+
+  it('ignores the Dev mode shortcut when the event timeline is off', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
+    );
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.toggleTimelineView);
+    });
+
+    expect(mocks.setChatTimelineDetailLevel).not.toHaveBeenCalled();
+  });
+
+  it.each(['new-project', 'workforce'])(
+    'routes Preview and Summary shortcuts on the New session page (%s)',
+    (tab) => {
+      mocks.activeWorkspaceTab = tab;
+      let nativeCommand: ((command: AppCommandId) => void) | undefined;
+      renderProvider(
+        {
+          onAppCommand: (callback) => {
+            nativeCommand = callback;
+            return vi.fn();
+          },
+        },
+        '/'
+      );
+
+      act(() => {
+        nativeCommand?.(APP_COMMAND.togglePreviewPanel);
+        nativeCommand?.(APP_COMMAND.openPreviewBrowser);
+        nativeCommand?.(APP_COMMAND.openPreviewTerminal);
+        nativeCommand?.(APP_COMMAND.toggleSessionSidePanel);
+        nativeCommand?.(APP_COMMAND.toggleTimelineView);
+      });
+
+      expect(mocks.toggleSessionPreview).toHaveBeenCalledWith({
+        immediate: true,
+      });
+      expect(mocks.openPreviewTab).toHaveBeenCalledTimes(2);
+      expect(mocks.requestToggleSessionSidePanel).toHaveBeenCalledOnce();
+      // There is no chat timeline before the Session starts.
+      expect(mocks.setChatTimelineDetailLevel).not.toHaveBeenCalled();
+    }
+  );
 
   it('ignores scoped shortcuts outside the workspace and matches topbar Home', () => {
     let nativeCommand: ((command: AppCommandId) => void) | undefined;
@@ -337,10 +413,55 @@ describe('AppCommandProvider', () => {
     expect(mocks.toggleSessionPreview).not.toHaveBeenCalled();
     expect(mocks.toggleWorkspaceSidebar).not.toHaveBeenCalled();
     expect(mocks.closeSettings).toHaveBeenCalledOnce();
-    expect(mocks.setActiveProject).toHaveBeenCalledWith(null);
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/home?section=spaces'
+    // Home keeps the open Session; only the place changes.
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('home');
+    expect(mocks.setActiveProject).not.toHaveBeenCalled();
+    expect(mocks.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+  });
+
+  it('adds no history entry when Home is opened from the workspace route', () => {
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
     );
+    const before = screen.getByTestId('location').dataset.locationKey;
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.navigateHome);
+    });
+
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('home');
+    expect(screen.getByTestId('location').dataset.locationKey).toBe(before);
+  });
+
+  it('opens New session in Home when the Space view was on a Space tab', () => {
+    mocks.activeWorkspaceTab = 'files';
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider(
+      {
+        onAppCommand: (callback) => {
+          nativeCommand = callback;
+          return vi.fn();
+        },
+      },
+      '/'
+    );
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.navigateHome);
+    });
+
+    expect(mocks.setActiveProject).toHaveBeenCalledWith(null);
+    expect(mocks.setActiveWorkspaceTab).toHaveBeenCalledWith('new-project');
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('home');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
   });
 
   it('routes the ordered workspace shortcuts to their matching sidebar tabs', () => {
@@ -361,15 +482,37 @@ describe('AppCommandProvider', () => {
     });
 
     expect(mocks.setActiveWorkspaceTab.mock.calls).toEqual([
-      ['workforce'],
       ['files', { clearFilesForProjectId: 'project-1' }],
       ['triggers'],
       ['dispatch'],
     ]);
+    // ⌘1 and ⌘5 open the Workspace page's Sessions and Space settings tabs.
+    expect(mocks.openSpaceWorkspaceTab.mock.calls).toEqual([
+      ['projects'],
+      ['workspace-profile'],
+    ]);
+    // ⌘1 opens the Space view; the other tabs move there through the store.
+    expect(mocks.setShellPlace).toHaveBeenCalledWith('space');
     expect(mocks.setNuwFileNum).toHaveBeenCalledWith('task-1', 0);
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile'
-    );
+    expect(screen.getByTestId('location').textContent).toBe('/');
+  });
+
+  it('opens pinned Spaces in pin order and ignores an empty slot', () => {
+    let nativeCommand: ((command: AppCommandId) => void) | undefined;
+    renderProvider({
+      onAppCommand: (callback) => {
+        nativeCommand = callback;
+        return vi.fn();
+      },
+    });
+
+    act(() => {
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace2);
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace1);
+      nativeCommand?.(APP_COMMAND.navigatePinnedSpace3);
+    });
+
+    expect(mocks.openSpaceView.mock.calls).toEqual([['space-b'], ['space-a']]);
   });
 
   it('asks for a Session instead of opening Automations in a Space without one', () => {

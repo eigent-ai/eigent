@@ -288,6 +288,14 @@ def _render_entries(
             event_type.startswith(("approval.", "interaction."))
             or event_type in {"run.interrupted", "runtime.interrupted"}
         ):
+            if event_type == "approval.cancelled":
+                # Eigent closed the request (quit, stop, or a tool that can
+                # no longer run). Its stored "rejected" is not a user decision.
+                payload = {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "decision"
+                }
             add(
                 f"Checkpoint [{event_type}]: "
                 + _json(payload, limit=_RESUME_EVENT_VALUE_CHARS),

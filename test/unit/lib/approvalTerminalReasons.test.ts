@@ -94,7 +94,10 @@ describe('durable approval terminal reasons', () => {
   it('keeps the terminal reason when request and decision are composed into one replay receipt', () => {
     const facts = [
       event('approval.requested', '', 1),
-      event('approval.cancelled', 'tool_terminal_before_dispatch', 2),
+      event('approval.cancelled', 'tool_terminal_before_dispatch', 2, {
+        terminal_reason: 'error',
+        terminal_detail: 'tool_terminal_before_dispatch',
+      }),
     ];
     const nodes = facts.flatMap((fact) => {
       const projected = adaptChatProjectionEvent(fact);
@@ -107,8 +110,97 @@ describe('durable approval terminal reasons', () => {
     expect(receipts[0]).toMatchObject({
       status: 'cancelled',
       reason: 'tool_terminal_before_dispatch',
+      terminalReason: 'error',
       resolutionEventId: 'event-2',
     });
+  });
+
+  it('presents an approval Eigent closed as closed, never as the user rejecting it', () => {
+    // Payloads as startup recovery writes them for an undispatched tool.
+    const fact = (type: string, sequence: number, payload: object) =>
+      normalizeLocalRunEvent(
+        {
+          event_id: `event-${sequence}`,
+          run_id: 'run-1',
+          sequence,
+          run_version: sequence,
+          event_type: type,
+          payload: { approval_id: 'approval:tool-1', ...payload },
+          created_at: sequence,
+        },
+        'project-1'
+      );
+    const receipt = (...facts: ReturnType<typeof fact>[]) => {
+      const nodes = facts.flatMap((item) => {
+        const projected = adaptChatProjectionEvent(item);
+        return projected.kind === 'display' ? [projected.node] : [];
+      });
+      const [node] = presentChatSemanticEntities(nodes).filter(
+        (item) => item.kind === 'interaction'
+      );
+      if (!node) throw new Error('Missing receipt');
+      return toTimelineCall({
+        kind: 'node',
+        id: node.id,
+        runSequence: node.runSequence,
+        node,
+      });
+    };
+    const requested = fact('approval.requested', 1, {
+      interaction_id: 'approval:tool-1',
+      prompt: { question: 'Allow write?' },
+    });
+
+    const restarted = receipt(
+      requested,
+      fact('approval.cancelled', 2, {
+        interaction_id: 'approval:tool-1',
+        decision: 'rejected',
+        reason: 'brain_restart_before_dispatch',
+        source: 'recovery',
+        terminal_reason: 'brain_restart',
+        terminal_detail: 'brain_restart_before_dispatch',
+      })
+    );
+    expect(restarted).toMatchObject({
+      status: 'cancelled',
+      title: t('chat.approval-cancelled-title'),
+      input: 'Allow write?',
+      notice: { content: runTerminalReasonText('brain_restart', t) },
+    });
+    expect(restarted?.output).toBeUndefined();
+
+    const expired = receipt(
+      requested,
+      fact('approval.expired_rejected', 2, {
+        interaction_id: 'approval:tool-1',
+        decision: 'rejected',
+        reason: 'approval_expired',
+        terminal_reason: 'approval_expired',
+        terminal_detail: 'approval_expired',
+      })
+    );
+    expect(expired).toMatchObject({
+      status: 'timed_out',
+      title: t('chat.approval-expired-title'),
+      notice: { content: runTerminalReasonText('approval_expired', t) },
+    });
+    expect(expired?.output).toBeUndefined();
+
+    // A decision the user made is still shown as theirs.
+    const rejected = receipt(
+      requested,
+      fact('approval.decided', 2, {
+        interaction_id: 'approval:tool-1',
+        decision: 'rejected',
+      })
+    );
+    expect(rejected).toMatchObject({
+      status: 'completed',
+      title: t('chat.timeline-you-rejected'),
+      output: 'rejected',
+    });
+    expect(rejected?.notice).toBeUndefined();
   });
 
   it('localizes every closed reason and nothing outside it', () => {

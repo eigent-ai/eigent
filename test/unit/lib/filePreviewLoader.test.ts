@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  FileAccessDeniedError,
   loadFilePreview,
   parseBoundedCsvPreview,
   toLocalPreviewUrl,
@@ -740,6 +741,49 @@ describe('loadFilePreview', () => {
     );
     expect(result.preview).toMatchObject({ kind: 'range-pdf', size: 2048 });
     expect(result.content).toBe('https://files.example/remote.pdf');
+  });
+
+  it('reports an expired file access grant separately from other failures', async () => {
+    const denied = () =>
+      new Response(
+        JSON.stringify({ detail: { code: 'file_access_required' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    const brainFile = {
+      name: 'notes.txt',
+      type: 'txt',
+      path: 'http://localhost:5001/files/stream?path=notes.txt&access=old',
+      size: 5,
+      isRemote: true,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => denied())
+    );
+    await expect(loadFilePreview(brainFile, {})).rejects.toBeInstanceOf(
+      FileAccessDeniedError
+    );
+
+    // A PDF without known size is probed first; the probe must not read the
+    // refusal as file metadata.
+    await expect(
+      loadFilePreview(
+        { ...brainFile, name: 'a.pdf', type: 'pdf', size: undefined },
+        {}
+      )
+    ).rejects.toBeInstanceOf(FileAccessDeniedError);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Unauthorized' }), {
+          status: 401,
+        })
+      )
+    );
+    const other = loadFilePreview(brainFile, {});
+    await expect(other).rejects.toThrow('HTTP 401');
+    await expect(other).rejects.not.toBeInstanceOf(FileAccessDeniedError);
   });
 
   it('does not send browser credentials to a cross-port local Brain preview', async () => {

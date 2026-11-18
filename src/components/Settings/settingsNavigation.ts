@@ -36,16 +36,15 @@ export interface SettingsNavigationItem {
 
 export interface SettingsNavigationGroup {
   scope: SettingsScope;
-  labelKey: string;
-  defaultLabel: string;
+  /** Group heading; a group without one is just its rows. */
+  label?: { key: string; defaultValue: string };
   items: SettingsNavigationItem[];
 }
 
 export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
   {
     scope: 'global',
-    labelKey: 'layout.global-setting',
-    defaultLabel: 'Global Settings',
+    label: { key: 'layout.global-setting', defaultValue: 'Global Settings' },
     items: [
       {
         id: 'models',
@@ -87,8 +86,7 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
   },
   {
     scope: 'device',
-    labelKey: 'layout.device',
-    defaultLabel: 'Device',
+    label: { key: 'layout.device', defaultValue: 'Device' },
     items: [
       {
         id: 'browser-connections',
@@ -112,13 +110,11 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
   },
   {
     scope: 'settings',
-    labelKey: 'layout.settings',
-    defaultLabel: 'Settings',
     items: [
       {
         id: 'settings',
-        labelKey: 'layout.settings',
-        defaultLabel: 'Settings',
+        labelKey: 'layout.general',
+        defaultLabel: 'General',
         icon: Settings,
       },
     ],

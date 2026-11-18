@@ -12,8 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  SessionLoadingHalo,
+  useReportSessionLoading,
+} from '@/components/ChatBox/SessionLoadingHalo';
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   isConversationAnchor,
   selectRenderableChatNodes,
@@ -28,7 +34,6 @@ import {
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
 import {
   AgentStep,
@@ -48,24 +53,17 @@ import { useTranslation } from 'react-i18next';
 
 import {
   animateChatTimelineAnchor,
+  isChatTimelineNearBottom,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
 import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
 import { partitionLegacyReplyEvidence } from './EventTimeline/legacyReplyEvidence';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
-
-/** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
-const NEAR_BOTTOM_SLACK_PX = 48;
-
-export function isChatTimelineNearBottom(
-  distanceFromBottom: number,
-  bottomInsetPx: number,
-  slackPx = NEAR_BOTTOM_SLACK_PX
-): boolean {
-  return distanceFromBottom <= Math.max(0, bottomInsetPx) + slackPx;
-}
+import type { ResolvedRunModel } from './TimelineModes/ModelChangeDivider';
+import { isActiveRunStatus } from './TimelineModes/shared';
 
 interface EventNativeTimelineWindow {
   hiddenNodeCount: number;
@@ -143,34 +141,6 @@ export function prepareEventNativeTimelineWindow(
   };
 }
 
-/**
- * Placeholder rows sized to a short and a long message so the container keeps
- * its height when the real conversation replaces them.
- */
-function ChatTimelineSkeleton({ label }: { label: string }) {
-  return (
-    <div
-      aria-busy
-      aria-label={label}
-      className="flex w-full flex-col gap-3"
-      data-chat-timeline-skeleton
-      role="status"
-    >
-      {[
-        ['w-2/5', 'h-16'],
-        ['w-full', 'h-24'],
-        ['w-1/3', 'h-16'],
-      ].map(([width, height], index) => (
-        <div
-          key={`chat-skeleton-${index}`}
-          className={`${height} ${index % 2 === 0 ? 'ml-auto' : ''} ${width} animate-pulse rounded-xl bg-ds-neutral-strong-default`}
-        />
-      ))}
-      <span className="sr-only">{label}</span>
-    </div>
-  );
-}
-
 interface EventNativeProjectTimelineProps {
   /** Temporary control bridge until plan editing is backed by Run commands. */
   chatStore?: VanillaChatStore;
@@ -179,9 +149,15 @@ interface EventNativeProjectTimelineProps {
   paused?: boolean;
   floatingControl?: ReactNode;
   projectId: string;
+  /**
+   * Durable model identities supplied by Run reads. Defaults to the open
+   * Session's recorded models.
+   */
+  resolvedModelsByRun?: Readonly<Record<string, ResolvedRunModel | null>>;
   sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
 }
 
 /**
@@ -196,9 +172,11 @@ export function EventNativeProjectTimeline({
   paused = false,
   floatingControl,
   projectId,
+  resolvedModelsByRun,
   sessionMode,
   scrollContainerRef,
   scrollBottomInsetPx,
+  onEditUserMessage,
 }: EventNativeProjectTimelineProps) {
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
@@ -398,6 +376,16 @@ export function EventNativeProjectTimeline({
     [visibleNodes, projectedRunsById]
   );
   const visibleRuns = allRuns;
+  const runActivity = useMemo(
+    () =>
+      allRuns.map((run) => ({
+        runId: run.runId,
+        status: run.status,
+        active: isActiveRunStatus(run.status),
+      })),
+    [allRuns]
+  );
+  const recordedModelsByRun = useResolvedRunModels(projectId, runActivity);
   const interactivePlansByRun = (() => {
     if (sessionMode !== SessionMode.WORKFORCE || !chatStore) return undefined;
     const state = chatStore.getState();
@@ -450,10 +438,10 @@ export function EventNativeProjectTimeline({
   const ignoreAnchorScrollRef = useRef(false);
   const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const scrollToTurnRequest = usePageTabStore(
+  const scrollToTurnRequest = useSessionPageTabStore(
     (state) => state.scrollToTurnRequest
   );
-  const setScrollToTurnRequest = usePageTabStore(
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (state) => state.setScrollToTurnRequest
   );
   const latestNode = visibleNodes.at(-1);
@@ -581,23 +569,35 @@ export function EventNativeProjectTimeline({
           () => {
             ignoreAnchorScrollRef.current = false;
             pinToBottomRef.current = false;
+            // Hold the anchored query, not the pre-animation position, while
+            // the response grows beneath it.
+            captureReadingAnchor();
           }
         );
       }
     } else if (isNewUserMessage || wasNearBottom) {
       pinToBottomRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
-    } else if (readingAnchorRef.current?.projectId === projectId) {
+    } else if (
+      !ignoreAnchorScrollRef.current &&
+      readingAnchorRef.current?.projectId === projectId
+    ) {
       restoreReadingAnchor();
     }
     previousHistoryRef.current = runtime.snapshot?.history;
     previousLatestUserQueryKeyRef.current = latestUserQueryKey;
     previousScrollHeightRef.current = container.scrollHeight;
-    captureReadingAnchor();
+    // The anchor animation owns the scroll position until it settles; a
+    // reading anchor captured or restored meanwhile would pull it back.
+    if (!ignoreAnchorScrollRef.current) captureReadingAnchor();
 
     const resizeObserver =
       content &&
       new ResizeObserver(() => {
+        if (ignoreAnchorScrollRef.current) {
+          previousScrollHeightRef.current = container.scrollHeight;
+          return;
+        }
         if (pinToBottomRef.current) {
           container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
         } else restoreReadingAnchor();
@@ -663,16 +663,41 @@ export function EventNativeProjectTimeline({
     visibleNodes,
   ]);
 
+  const historyLoaded =
+    !hydration.hasOlderHistory &&
+    (hydration.status === 'ready' || hydration.status === 'idle');
+  const historyLoading =
+    visibleRuns.length === 0 &&
+    hydration.status !== 'error' &&
+    !hydration.olderHistoryError &&
+    !historyLoaded;
+  const historyLoadingLabel =
+    hydration.status === 'retrying'
+      ? t('chat.timeline-history-reconnecting')
+      : t('chat.timeline-history-loading');
+  // While the Session page covers its first load, it draws the one halo. An
+  // empty timeline whose history is about to start loading counts too; a
+  // runtime that is switched off (no snapshot) never starts, so it does not.
+  const pageShowsLoading = useReportSessionLoading(
+    'timeline-history',
+    historyLoading ||
+      (visibleRuns.length === 0 &&
+        hydration.status === 'idle' &&
+        runtime.snapshot !== null),
+    historyLoadingLabel
+  );
+
   return (
     <div
-      className="relative z-10 w-full"
+      // At least the panel's height, so the loading halo fills an empty one.
+      className="relative z-10 min-h-full w-full"
       data-chat-timeline-source="durable-events"
     >
       <div
         ref={contentRef}
         className={cn(
           'mx-auto w-full pt-0',
-          detailLevel !== 'trajectory' && 'max-w-[600px]'
+          detailLevel !== 'trajectory' && 'max-w-[736px]'
         )}
         data-chat-timeline-content
         style={{ paddingBottom: scrollBottomInsetPx }}
@@ -732,6 +757,8 @@ export function EventNativeProjectTimeline({
                   : undefined
               }
               runs={visibleRuns}
+              resolvedModelsByRun={resolvedModelsByRun ?? recordedModelsByRun}
+              onEditUserMessage={onEditUserMessage}
               sessionMode={sessionMode}
             />
             <HistoryEvidence entries={conversation.evidence} />
@@ -754,25 +781,20 @@ export function EventNativeProjectTimeline({
               {t('chat.timeline-history-retry')}
             </Button>
           </div>
-        ) : hydration.olderHistoryError ? null : !hydration.hasOlderHistory &&
-          (hydration.status === 'ready' || hydration.status === 'idle') ? (
+        ) : !hydration.olderHistoryError && historyLoaded ? (
           <span
             className="block px-4 py-6 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"
           >
             {t('chat.timeline-empty')}
           </span>
-        ) : (
-          <ChatTimelineSkeleton
-            label={
-              hydration.status === 'retrying'
-                ? t('chat.timeline-history-reconnecting')
-                : t('chat.timeline-history-loading')
-            }
-          />
-        )}
+        ) : null}
         {floatingControl}
       </div>
+      <SessionLoadingHalo
+        active={historyLoading && !pageShowsLoading}
+        label={historyLoadingLabel}
+      />
     </div>
   );
 }

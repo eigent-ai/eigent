@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -618,8 +619,16 @@ async def test_completed_run_quiesces_background_terminal_mutations(
     coordinator = RunCoordinator(journal)
     release = asyncio.Event()
     calls: list[str] = []
+    released: list[str] = []
+    removing = threading.Event()
 
     class _TerminalToolkit:
+        def release_run_environment(self, run_id):
+            assert journal.get_run(run_id).status == "completed"
+            # Environment removal must not hold back the terminal answer.
+            assert removing.wait(5)
+            released.append(run_id)
+
         def quiesce_run_background_sessions(self, run_id):
             calls.append(run_id)
             return ()
@@ -651,8 +660,13 @@ async def test_completed_run_quiesces_background_terminal_mutations(
             assistant_data="Done",
         )
         assert calls == ["run-turn"]
+        assert released == []
+        removing.set()
+        await asyncio.gather(*coordinator._environment_releases.values())
+        assert released == ["run-turn"]
         assert journal.get_run("run-turn").status == "completed"
     finally:
+        removing.set()
         release.set()
         await coordinator.close()
         journal.close()
@@ -751,3 +765,91 @@ async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
         release.set()
         await coordinator.close()
         journal.close()
+
+
+async def _interrupt_run(coordinator: RunCoordinator, event_type: str) -> None:
+    if event_type == "run.interrupted":
+        await coordinator._commit_run_terminal(
+            run_id="run-1",
+            started_at=1,
+            event_type=event_type,
+            payload={"reason": "provider_error"},
+        )
+        return
+
+    # Production path: a retryable execution stop reaches the pump.
+    from app.run_runtime.coordinator import RunInterruptedError
+
+    async def source():
+        raise RunInterruptedError("provider failed", reason="provider_error")
+        yield  # pragma: no cover
+
+    subscription = await coordinator.start_with_subscription(
+        run_id="run-1",
+        stream_factory=source,
+    )
+    await subscription.handle.wait()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_type", ["run.interrupted", "runtime.interrupted"]
+)
+async def test_interrupted_run_keeps_written_file_in_manifest(
+    tmp_path, monkeypatch, event_type
+):
+    from unittest.mock import MagicMock
+
+    from app import artifacts
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "saved.txt").write_text(
+        "work completed before the provider failed"
+    )
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        task_output_root=str(output),
+        working_directory=str(output),
+        task_start_time=0,
+        artifact_manifest=None,
+        user_id="user-1",
+    )
+    resolver = MagicMock()
+    resolver.store.find_snapshot.return_value = ("user_user-1", snapshot)
+    monkeypatch.setattr(artifacts, "get_workspace_resolver", lambda: resolver)
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        coordinator = RunCoordinator(journal)
+        await _interrupt_run(coordinator, event_type)
+        await coordinator.close()
+        assert journal.get_run("run-1").status == "interrupted"
+        manifest = journal.get_run_artifact_manifest_event("run-1")
+        assert manifest is not None
+        assert any(
+            file["relativePath"] == "saved.txt"
+            for file in manifest.payload["artifacts"]
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_type", ["run.interrupted", "runtime.interrupted"]
+)
+async def test_interrupted_run_commits_when_artifact_finalization_fails(
+    tmp_path, monkeypatch, event_type
+):
+    from app import artifacts
+
+    def fail_finalization(*_args, **_kwargs):
+        raise OSError("workspace scan failed")
+
+    monkeypatch.setattr(artifacts, "finalize_run_artifacts", fail_finalization)
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        coordinator = RunCoordinator(journal)
+        await _interrupt_run(coordinator, event_type)
+        await coordinator.close()
+        assert journal.get_run("run-1").status == "interrupted"
+        assert journal.get_run_artifact_manifest_event("run-1") is None

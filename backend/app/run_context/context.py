@@ -56,6 +56,8 @@ class RunContext:
     # Bound after durable Attempt admission and then inherited by child tasks.
     # Preparation code may temporarily carry ``None`` before an Attempt exists.
     attempt_id: str | None = None
+    prompt_current_time: str | None = None
+    timezone: str | None = None
 
     def env_overrides(self) -> dict[str, str]:
         values: dict[str, str] = {

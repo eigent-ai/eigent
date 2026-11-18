@@ -30,19 +30,22 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { startRequestedExecution } from '@/lib/triggerExecutionRequests';
 import { cn } from '@/lib/utils';
 import {
   proxyActivateTrigger,
   proxyDeactivateTrigger,
   proxyDeleteTrigger,
-  proxyFetchProjectTriggers,
+  proxyFetchSpaceTriggers,
   proxyRunTriggerNow,
 } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
 import { Plus } from 'lucide-react';
@@ -51,6 +54,9 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { AutomationExample } from './automationExampleData';
 import { scheduleToCron } from './automationSchedule';
+
+/** Each Space's last list, shown while it refreshes. */
+const lastTriggersBySpace = new Map<string, Trigger[]>();
 
 const NEW_ROW_HIGHLIGHT_MS = 6000;
 
@@ -100,34 +106,48 @@ export default function Overview({
   const { triggers, deleteTrigger, updateTrigger, setTriggers } =
     useTriggerStore();
   const { projectStore } = useChatStoreAdapter();
-  const activeProjectId = projectStore.activeProjectId;
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
   const [listLoadState, setListLoadState] = useState<TriggerListLoadState>(
-    () => (activeProjectId ? 'loading' : 'idle')
+    () => (activeSpaceId ? 'loading' : 'idle')
   );
   const [listReloadRequest, setListReloadRequest] = useState(0);
+  // The Space whose list is on screen; null until this Space's list shows.
+  const listSpaceId = useRef<string | null>(null);
+  const loadedSpaceId = useRef<string | null>(null);
+  // Whether the list on screen is the one remembered from an earlier visit.
+  const [showingRememberedList, setShowingRememberedList] = useState(false);
 
-  // Load the active project's triggers. Depend on the project id only: the
-  // project store object changes on every store update, so depending on it
-  // refetched the list over and over.
+  // A Space owns this list; changing Session must not clear its automations.
   useEffect(() => {
-    // Never show the previous project's triggers under another project.
-    setTriggers([]);
+    // Replace the previous Space's list, with this Space's last one if known.
+    const lastList = activeSpaceId
+      ? lastTriggersBySpace.get(activeSpaceId)
+      : undefined;
+    // A Retry keeps the Space; only a new Space waits for its own list.
+    if (loadedSpaceId.current !== activeSpaceId) {
+      loadedSpaceId.current = activeSpaceId;
+      listSpaceId.current = null;
+    }
+    setTriggers(lastList ?? []);
+    setShowingRememberedList(Boolean(lastList));
 
-    // Triggers are listed per project; never call the API without one.
-    if (!activeProjectId) {
+    if (!activeSpaceId) {
       setListLoadState('idle');
       return;
     }
 
     let cancelled = false;
-    setListLoadState('loading');
-    proxyFetchProjectTriggers(activeProjectId)
+    setListLoadState(lastList ? 'ready' : 'loading');
+    proxyFetchSpaceTriggers(activeSpaceId)
       .then((response) => {
+        const items = response.items || [];
+        lastTriggersBySpace.set(activeSpaceId, items);
         if (cancelled) return;
-        setTriggers(response.items || []);
+        setTriggers(items);
+        setShowingRememberedList(false);
         setListLoadState('ready');
       })
       .catch((error) => {
@@ -139,11 +159,30 @@ export default function Overview({
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, listReloadRequest, setTriggers]);
+  }, [activeSpaceId, listReloadRequest, setTriggers]);
 
   useEffect(() => {
     setHasTriggers(triggers.length > 0);
   }, [triggers, setHasTriggers]);
+
+  // Keep this Space's remembered list in step with local adds, edits and
+  // deletes, so coming back doesn't show what was there before.
+  useEffect(() => {
+    if (!activeSpaceId) return;
+    if (triggers === lastTriggersBySpace.get(activeSpaceId)) {
+      listSpaceId.current = activeSpaceId;
+      return;
+    }
+    if (listSpaceId.current === activeSpaceId) {
+      // A create that finishes after a Space switch belongs to its own Space.
+      lastTriggersBySpace.set(
+        activeSpaceId,
+        triggers.filter(
+          (trigger) => !trigger.space_id || trigger.space_id === activeSpaceId
+        )
+      );
+    }
+  }, [activeSpaceId, triggers]);
 
   useEffect(() => {
     const pending = timers.current;
@@ -196,7 +235,9 @@ export default function Overview({
   const handleRunNow = async (trigger: Trigger) => {
     if (!beginAction(trigger.id)) return;
     try {
-      await proxyRunTriggerNow(trigger.id);
+      const execution = await proxyRunTriggerNow(trigger.id);
+      // Start it now rather than waiting for the websocket to announce it.
+      startRequestedExecution(trigger, execution.execution_id);
       toast.success(t('triggers.action-run-queued'));
     } catch (error) {
       console.error('Failed to request automation run:', error);
@@ -333,7 +374,7 @@ export default function Overview({
           className="px-ds-16"
           actions={
             <Button variant="primary" size="sm" onClick={() => openDialog({})}>
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
               {t('triggers.create')}
             </Button>
           }
@@ -399,23 +440,49 @@ export default function Overview({
               </div>
             ) : null
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
-              {sortedTriggers.map((trigger) => (
-                <li key={trigger.id}>
-                  <TriggerListItem
-                    trigger={trigger}
-                    isSelected={selectedTriggerId === trigger.id}
-                    isNew={justAddedId === trigger.id}
-                    isBusy={pendingIds.includes(trigger.id)}
-                    onRunNow={handleRunNow}
-                    onSelect={onSelectedTriggerIdChange}
-                    onEdit={(item) => openDialog({ trigger: item })}
-                    onDelete={handleDelete}
-                    onToggleActive={handleToggleActive}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* A remembered list whose refresh failed may be out of date. */}
+              {listLoadState === 'error' && showingRememberedList ? (
+                <div
+                  role="alert"
+                  className="mb-ds-8 flex items-center justify-between gap-ds-stack-related px-ds-8"
+                >
+                  <DsText
+                    as="p"
+                    role="base"
+                    className="text-ds-ink-muted-default"
+                  >
+                    {t('triggers.failed-to-load')}
+                  </DsText>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setListReloadRequest((request) => request + 1)
+                    }
+                  >
+                    {t('layout.retry')}
+                  </Button>
+                </div>
+              ) : null}
+              <ul className="m-0 flex list-none flex-col gap-ds-2 p-0">
+                {sortedTriggers.map((trigger) => (
+                  <li key={trigger.id}>
+                    <TriggerListItem
+                      trigger={trigger}
+                      isSelected={selectedTriggerId === trigger.id}
+                      isNew={justAddedId === trigger.id}
+                      isBusy={pendingIds.includes(trigger.id)}
+                      onRunNow={handleRunNow}
+                      onSelect={onSelectedTriggerIdChange}
+                      onEdit={(item) => openDialog({ trigger: item })}
+                      onDelete={handleDelete}
+                      onToggleActive={handleToggleActive}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       </aside>

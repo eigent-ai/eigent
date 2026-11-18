@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Popover,
   PopoverContent,
@@ -27,14 +28,12 @@ import { getEnterKeyLabel } from '@/shared/keyboardShortcuts';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
-  Cable,
   FileText,
   Image,
-  Paperclip,
   Play,
+  Plus,
   Square,
   UploadCloud,
-  WandSparkles,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -106,16 +105,32 @@ export interface InputboxProps {
   privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
-  /** Connector picker panel state; the toggle button only renders when the callback is provided. */
-  connectorPanelOpen?: boolean;
-  onToggleConnectorPanel?: () => void;
-  /** Skill picker panel state; the toggle button only renders when the callback is provided. */
-  skillPanelOpen?: boolean;
-  onToggleSkillPanel?: () => void;
+  /**
+   * The floating "add context" panel (files, skills, connectors) that the "+"
+   * button opens. Omit it and "+" opens the file picker directly.
+   */
+  contextPanel?: ComposerContextPanelControl;
+  /** Extra controls after the "+" button, for example Workforce's agents. */
+  leadingActions?: React.ReactNode;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
   onTriggerCreated?: (triggerData: TriggerInput) => void;
+}
+
+/** How the composer drives the floating "add context" panel above it. */
+export interface ComposerContextPanelControl {
+  open: boolean;
+  onToggle: () => void;
+  /**
+   * Panel keys typed in the text field, which doubles as the panel's search
+   * box (arrows, Enter, Escape). Returns true when the panel consumed the key.
+   */
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => boolean;
+  /** DOM id of the panel's list. */
+  listId: string;
+  /** DOM id of the highlighted row, if any. */
+  activeRowId?: string;
 }
 
 /**
@@ -125,7 +140,7 @@ export interface InputboxProps {
  * - **Layer 1**: Input-required question / details (when provided)
  * - **Layer 2**: File attachment chips (original design, up to 5 + overflow)
  * - **Layer 3**: Auto-expanding rich text input
- * - **Layer 4**: Action buttons (attach, connectors, skills, send)
+ * - **Layer 4**: Action buttons ("+" menu for files, skills and connectors; send)
  * - Send button changes color based on content (gray when empty, green when has content)
  * - Arrow icon rotates when there's content
  * - Supports Enter to send, Shift+Enter for new line
@@ -178,10 +193,8 @@ export const Inputbox = ({
   onUnsupportedAttachment,
   privacy = true,
   useCloudModelInDev = false,
-  connectorPanelOpen = false,
-  onToggleConnectorPanel,
-  skillPanelOpen = false,
-  onToggleSkillPanel,
+  contextPanel,
+  leadingActions,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
@@ -243,7 +256,17 @@ export const Inputbox = ({
     }
   };
 
+  const uploadDisabled =
+    !attachmentsEnabled ||
+    !privacy ||
+    useCloudModelInDev ||
+    typeof onAddFile !== 'function';
+  const addContextLabel = contextPanel
+    ? t('chat.input-add-context')
+    : t('chat.input-attach-add-files-or-photos');
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isComposing && contextPanel?.onKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey && !disabled && !isComposing) {
       e.preventDefault();
       handleSend();
@@ -286,9 +309,9 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="size-3.5 text-ds-ink-default-default" />;
+      return <DsIcon icon={Image} recipe="main-compact" />;
     }
-    return <FileText className="size-3.5 text-ds-ink-default-default" />;
+    return <DsIcon icon={FileText} recipe="main-compact" />;
   };
 
   // Drag & drop handlers
@@ -412,11 +435,14 @@ export const Inputbox = ({
     <div
       data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-3xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3 transition-colors',
-        (isFocused || hasContent) &&
-          'border-ds-border-information-default-default',
+        // The edge is a 1px inset ring rather than a border: it composites
+        // with the soft shadow and follows the theme's hairline color.
+        'relative flex w-full flex-col items-start rounded-ds-24 bg-ds-neutral-subtle-default px-ds-panel-inset py-ds-12 shadow-ds-elevation-card-subtle ring-1 ring-ds-hairline-subtle-default transition-[box-shadow,background-color] ring-inset',
+        !disabled &&
+          (isFocused || hasContent) &&
+          'ring-ds-border-information-default-default',
         isDragging &&
-          'border-ds-hairline-strong-default bg-ds-bg-information-subtle-default',
+          'bg-ds-bg-information-subtle-default ring-ds-hairline-strong-default',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -425,8 +451,8 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
-          <UploadCloud className="h-8 w-8" />
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-ds-24 border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
+          <DsIcon icon={UploadCloud} recipe="illustration" />
           <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}
           </span>
@@ -466,7 +492,11 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-ds-ink-muted-default" />
+                    <DsIcon
+                      icon={X}
+                      recipe="main-compact"
+                      className="text-ds-ink-muted-default"
+                    />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -544,7 +574,10 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-ds-ink-muted-default" />
+                            <DsIcon
+                              icon={X}
+                              className="text-ds-ink-muted-default"
+                            />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
@@ -574,6 +607,10 @@ export const Inputbox = ({
             handleTextChange(next, cursorPos ?? undefined)
           }
           onKeyDown={handleKeyDown}
+          ariaControls={contextPanel?.open ? contextPanel.listId : undefined}
+          ariaActiveDescendant={
+            contextPanel?.open ? contextPanel.activeRowId : undefined
+          }
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
           onFocus={() => setIsFocused(true)}
@@ -601,77 +638,36 @@ export const Inputbox = ({
         data-input-actions
         className="flex w-full flex-wrap items-center justify-between gap-y-2"
       >
-        {/* Left: add files/photos + connector picker + skill picker */}
+        {/* Left: one "+" for files, skills and connectors */}
         <div className="flex min-w-0 items-center gap-1">
-          <TooltipSimple content="Attach" side="top">
+          <TooltipSimple content={addContextLabel} side="top">
             <Button
               type="button"
+              data-context-panel-trigger
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="lg"
-              disabled={
-                disabled ||
-                !attachmentsEnabled ||
-                !privacy ||
-                useCloudModelInDev ||
-                typeof onAddFile !== 'function'
+              disabled={disabled || (!contextPanel && uploadDisabled)}
+              aria-label={addContextLabel}
+              aria-haspopup={contextPanel ? 'listbox' : undefined}
+              aria-expanded={contextPanel ? contextPanel.open : undefined}
+              aria-controls={
+                contextPanel?.open ? contextPanel.listId : undefined
               }
-              aria-label={t('chat.input-attach-add-files-or-photos')}
-              onClick={() => onAddFile?.()}
+              className={cn(
+                contextPanel?.open &&
+                  'bg-ds-neutral-strong-default hover:bg-ds-neutral-strong-default'
+              )}
+              onClick={() =>
+                contextPanel ? contextPanel.onToggle() : onAddFile?.()
+              }
             >
-              <Paperclip />
+              <DsIcon icon={Plus} />
             </Button>
           </TooltipSimple>
-          {onToggleConnectorPanel && (
-            <TooltipSimple content="MCPs" side="top">
-              <Button
-                type="button"
-                data-picker-trigger
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                textWeight="bold"
-                buttonRadius="lg"
-                disabled={disabled}
-                aria-label={t('chat.input-add-connector', {
-                  defaultValue: 'Add connectors',
-                })}
-                aria-haspopup="true"
-                aria-expanded={connectorPanelOpen}
-                className={cn(
-                  connectorPanelOpen && 'bg-ds-neutral-strong-default'
-                )}
-                onClick={onToggleConnectorPanel}
-              >
-                <Cable />
-              </Button>
-            </TooltipSimple>
-          )}
-          {onToggleSkillPanel && (
-            <TooltipSimple content="Skills" side="top">
-              <Button
-                type="button"
-                data-picker-trigger
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                textWeight="bold"
-                buttonRadius="lg"
-                disabled={disabled}
-                aria-label={t('chat.input-add-skill', {
-                  defaultValue: 'Add skills',
-                })}
-                aria-haspopup="true"
-                aria-expanded={skillPanelOpen}
-                className={cn(skillPanelOpen && 'bg-ds-neutral-strong-default')}
-                onClick={onToggleSkillPanel}
-              >
-                <WandSparkles />
-              </Button>
-            </TooltipSimple>
-          )}
+          {leadingActions}
         </div>
 
         {/* Right: send or control the current task when the draft is empty. */}
@@ -711,7 +707,8 @@ export const Inputbox = ({
                 className="relative grid size-ds-icon-md place-items-center leading-none"
                 aria-hidden
               >
-                <ArrowRight
+                <DsIcon
+                  icon={ArrowRight}
                   data-composer-primary-icon="arrow"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(
@@ -723,7 +720,8 @@ export const Inputbox = ({
                       : 'rotate-0 opacity-0'
                   )}
                 />
-                <Square
+                <DsIcon
+                  icon={Square}
                   data-composer-primary-icon="pause"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(
@@ -733,7 +731,8 @@ export const Inputbox = ({
                       : 'rotate-90 opacity-0'
                   )}
                 />
-                <Play
+                <DsIcon
+                  icon={Play}
                   data-composer-primary-icon="play"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(

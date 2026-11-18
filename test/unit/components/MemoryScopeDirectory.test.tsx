@@ -135,7 +135,7 @@ describe('Memory scope directory', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/home?section=settings&tab=memory']}>
+      <MemoryRouter initialEntries={['/settings?tab=memory']}>
         <MemoryScopeDirectory scopeType="project" />
         <CurrentLocation />
       </MemoryRouter>

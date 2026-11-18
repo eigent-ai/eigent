@@ -163,3 +163,26 @@ export async function stopSessionAndWait(
     controller.abort();
   }
 }
+
+/** History may be deleted offline, but unconfirmed local execution owns its files. */
+export async function stopSessionForDeletion(
+  projectId: string
+): Promise<boolean> {
+  try {
+    await stopSessionAndWait(projectId);
+    return false;
+  } catch (error) {
+    if (
+      error instanceof SessionStopError &&
+      (error.cause as { code?: string } | undefined)?.code ===
+        'BRAIN_UNREACHABLE'
+    ) {
+      console.warn(
+        'Session backend is unreachable; retaining local files and deferring runtime cleanup to retention',
+        { projectId }
+      );
+      return true;
+    }
+    throw error;
+  }
+}

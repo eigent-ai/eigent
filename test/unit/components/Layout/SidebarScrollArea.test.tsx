@@ -14,67 +14,24 @@
 
 import { SidebarScrollArea } from '@/components/Layout/AppSidebar';
 import { render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
-let clientHeightSpy: ReturnType<typeof vi.spyOn> | undefined;
-let scrollHeightSpy: ReturnType<typeof vi.spyOn> | undefined;
-afterEach(() => {
-  clientHeightSpy?.mockRestore();
-  scrollHeightSpy?.mockRestore();
-  clientHeightSpy = undefined;
-  scrollHeightSpy = undefined;
-});
-
-function mockVerticalSize({
-  clientHeight,
-  scrollHeight,
-}: {
-  clientHeight: number;
-  scrollHeight: number;
-}) {
-  clientHeightSpy = vi
-    .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
-    .mockReturnValue(clientHeight);
-  scrollHeightSpy = vi
-    .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
-    .mockReturnValue(scrollHeight);
-}
+import { describe, expect, it } from 'vitest';
 
 describe('SidebarScrollArea', () => {
-  it('shows a visible scrollbar only while sidebar content overflows', () => {
-    mockVerticalSize({ clientHeight: 100, scrollHeight: 180 });
-
+  it('always reserves its scrollbar track in the rail padding', () => {
     const { container } = render(
-      <SidebarScrollArea>
-        <div>Overflowing navigation</div>
+      <SidebarScrollArea className="pt-ds-4">
+        <div>Navigation</div>
       </SidebarScrollArea>
     );
-    const scrollArea = container.querySelector(
-      '[data-sidebar-scroll-overflow]'
-    );
+    const scrollArea = container.querySelector('[data-sidebar-scroll-area]');
 
-    expect(scrollArea).toHaveAttribute('data-sidebar-scroll-overflow', 'true');
+    // The track replaces the right padding, so rows never shift when the
+    // content starts to overflow.
     expect(scrollArea).toHaveClass(
       'scrollbar-always-visible',
-      'overflow-y-auto'
+      'overflow-y-auto',
+      '-mr-ds-8',
+      'pt-ds-4'
     );
-    expect(scrollArea).not.toHaveClass('scrollbar');
-  });
-
-  it('does not reserve a scrollbar gutter when all rows fit', () => {
-    mockVerticalSize({ clientHeight: 100, scrollHeight: 100 });
-
-    const { container } = render(
-      <SidebarScrollArea>
-        <div>Short navigation</div>
-      </SidebarScrollArea>
-    );
-    const scrollArea = container.querySelector(
-      '[data-sidebar-scroll-overflow]'
-    );
-
-    expect(scrollArea).toHaveAttribute('data-sidebar-scroll-overflow', 'false');
-    expect(scrollArea).toHaveClass('overflow-hidden');
-    expect(scrollArea).not.toHaveClass('scrollbar-always-visible');
   });
 });

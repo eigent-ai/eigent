@@ -315,18 +315,27 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
       />
     );
 
+    // Same wording as the Narrative work log: the latest call speaks for
+    // the group in the tense of its outcome.
     const browserGroup = screen.getByRole('button', {
-      name: 'Browser Toolkit · Browser visit page · 2 events',
+      name: 'Browsed https://example.com/two · 2 events',
     });
     const todoGroup = screen.getByRole('button', {
-      name: 'TodoToolkit · Todo_write · 2 events',
+      name: 'Updated the plan · 2 events',
     });
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
     expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
     expect(
+      browserGroup.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(browserGroup.querySelector('[data-work-log-chevron]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+    expect(
       screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page · 2 events',
+        name: 'Browsed https://example.com/two · 2 events',
       })
     ).toHaveLength(1);
 
@@ -334,10 +343,54 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'true');
     expect(
-      screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page',
-      })
-    ).toHaveLength(2);
+      browserGroup.querySelector('[data-work-log-chevron]')
+    ).not.toHaveClass('opacity-0');
+    const calls = screen.getAllByRole('button', {
+      name: /^Browsed https:\/\/example\.com\/(?:one|two)$/,
+    });
+    expect(calls.map((call) => call.textContent)).toEqual([
+      'Browsed https://example.com/one',
+      'Browsed https://example.com/two',
+    ]);
+    expect(
+      calls[0]?.querySelector('[data-work-log-tool-icon]')
+    ).toBeInTheDocument();
+    expect(calls[0]?.querySelector('[data-work-log-chevron]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+  });
+
+  it('groups real SearchToolkit formatted inputs without inline argument narration', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...['octopus', 'squid', 'cuttlefish'].flatMap((query) =>
+        completedCall(
+          'Search Toolkit',
+          'search google',
+          `With query '${query}', web type, 1 result pages starting from page 1`,
+          '[]'
+        )
+      ),
+    ];
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+    const group = screen.getByRole('button', {
+      name: 'Searched for cuttlefish · 3 events',
+    });
+    expect(screen.queryByText(/^With query/)).not.toBeInTheDocument();
+    fireEvent.click(group);
+    const call = screen.getByRole('button', { name: 'Searched for octopus' });
+    fireEvent.click(call);
+    expect(
+      screen.getByText(
+        "With query 'octopus', web type, 1 result pages starting from page 1"
+      )
+    ).toBeInTheDocument();
   });
 
   it('keeps Search unified and shows providers only in expanded details', () => {
@@ -365,14 +418,14 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
     );
 
     const searchGroup = screen.getByRole('button', {
-      name: 'Search Toolkit · Search · 2 events',
+      name: 'Searched for OpenAI updates · 2 events',
     });
     expect(screen.queryByText('Querit')).not.toBeInTheDocument();
     expect(screen.queryByText('Google')).not.toBeInTheDocument();
 
     fireEvent.click(searchGroup);
     const calls = screen.getAllByRole('button', {
-      name: 'Search Toolkit · Search',
+      name: 'Searched for OpenAI updates',
     });
     fireEvent.click(calls[0]!);
     fireEvent.click(calls[1]!);
@@ -385,6 +438,88 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
       'data-search-provider',
       'google'
     );
+  });
+
+  it('titles legacy calls by outcome like the Narrative work log', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Terminal Toolkit',
+        'shell exec',
+        "command='npm test', timeout=30",
+        'ok'
+      ),
+      mk(AgentStep.ACTIVATE_TOOLKIT, {
+        toolkit_name: 'Terminal Toolkit',
+        method_name: 'shell exec',
+        message: "command='npm run build'",
+      }),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    // The latest call speaks for the group while it runs.
+    const group = screen.getByRole('button', {
+      name: 'Running npm run build · 2 events',
+    });
+    fireEvent.click(group);
+    expect(
+      screen.getByRole('button', { name: 'Ran npm test' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Running npm run build' })
+    ).toBeInTheDocument();
+    // The raw argument text stays in the expanded request, not the title.
+    expect(screen.queryByText(/timeout=30/)).not.toBeInTheDocument();
+  });
+
+  it('folds a finished Task log and lets a user reopen it', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('respects a manual open state when a Task finishes', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 });
 
@@ -562,6 +697,129 @@ describe('injectHumanInputReceipts permission approvals', () => {
           return item.kind === 'tool' && Boolean(item.humanInput);
         })
     ).toHaveLength(0);
+  });
+});
+
+describe('injectHumanInputReceipts question history', () => {
+  const humanTool = (id: string) =>
+    makeToolItem(id, {
+      rowTitle: 'Human Toolkit · Ask human via gui',
+      toolkitName: 'Human Toolkit',
+      method: 'Ask human via gui',
+    });
+  const question = (id: string, text: string): Message => ({
+    id: `ask-${id}`,
+    role: 'agent',
+    content: text,
+    step: AgentStep.ASK,
+    agent_name: 'single_agent',
+    interaction: {
+      interaction_id: id,
+      interaction_type: 'question',
+      run_id: 'task-1',
+      question: text,
+    },
+  });
+
+  it('keeps an answered question after Resume and drops the cancelled one', () => {
+    const tools = [humanTool('cancelled-call'), humanTool('answered-call')];
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: tools,
+      status: 'done',
+      doneToolCount: tools.length,
+      totalToolCount: tools.length,
+    };
+    const messages: Message[] = [
+      { id: 'prompt', role: 'user', content: 'Save my colour' },
+      question('cancelled', 'Which colour?'),
+      question('answered', 'Which colour?'),
+      {
+        id: 'tool-step',
+        role: 'agent',
+        content: '',
+        step: AgentStep.ACTIVATE_TOOLKIT,
+      },
+      {
+        id: 'reply',
+        role: 'user',
+        content: 'teal',
+        interactionResponseTo: 'answered',
+      },
+    ];
+
+    const [result] = injectHumanInputReceipts([group], messages, [
+      'cancelled',
+      'answered',
+    ]);
+    const items = result!.items as Array<{
+      humanInput?: { response?: string };
+    }>;
+
+    expect(items[0]?.humanInput).toBeUndefined();
+    expect(items[1]?.humanInput).toMatchObject({
+      question: 'Which colour?',
+      response: 'teal',
+    });
+  });
+
+  it('leaves a pending Memory change review to its own control', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 0,
+    };
+    const review: Message = {
+      id: 'ask-review',
+      role: 'agent',
+      content: 'Allow the Agent to update Memory?',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: 'review-1',
+        interaction_type: 'memory_change_review',
+        run_id: 'task-1',
+        question: 'Allow the Agent to update Memory?',
+      },
+    };
+
+    const [result] = injectHumanInputReceipts([group], [review], []);
+
+    expect(result!.items).toEqual([]);
+  });
+
+  it('keeps a pending question without an answer', () => {
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: [humanTool('pending-call')],
+      status: 'running',
+      doneToolCount: 0,
+      totalToolCount: 1,
+    };
+
+    const [result] = injectHumanInputReceipts(
+      [group],
+      [question('pending', 'Which colour?')],
+      []
+    );
+
+    expect(
+      (result!.items[0] as { humanInput?: { question?: string } }).humanInput
+    ).toMatchObject({ question: 'Which colour?', response: null });
   });
 });
 

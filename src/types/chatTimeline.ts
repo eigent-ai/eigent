@@ -24,6 +24,28 @@ export const chatTimelineDetailLevels = ['narrative', 'trajectory'] as const;
 
 export type ChatTimelineDetailLevel = (typeof chatTimelineDetailLevels)[number];
 
+/** Presentation preference for the Narrative work log only. */
+export const narrativeInformationDensities = [
+  'compact',
+  'balanced',
+  'expanded',
+] as const;
+
+export type NarrativeInformationDensity =
+  (typeof narrativeInformationDensities)[number];
+
+export const DEFAULT_NARRATIVE_INFORMATION_DENSITY: NarrativeInformationDensity =
+  'balanced';
+
+export function normalizeNarrativeInformationDensity(
+  value: unknown
+): NarrativeInformationDensity {
+  return typeof value === 'string' &&
+    (narrativeInformationDensities as readonly string[]).includes(value)
+    ? (value as NarrativeInformationDensity)
+    : DEFAULT_NARRATIVE_INFORMATION_DENSITY;
+}
+
 /** Product default. Never actively wrong for either audience. */
 export const DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL: ChatTimelineDetailLevel =
   'narrative';

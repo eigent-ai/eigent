@@ -167,6 +167,7 @@ async def test_project_metadata_precedes_single_agent_end():
     task_lock.add_conversation = MagicMock()
 
     options = MagicMock(spec=Chat)
+    options.timezone = None
     options.project_id = "project-summary"
     options.task_id = "run-summary"
     options.project_context = None
@@ -289,6 +290,7 @@ async def test_turn_error_emits_structured_reason(error, retryable, reason):
     task_lock.add_background_task = MagicMock()
 
     options = MagicMock(spec=Chat)
+    options.timezone = None
     options.project_id = "project_retryable"
     options.task_id = "run_retryable"
     options.project_context = None
@@ -398,6 +400,7 @@ async def test_skip_task_emits_end_without_blocking_on_cancellation():
     request.is_disconnected = AsyncMock(return_value=False)
 
     options = MagicMock(spec=Chat)
+    options.timezone = None
     options.project_id = "project_skip"
     options.task_id = "task_skip"
     options.project_context = None
@@ -494,6 +497,7 @@ async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
     task_lock.add_conversation = MagicMock()
 
     options = MagicMock(spec=Chat)
+    options.timezone = None
     options.project_id = "project-runtime-switch"
     options.task_id = "run-a"
     options.project_context = None
@@ -595,6 +599,7 @@ async def test_follow_up_reuses_runtime_but_resets_camel_conversation():
     task_lock.add_conversation = MagicMock()
 
     options = MagicMock(spec=Chat)
+    options.timezone = None
     options.project_id = "project-warm-agent"
     options.task_id = "run-a"
     options.project_context = None

@@ -803,3 +803,33 @@ class TestAgentIntegration:
             agent.step = MagicMock(return_value=mock_response)
             result = agent.step("Test message")
             assert result is mock_response
+
+
+@pytest.mark.parametrize("as_message", [False, True])
+def test_resume_without_browser_informs_the_agent(
+    sample_chat_data, as_message
+):
+    from camel.messages import BaseMessage
+
+    from app.agent.agent_model import append_resume_browser_notice
+
+    options = Chat(
+        **sample_chat_data,
+        resume_request_id="resume",
+        browser_unavailable_on_resume=True,
+    )
+    original = (
+        BaseMessage.make_assistant_message(
+            role_name="Agent", content="Existing instructions"
+        )
+        if as_message
+        else "Existing instructions"
+    )
+    result = append_resume_browser_notice(original, options)
+    text = result.content if as_message else result
+    assert "Existing instructions" in text
+    assert "browser could not be reconnected" in text
+    assert "If your remaining work needs the browser" in text
+    assert "Do not claim to have opened or checked a page" in text
+    options.resume_request_id = None
+    assert append_resume_browser_notice(original, options) is original

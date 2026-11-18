@@ -37,7 +37,7 @@ ChatBox
 ├── PlanTaskBox overlay portal (legacy only)
 └── BottomBox overlay (width: 100%; maximum width: 600px)
     ├── QueuedBox
-    ├── floating UsageLimitBanner or PickerPanel
+    ├── floating UsageLimitBanner or ContextPanel (files, skills, connectors)
     └── BoxMain
         ├── BoxHeader
         ├── ControlInputRouter
@@ -75,7 +75,7 @@ ChatBox/
     ├── BoxHeader.tsx
     ├── BoxFooter.tsx
     ├── QueuedBox.tsx
-    ├── PickerPanel.tsx
+    ├── ContextPanel.tsx
     ├── UsageLimitBanner.tsx
     ├── ApprovalModeSelect.tsx
     └── ModelAndThinkingEffortSelect.tsx
@@ -135,8 +135,8 @@ instead of moving it to the end or nesting it under a tool.
 
 ## Timeline modes
 
-Two modes, selected by an `IconPillToggle` in the Session header and persisted
-in `pageTabStore`:
+Two modes, selected in the Session settings menu and persisted in
+`pageTabStore`:
 
 | Mode         | Question it answers               | Work-band unit |
 | ------------ | --------------------------------- | -------------- |
@@ -195,10 +195,23 @@ prompt and the human's answer through the same disclosure a tool call uses.
 
 ### Fold policy
 
-Calls stay folded by default; narrative exists to show the agent's words, not
-its tool rows. A failed segment is the exception and opens to the failing row.
-While a segment is folded the running shimmer sits on its label; opening it
-hands the shimmer to the call that owns it, so exactly one indicator shows.
+The outer work log follows the Run by default: open while work is active or
+paused, folded when it ends. A user's toggle takes ownership of that Run's
+disclosure until it is unmounted, so later status receipts do not undo the
+choice. Live local toolkit rows come from the canonical Run stream; `/chat`
+toolkit mirrors remain available only for historical playback and the legacy
+renderer.
+
+Narrative follows the older event-log structure: the agent's words in place,
+then one row per call, led by the toolkit's icon. A fallback toolkit/method
+title reads in outcome tense (`Running` / `Ran` / `Failed to run` / `Stopped`);
+an authored title keeps its own wording. Each row's request/response detail
+stays folded; only a pending human call opens itself. A call with nothing to
+reveal is a plain line.
+Minimum and Moderate density count consecutive repeats of one toolkit method
+on a single `· N events` row, which opens when one of its calls fails. While
+that row is folded the running shimmer sits on its label; opening it hands the
+shimmer to the call that owns it, so exactly one indicator shows.
 
 ### Pause and resume
 
@@ -349,6 +362,21 @@ surfaces intentionally differ:
 
 Match the surface's elevation rather than the radius of whatever is next to it.
 
+## Rollback switch and legacy renderer retention
+
+`VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
+path. The event-native timeline is the default: the variable is unset in every
+checked-in env file, and only `VITE_CHATBOX_EVENT_BUS=false` switches a build
+back to the legacy conversation renderer for an emergency rollback. The value
+is read at build time, so a rollback needs a new build. CI runs the ChatBox
+tests with `false` so the rollback renderer stays green. The flag does **not**
+gate the Session-level Project event runtime or the new SidePanel.
+
+The legacy conversation renderer stays in the tree for at least the next two to
+three releases after the event-native timeline became the default. It receives
+bug fixes only. Removing it, the flag, and the rollback CI step is a separate
+decision once the event-native timeline has proven stable in released builds.
+
 ## Staged migration surfaces
 
 Parts of the event-native path are deliberately built ahead of their callers.
@@ -357,16 +385,12 @@ They are not dead code, but nothing exercises them yet:
 - `EventTimeline/presentationPolicy.ts` is driven by the `detailLevel` prop.
   `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
   always in force until a detail-level control is wired up.
-- `VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
-  path and is unset in every checked-in env file, so the legacy conversation
-  renderer ships by default. It does **not** gate the Session-level Project
-  event runtime or the new SidePanel.
 
 ### Project runtime cutover
 
 `ProjectEventRuntimeProvider` is mounted by the Session shell whenever a
 Project is active. The SidePanel uses that durable snapshot as its Run and
-activity source even while ChatBox still renders its legacy path. This runtime
+activity source whichever ChatBox renderer a build uses. This runtime
 ownership is therefore an intentional default cutover, not a staged surface
 behind `VITE_CHATBOX_EVENT_BUS`.
 
@@ -435,7 +459,9 @@ After the dependencies above are resolved:
 4. Make `EventNativeProjectTimeline` the only conversation renderer.
 5. Remove the legacy/event-native conditional state and handlers from
    `ChatBox/index.tsx`.
-6. Retire `VITE_CHATBOX_EVENT_BUS` after event-native rendering is the default.
+6. Retire `VITE_CHATBOX_EVENT_BUS` and its rollback CI step. Not before the
+   retention window above has passed and the event-native timeline has been
+   stable in released builds.
 7. Remove legacy projection normalization only after the event store no longer
    relies on legacy `/chat` frames as an ingestion source.
 8. Delete or update the corresponding legacy tests.

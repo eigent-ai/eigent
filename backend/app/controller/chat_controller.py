@@ -28,7 +28,11 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
-from app.auth import require_local_control_principal
+from app.agent.utils import current_time_str
+from app.auth import (
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
 from app.auth.local_control import LocalControlPrincipal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
@@ -108,7 +112,10 @@ from app.utils.cdp_browser_state import (
 from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
-from app.utils.workspace_resolver import get_workspace_resolver
+from app.utils.workspace_resolver import (
+    SpaceFolderNotUsableError,
+    get_workspace_resolver,
+)
 from app.workspace_bundle.runtime import (
     EnvironmentSetupRequiredError,
     ResolvedRuntimeEnvironment,
@@ -192,6 +199,12 @@ def _raise_follow_up_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _claimed_chat_source(data: Chat) -> str:
+    """The source a ``/chat`` caller reports; it can only lower trust."""
+
+    return "scheduled" if data.source == "scheduled" else "chat"
+
+
 async def _record_canonical_user_message(
     journal: SQLiteRunJournal,
     *,
@@ -205,16 +218,17 @@ async def _record_canonical_user_message(
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
-    if source != "scheduled" and isinstance(journal, SQLiteRunJournal):
-        # A queued follow-up is admitted as the Run named by its request id.
-        # Trigger text stays labelled even when sent as a Chat or Improve.
-        queued_source = await asyncio.to_thread(
-            journal.get_instruction_source,
+    if isinstance(journal, SQLiteRunJournal):
+        # The Run's persisted request decides; the caller can only lower
+        # trust. Trigger text stays labelled even when sent as Chat/Improve.
+        resolved = await asyncio.to_thread(
+            journal.resolve_user_message_source,
             project_id=run_context.project_id,
-            request_id=run_context.run_id,
+            run_id=run_context.run_id,
+            event_id=f"user-message:{request_id}",
+            claimed=source,
         )
-        if queued_source == "scheduled":
-            source = "scheduled"
+        source = resolved if resolved is not None else "scheduled"
     await EventRecorder(journal).record_user_message(
         project_id=run_context.project_id,
         run_id=run_context.run_id,
@@ -252,6 +266,12 @@ def _environment_setup_error(
         f"({', '.join(exc.issues)})",
         error_code=exc.code,
     )
+
+
+def _space_folder_admission_error(
+    exc: SpaceFolderNotUsableError,
+) -> UserException:
+    return UserException(code.error, str(exc), error_code=exc.code)
 
 
 _EXPLICIT_RESUME_INSTRUCTION = """
@@ -584,9 +604,7 @@ def _validate_resume_model_capability(
             "The model capability changed after this task started, so it "
             "can't be resumed. Send a new message to continue.",
         )
-    persisted_model = spec.semantic_spec.get(
-        "runtime_capability_manifest", {}
-    ).get("model", {})
+    persisted_model = spec.bound_model() or {}
     if (
         persisted_model.get("platform") != data.model_platform.lower()
         or persisted_model.get("type") != data.model_type
@@ -1142,6 +1160,8 @@ def _build_run_context(
         model_parameters=dict(data.model_config_dict or {}),
         permissions=frozenset(permissions),
         credential_sources=credential_sources,
+        prompt_current_time=current_time_str(data.timezone),
+        timezone=data.timezone,
     )
 
 
@@ -1299,6 +1319,8 @@ async def _prepare_chat_run(
     resolver = get_workspace_resolver()
     try:
         frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    except SpaceFolderNotUsableError as exc:
+        raise _space_folder_admission_error(exc) from exc
     except ValueError as exc:
         raise UserException(code.error, str(exc)) from exc
 
@@ -1568,11 +1590,10 @@ async def _prepare_chat_run(
             request_id=request_id,
             content=data.question,
             source=(
-                "scheduled"
-                if data.source == "scheduled"
-                else "improve"
+                "improve"
                 if warm_admission is not None
-                else "chat"
+                and _claimed_chat_source(data) == "chat"
+                else _claimed_chat_source(data)
             ),
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
@@ -1752,12 +1773,13 @@ async def start_chat_stream(data: Chat, request: Request):
                 existing_task_lock.queue
             )
             if queue_owner is not None:
-                raise UserException(
-                    code.error,
-                    "This Project already has a live chat consumer. "
-                    "Submit the new Run through the follow-up endpoint or "
-                    "retire the idle runtime first.",
-                    error_code="project_consumer_active",
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "project_consumer_active",
+                        "message": "This Session still has a live task consumer.",
+                        "run_id": queue_owner.run_id,
+                    },
                 )
 
         if data.resume_request_id:
@@ -1991,7 +2013,43 @@ async def start_chat_stream(data: Chat, request: Request):
                 request,
                 admission_request_id=request_id,
             )
-        except Exception:
+        except Exception as exc:
+            capability_refusal = isinstance(
+                exc,
+                (ModelCapabilityConfigError, UnsupportedThinkingEffortError),
+            )
+            permanent_refusal = capability_refusal or (
+                isinstance(exc, HTTPException) and exc.status_code == 422
+            )
+            if permanent_refusal and isinstance(journal, SQLiteRunJournal):
+                detail = (
+                    _model_capability_http_error(exc).detail
+                    if capability_refusal
+                    else getattr(exc, "detail", None)
+                )
+                message = (
+                    detail.get("message", str(detail))
+                    if isinstance(detail, dict)
+                    else str(detail or exc)
+                )
+                await asyncio.to_thread(
+                    journal.reject_unstarted_run,
+                    run_id,
+                    project_id=data.project_id,
+                    message=message,
+                    request_id=request_id,
+                    question=data.question,
+                    attachment_names=[
+                        Path(path).name for path in data.attaches or []
+                    ],
+                    review_handoff_ids=data.review_handoff_ids,
+                    error_code=(
+                        detail.get("code")
+                        if isinstance(detail, dict)
+                        else None
+                    ),
+                    source=_claimed_chat_source(data),
+                )
             if _is_weak_continuation(data.question):
                 await asyncio.to_thread(
                     journal.release_unadmitted_continuation,
@@ -2080,7 +2138,11 @@ def _follow_up_environment_changed_error(
     )
 
 
-@router.get("/chat/{project_id}/status", name="get chat status")
+@router.get(
+    "/chat/{project_id}/status",
+    name="get chat status",
+    dependencies=[Depends(require_local_control_if_configured)],
+)
 async def status(project_id: str):
     task_lock = get_task_lock_if_exists(project_id)
     if task_lock is None:
@@ -2334,6 +2396,20 @@ async def mark_follow_up_admitted(
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 async def improve(id: str, data: SupplementChat, request: Request):
+    try:
+        return await _admit_improve(id, data, request)
+    except ProjectExecutionLeaseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_run_active",
+                "message": "Another task in this Session must finish before the next one starts.",
+                "run_id": exc.owner_run_id,
+            },
+        ) from exc
+
+
+async def _admit_improve(id: str, data: SupplementChat, request: Request):
     await guard_legacy_execution_entry(
         get_default_run_journal(), project_id=id, run_id=data.task_id
     )
@@ -2590,6 +2666,9 @@ async def _prepare_improve_chat(
                         camel_log_dir=camel_log,
                         binding_source=frozen_dirs.binding_source,
                         attempt_id=None,
+                        prompt_current_time=current_time_str(
+                            current_context.timezone
+                        ),
                         browser_port=int(
                             getattr(request.state, "browser_port", port)
                         ),
@@ -2620,6 +2699,9 @@ async def _prepare_improve_chat(
                     f" project_id: {id}"
                 )
 
+        except SpaceFolderNotUsableError as exc:
+            # Not a best-effort path update: the follow-up must not start.
+            raise _space_folder_admission_error(exc) from exc
         except Exception as e:
             chat_logger.error(
                 "Error updating file path for"

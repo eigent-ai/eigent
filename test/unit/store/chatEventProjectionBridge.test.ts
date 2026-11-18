@@ -21,6 +21,8 @@ import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import { composeTimelineRuns } from '@/lib/projector/chat/presentation';
 import {
   enqueueChatEventProjection,
+  isChatEventProjectionEnabled,
+  isChatEventTimelineEnabled,
   type ChatEventProjectionInput,
 } from '@/store/chatEventProjectionBridge';
 import {
@@ -28,7 +30,7 @@ import {
   releaseProjectEventStore,
   type ProjectEventStoreSnapshot,
 } from '@/store/projectEventStore';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const projectId = 'project-mixed-replay';
 const runId = 'run-mixed-replay';
@@ -302,6 +304,89 @@ describe.each(['per-event', 'batch'] as const)(
         },
         { kind: 'tool', runSequence: 2, invocation: { toolCallId: 'tool-1' } },
       ]);
+    });
+
+    it('keeps a live tool in journal order when its /chat mirror arrives later', () => {
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      const firstEvents = [
+        canonical(1, 'user.message', { content: 'Inspect the workspace' }),
+        canonical(2, 'step.started', {
+          step: {
+            step_id: 'step-1',
+            status: 'running',
+            title: 'Inspect the workspace',
+          },
+        }),
+        canonical(3, 'tool.prepared', {
+          tool_call_id: 'tool-1',
+          toolkit_name: 'File Toolkit',
+          tool_name: 'read_file',
+          status: 'prepared',
+        }),
+      ];
+      for (const event of firstEvents) {
+        expect(enqueueChatEventProjection(event, true, true)).toBe('accepted');
+        if (flushMode === 'per-event') store.flushAll();
+      }
+      store.flushAll();
+
+      const trace = () =>
+        composeTimelineRuns(
+          presentChatSemanticEntities(
+            selectRenderableChatNodes(store.getSnapshot().chat)
+          )
+        )[0]!.traceRows.map((row) =>
+          row.kind === 'tool'
+            ? `tool:${row.invocation.toolCallId}`
+            : row.node.kind === 'step'
+              ? `step:${row.node.stepId}`
+              : row.node.kind
+        );
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
+
+      const liveMirror: ChatEventProjectionInput = {
+        projectId,
+        runId,
+        sequence: 1,
+        sourceId: 'live-chat',
+        transport: 'legacy_chat',
+        raw: {
+          step: 'activate_toolkit',
+          data: {
+            tool_call_id: 'tool-1',
+            toolkit_name: 'File Toolkit',
+            method_name: 'read_file',
+          },
+        },
+      };
+      expect(enqueueChatEventProjection(liveMirror, true, true)).toBe(
+        'filtered'
+      );
+      store.flushAll();
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
+
+      // The same legacy fact may arrive inside the durable journal with its
+      // real Run sequence. It can enrich the call without changing its slot.
+      expect(
+        enqueueChatEventProjection(
+          canonical(
+            4,
+            'legacy.activate_toolkit',
+            {
+              tool_call_id: 'tool-1',
+              toolkit_name: 'File Toolkit',
+              method_name: 'read_file',
+            },
+            'activate_toolkit'
+          ),
+          true,
+          true
+        )
+      ).toBe('accepted');
+      store.flushAll();
+      expect(trace()).toEqual(['message', 'step:step-1', 'tool:tool-1']);
     });
 
     it('pairs repeated equal fragments once and retains the legacy-only tail', () => {
@@ -640,4 +725,30 @@ describe('mixed history retained across snapshot replacement', () => {
       expectReconciledHistory();
     }
   );
+});
+
+describe('ChatBox timeline flag', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['unset', true, undefined],
+    ['empty', true, ''],
+    ['"true"', true, 'true'],
+    ['"false"', false, 'false'],
+  ] as const)('reads %s as enabled: %s', (_label, enabled, value) => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', value);
+    expect(isChatEventTimelineEnabled()).toBe(enabled);
+  });
+
+  it('keeps the projection bridge on for the default timeline', () => {
+    vi.stubEnv('VITE_SESSION_SIDE_PANEL_EVENT_BUS', 'false');
+    vi.stubEnv('VITE_CHATBOX_EVENT_SHADOW', '');
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', '');
+    expect(isChatEventProjectionEnabled()).toBe(true);
+
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    expect(isChatEventProjectionEnabled()).toBe(false);
+  });
 });

@@ -14,7 +14,9 @@
 
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
 import {
   ArrowDown,
@@ -37,7 +39,8 @@ export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
   const host = useHost();
   const electronAPI = host?.electronAPI;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const { t } = useTranslation();
   const [isSingleMode, setIsSingleMode] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -65,7 +68,7 @@ export default function TerminalAgentWorkspace() {
   const agentMap = {
     developer_agent: {
       name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={CodeXml} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
       bgColor: 'bg-ds-bg-terminal-default-default',
       shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -74,7 +77,7 @@ export default function TerminalAgentWorkspace() {
     },
     browser_agent: {
       name: 'Browser Agent',
-      icon: <Globe size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Globe} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
       bgColor: 'bg-ds-bg-browser-default-default',
       shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -83,7 +86,7 @@ export default function TerminalAgentWorkspace() {
     },
     document_agent: {
       name: 'Document Agent',
-      icon: <FileText size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={FileText} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
       bgColor: 'bg-ds-bg-document-default-default',
       shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -92,7 +95,7 @@ export default function TerminalAgentWorkspace() {
     },
     multi_modal_agent: {
       name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Image} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
       bgColor: 'bg-ds-neutral-default-default',
       shapeColor: 'bg-ds-neutral-subtle-default',
@@ -101,7 +104,7 @@ export default function TerminalAgentWorkspace() {
     },
     social_media_agent: {
       name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-ds-ink-default-default" />,
+      icon: <DsIcon icon={Bird} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -111,7 +114,7 @@ export default function TerminalAgentWorkspace() {
   };
   const _handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+    fetchPut(`/task/${sessionProjectId}/take-control`, {
       action: 'pause',
     });
     setIsTakeControl(true);
@@ -125,7 +128,7 @@ export default function TerminalAgentWorkspace() {
             size="sm"
             variant="success"
             onClick={() => {
-              fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+              fetchPut(`/task/${sessionProjectId}/take-control`, {
                 action: 'resume',
               });
               setIsTakeControl(false);
@@ -133,7 +136,7 @@ export default function TerminalAgentWorkspace() {
             }}
             className="rounded-full"
           >
-            <ChevronLeft size={16} />
+            <DsIcon icon={ChevronLeft} />
             <span className="text-sm leading-13 font-bold">
               {t('chat.give-back-to-agent')}
             </span>
@@ -158,7 +161,7 @@ export default function TerminalAgentWorkspace() {
                 );
               }}
             >
-              <ChevronLeft size={16} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
               className={`flex h-[26px] items-center gap-xs rounded-lg px-2 py-0.5 ${
@@ -166,7 +169,7 @@ export default function TerminalAgentWorkspace() {
                   ?.bgColorLight
               }`}
             >
-              <Bot className="h-4 w-4 text-ds-ink-default-default" />
+              <DsIcon icon={Bot} className="text-ds-ink-default-default" />
               <div
                 className={`text-[10px] leading-17 font-bold ${
                   agentMap[activeAgent?.type as keyof typeof agentMap]
@@ -186,7 +189,7 @@ export default function TerminalAgentWorkspace() {
             </div>
           </div>
           <Button size="xs" buttonContent="icon-only" variant="ghost">
-            <Settings2 size={16} />
+            <DsIcon recipe="main-compact" icon={Settings2} />
           </Button>
         </div>
 
@@ -295,7 +298,7 @@ export default function TerminalAgentWorkspace() {
                   }
                 }}
               >
-                <ArrowDown size={16} />
+                <DsIcon icon={ArrowDown} />
               </Button>
             )}
             {isSingleMode && (
@@ -319,7 +322,7 @@ export default function TerminalAgentWorkspace() {
                   }
                 }}
               >
-                <ArrowUp size={16} />
+                <DsIcon icon={ArrowUp} />
               </Button>
             )}
             <Button
@@ -336,7 +339,7 @@ export default function TerminalAgentWorkspace() {
                 }
               }}
             >
-              <GalleryThumbnails size={16} />
+              <DsIcon icon={GalleryThumbnails} />
             </Button>
           </div>
         )}

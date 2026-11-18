@@ -68,7 +68,59 @@ describe('shared MarkDown renderer', () => {
       container.querySelector('.markdown-profile-document')
     ).not.toBeNull();
     expect(container.querySelector('table')).not.toBeNull();
+    const tableScroll = container.querySelector('.markdown-table-scroll');
+    expect(tableScroll).toContainElement(container.querySelector('table'));
+    // A table that fits adds no extra tab stop.
+    expect(tableScroll).not.toHaveAttribute('tabindex');
+    expect(tableScroll).toHaveClass('scrollbar-always-visible');
+    expect(
+      screen.getByRole('columnheader', { name: 'Value' })
+    ).toBeInTheDocument();
     await waitFor(() => expect(mocks.highlight).toHaveBeenCalled());
+  });
+
+  it('shows a finished message on first paint when it has rendered before', async () => {
+    const content = 'A message **rendered once** before reopening.';
+    const first = render(
+      <MarkDown content={content} enableTypewriter={false} />
+    );
+    await waitFor(() =>
+      expect(first.container.querySelector('strong')).not.toBeNull()
+    );
+    first.unmount();
+
+    const { container } = render(
+      <MarkDown content={content} enableTypewriter={false} />
+    );
+
+    // No waiting: the render above already has the parsed text.
+    expect(container.querySelector('strong')).toHaveTextContent(
+      'rendered once'
+    );
+  });
+
+  it('makes only an overflowing table scroll region focusable', () => {
+    const scrollWidth = vi
+      .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockReturnValue(640);
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockReturnValue(320);
+    try {
+      const { container } = render(
+        <MarkDown
+          content={'| Name | Value |\n| --- | --- |\n| one | 1 |'}
+          enableTypewriter={false}
+        />
+      );
+      expect(container.querySelector('.markdown-table-scroll')).toHaveAttribute(
+        'tabindex',
+        '0'
+      );
+    } finally {
+      scrollWidth.mockRestore();
+      clientWidth.mockRestore();
+    }
   });
 
   it('collapses and expands long code without wrapping it', async () => {

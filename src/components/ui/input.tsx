@@ -15,6 +15,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
@@ -103,8 +104,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert
-                  size={16}
+                <DsIcon
+                  icon={CircleAlert}
                   className="text-ds-ink-default-default"
                 />
               </TooltipSimple>

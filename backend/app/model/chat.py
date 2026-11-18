@@ -97,8 +97,10 @@ class Chat(BaseModel):
     # no behavior change). See docs/models/codex-subscription-auth-review.md.
     auth_source: Literal["codex_subscription"] | None = None
     language: str = "en"
+    timezone: str | None = None
     browser_port: int = 9222
     cdp_browsers: list[dict] = Field(default_factory=list)
+    browser_unavailable_on_resume: bool = False
     max_retries: int = 3
     allow_local_system: bool = False
     installed_mcp: McpServers = {"mcpServers": {}}
@@ -138,6 +140,7 @@ class Chat(BaseModel):
     resume_request_id: str | None = Field(default=None, min_length=1)
     # Trigger tasks (schedules, webhooks, Slack) send text the user did not
     # write. ``scheduled`` keeps Memory from treating it as the user's words.
+    # It can only lower trust: Brain's persisted request for the Run decides.
     source: Literal["local", "scheduled"] = "local"
 
     @field_validator("thinking_effort", mode="before")

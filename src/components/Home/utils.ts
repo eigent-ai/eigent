@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatAppDate } from '@/lib/appDate';
 import { parseServerTimestamp } from '@/lib/serverTimestamp';
 
 /** Display labels with only the first character capitalized. */
@@ -46,7 +47,7 @@ export function formatHubRelativeAgo(
     return t('layout.home-relative-hours-ago', { count: diffHours });
   }
 
-  return date.toLocaleDateString(undefined, {
+  return formatAppDate(date, {
     month: 'short',
     day: '2-digit',
     year: 'numeric',
@@ -59,11 +60,15 @@ export function formatHubDate(
 ): string {
   const date = hubDateFromValue(value);
   if (!date) return '';
-  return date.toLocaleDateString(locale, {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-  });
+  return formatAppDate(
+    date,
+    {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+    },
+    locale
+  );
 }
 
 const compactCountFormatter = new Intl.NumberFormat('en', {

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { type DialogProps } from '@radix-ui/react-dialog';
 import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
@@ -78,7 +79,7 @@ const CommandInput = React.forwardRef<
     className="flex items-center border-x-0 border-t-0 border-b border-ds-hairline-default-default px-3"
     {...({ 'cmdk-input-wrapper': '' } as any)}
   >
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+    <DsIcon icon={Search} className="mr-2 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(

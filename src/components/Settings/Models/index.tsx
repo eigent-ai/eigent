@@ -324,7 +324,7 @@ function ModelsContent() {
             buttonContent="icon-only"
             aria-label={t('setting.model-list.actions', { model: label })}
           >
-            <MoreHorizontal />
+            <DsIcon icon={MoreHorizontal} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">{content}</DropdownMenuContent>
@@ -565,7 +565,7 @@ function ModelsContent() {
                         <span className="min-w-0 truncate">
                           {selectedDefaultLabel}
                         </span>
-                        <ChevronDown />
+                        <DsIcon icon={ChevronDown} />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -760,7 +760,7 @@ function ModelsContent() {
                           size="sm"
                           onClick={() => setEditing({ provider: group })}
                         >
-                          {!codex && <Plus />}
+                          {!codex && <DsIcon icon={Plus} />}
                           {t(
                             codex
                               ? 'setting.manage'
@@ -866,9 +866,9 @@ function ModelsContent() {
                                       {t('setting.model-list.view-all-models')}
                                     </span>
                                     {showAllEigent ? (
-                                      <ChevronDown />
+                                      <DsIcon icon={ChevronDown} />
                                     ) : (
-                                      <ChevronRight />
+                                      <DsIcon icon={ChevronRight} />
                                     )}
                                   </Button>
                                 )}

@@ -29,8 +29,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { groupMessagesByQuery } from '@/components/ChatBox/ProjectSection';
 import { UserQueryGroup } from '@/components/ChatBox/UserQueryGroup';
+import { SessionPaneProvider } from '@/hooks/useSessionPane';
 
 const navigation = vi.hoisted(() => ({
+  historyLoadingProjectIds: {} as Record<string, true>,
   setActiveProject: vi.fn(),
   setActiveWorkspaceTab: vi.fn(),
   ensureProjectRuntimeLoaded: vi.fn(async () => undefined),
@@ -40,7 +42,11 @@ vi.mock('@/store/pageTabStore', () => ({
   WorkspaceTab: { Project: 'project' },
   usePageTabStore: Object.assign(
     (selector: (state: any) => unknown) =>
-      selector({ openFilePreview: vi.fn() }),
+      selector({
+        openFilePreview: vi.fn(),
+        sessionPreviewOpeningByProject: {},
+        previewBrowserViewportByProject: {},
+      }),
     {
       getState: () => ({
         setActiveWorkspaceTab: navigation.setActiveWorkspaceTab,
@@ -52,7 +58,10 @@ vi.mock('@/store/pageTabStore', () => ({
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: Object.assign(
     (selector: (state: any) => unknown) =>
-      selector({ activeProjectId: 'session-waiting' }),
+      selector({
+        activeProjectId: 'session-waiting',
+        historyLoadingProjectIds: navigation.historyLoadingProjectIds,
+      }),
     { getState: () => ({ setActiveProject: navigation.setActiveProject }) }
   ),
 }));
@@ -68,7 +77,8 @@ vi.mock('@/lib/projectRuntimeHydration', () => ({
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/TaskWorkLogAccordion', () => ({
-  getTaskRunDisplayStatus: () => undefined,
+  getTaskRunDisplayStatus: (task: { durableRunStatus?: string }) =>
+    task.durableRunStatus,
   TaskWorkLogAccordion: ({ taskId }: { taskId: string }) => (
     <div data-testid="task-work-log" data-task-id={taskId} />
   ),
@@ -112,7 +122,11 @@ vi.mock('@/components/ChatBox/MessageItem/NoticeCard', () => ({
 }));
 
 vi.mock('@/components/ChatBox/TaskBox/TaskCard', () => ({
-  TaskCard: () => <div data-testid="task-card" />,
+  TaskCard: ({ onSaveTask }: { onSaveTask: () => void }) => (
+    <button data-testid="task-card" onClick={onSaveTask}>
+      Save tasks
+    </button>
+  ),
 }));
 
 vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
@@ -181,6 +195,41 @@ function renderGroups(messages: any[], overrides: any = {}) {
 }
 
 describe('UserQueryGroup Run work-log ownership', () => {
+  it('saves task edits to the owning pane while another Session is selected', () => {
+    const messages = [
+      { id: 'user-1', role: 'user', content: 'Build a report' },
+      {
+        id: 'plan',
+        role: 'agent',
+        step: AgentStep.TO_SUB_TASKS,
+        content: 'Plan',
+        isConfirm: true,
+      },
+    ];
+    const store = createStore(messages, {
+      sessionMode: SessionMode.MULTI_AGENT,
+      hasWaitComfirm: true,
+      taskInfo: [
+        { id: 'subtask', content: 'Write report', status: 'completed' },
+      ],
+    });
+    render(
+      <SessionPaneProvider projectId="pane-owner">
+        <UserQueryGroup
+          chatId="chat-1"
+          chatStore={store}
+          queryGroup={groupMessagesByQuery(messages)[0]}
+          isActive={false}
+          onQueryActive={() => undefined}
+          index={0}
+          taskId="run-1"
+        />
+      </SessionPaneProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save tasks' }));
+    expect(store.getState().saveTaskInfo).toHaveBeenCalledWith('pane-owner');
+  });
+
   it('keeps exactly one work log while a structured ASK is pending and after its reply', () => {
     const prompt = { id: 'user-1', role: 'user', content: 'Build a report' };
     const ask = {
@@ -206,6 +255,55 @@ describe('UserQueryGroup Run work-log ownership', () => {
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
     expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
     expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+  });
+
+  it('leaves an answered question to the work log after the Run completes', () => {
+    const prompt = { id: 'user-1', role: 'user', content: 'Build a report' };
+    const ask = {
+      id: 'ask-1',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'Which region?',
+      interaction: {
+        interaction_id: 'interaction-1',
+        interaction_type: 'question',
+        run_id: 'run-1',
+        question: 'Which region?',
+      },
+    };
+    const tool = {
+      id: 'tool-1',
+      role: 'agent',
+      step: AgentStep.ACTIVATE_TOOLKIT,
+      content: '',
+    };
+    const reply = {
+      id: 'reply-1',
+      role: 'user',
+      content: 'Europe',
+      interactionResponseTo: 'interaction-1',
+    };
+    const end = {
+      id: 'end-1',
+      role: 'agent',
+      step: AgentStep.END,
+      content: 'Done',
+    };
+
+    renderGroups([prompt, ask, tool, reply, end], {
+      status: ChatTaskStatus.FINISHED,
+      durableRunStatus: 'completed',
+      activeAsk: '',
+      resolvedInteractionIds: ['interaction-1'],
+    });
+
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+    expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(
+      screen.queryByText('This task ended before Eigent sent a final reply.')
+    ).not.toBeInTheDocument();
   });
 
   it('forwards message lifecycle and Run identity to every feedback card path', () => {
@@ -537,6 +635,79 @@ describe('Task failure summary ownership', () => {
       expect(container.querySelector('[data-task-failure-summary]')).toBeNull()
     );
   });
+
+  it.each([
+    ['absent', 'No actions were recorded.'],
+    ['unverified', 'Action outcomes could not be verified.'],
+  ] as const)(
+    'reports an interrupted Run as interrupted, never failed (%s reply)',
+    async (finalResponse, detail) => {
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        onFacts({
+          terminalReason: 'runtime_lost',
+          finalResponse,
+          actionsVerified: finalResponse === 'absent',
+          actions: [],
+        });
+        return () => {};
+      });
+      const { container } = renderGroups(
+        [{ id: 'user', role: 'user', content: 'Request' }],
+        {
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'interrupted',
+          observeTaskFailureFacts,
+        }
+      );
+      expect(
+        await screen.findByText(
+          'Task interrupted before a final reply was recorded.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByText(detail)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'An interruption does not establish whether files or external services changed.'
+        )
+      ).toBeInTheDocument();
+      expect(container).not.toHaveTextContent(/fail/i);
+      const summary = container.querySelector('[data-task-failure-summary]');
+      expect(summary).toHaveAttribute('data-run-status', 'interrupted');
+      expect(summary?.className).toContain('bg-ds-bg-warning-subtle-default');
+      expect(summary?.className).not.toContain('error');
+    }
+  );
+
+  it.each(['interrupted', 'timed_out'])(
+    'states a missing final reply once for a %s Run',
+    async (durableRunStatus) => {
+      let deliver: (facts: unknown) => void = () => {};
+      const observeTaskFailureFacts = vi.fn((_id, onFacts) => {
+        deliver = onFacts;
+        return () => {};
+      });
+      renderGroups([{ id: 'user', role: 'user', content: 'Request' }], {
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus,
+        observeTaskFailureFacts,
+      });
+      const notice = 'This task ended before Eigent sent a final reply.';
+      // Until the receipt is read, the plain notice still explains the gap.
+      expect(screen.getByText(notice)).toBeInTheDocument();
+      act(() =>
+        deliver({
+          terminalReason: null,
+          finalResponse: 'absent',
+          actionsVerified: true,
+          actions: [],
+        })
+      );
+      expect(
+        await screen.findByText('No actions were recorded.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    }
+  );
 });
 
 describe('UserQueryGroup Space writer wait', () => {
@@ -734,5 +905,170 @@ describe('UserQueryGroup restored Run requests', () => {
     restored(undefined);
 
     expect(card()).toBeNull();
+  });
+
+  it('leaves a waiting question to the control above the composer', () => {
+    renderGroups(
+      [
+        messages[0],
+        {
+          id: 'ask-question',
+          role: 'agent',
+          step: AgentStep.ASK,
+          content: 'Which colour?',
+          agent_name: 'single_agent',
+          interaction: {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            run_id: 'run-1',
+            question: 'Which colour?',
+            agent: 'single_agent',
+          },
+        },
+      ],
+      { type: 'replay', durableRunStatus: 'waiting_for_user' }
+    );
+
+    expect(screen.queryByText('Which colour?')).toBeNull();
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
+});
+
+describe('UserQueryGroup reloaded history', () => {
+  const answered = [
+    { id: 'user-1', role: 'user', content: 'what model are you' },
+    {
+      id: 'end-1',
+      role: 'agent',
+      step: AgentStep.END,
+      content: 'I am a language model.',
+      agent_name: 'single_agent',
+    },
+  ];
+  // A reloaded Task records no mode and, for a direct answer, no assignment.
+  const reloaded = {
+    type: 'replay',
+    sessionMode: undefined,
+    activeAsk: '',
+    status: ChatTaskStatus.FINISHED,
+    durableRunStatus: 'completed',
+  };
+
+  const sessionTree = (
+    messages: any[],
+    overrides: any,
+    sessionMode?: (typeof SessionMode)[keyof typeof SessionMode]
+  ) => {
+    const store = createStore(messages, overrides);
+    return (
+      <>
+        {groupMessagesByQuery(messages).map((group, index) => (
+          <UserQueryGroup
+            key={group.queryId}
+            chatId="chat-1"
+            chatStore={store}
+            queryGroup={group}
+            isActive={false}
+            onQueryActive={() => undefined}
+            index={index}
+            taskId="run-1"
+            sessionMode={sessionMode}
+          />
+        ))}
+      </>
+    );
+  };
+  const renderSession = (
+    messages: any[],
+    overrides: any,
+    sessionMode?: (typeof SessionMode)[keyof typeof SessionMode]
+  ) => render(sessionTree(messages, overrides, sessionMode));
+  const messageWrapper = () =>
+    screen.getByText('what model are you').parentElement as HTMLElement;
+
+  afterEach(() => {
+    cleanup();
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+  });
+
+  it('shows a reloaded single-agent answer as its message and work log only', () => {
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(screen.getByText('what model are you')).toBeInTheDocument();
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
+
+  it('shows no splitting box while the history is loading', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    renderSession([answered[0]], {
+      ...reloaded,
+      status: ChatTaskStatus.PENDING,
+      durableRunStatus: undefined,
+    });
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('shows no splitting box for a reloaded Task that already ended', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    const { rerender } = renderSession([answered[0]], reloaded);
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+    rerender(sessionTree([answered[0]], reloaded));
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('shows no splitting box for a reloaded Run that stopped before planning', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    const interrupted = {
+      type: 'replay',
+      sessionMode: SessionMode.WORKFORCE,
+      activeAsk: '',
+      status: ChatTaskStatus.PENDING,
+      durableRunStatus: 'interrupted',
+    };
+    const { rerender } = renderSession([answered[0]], interrupted);
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+    rerender(sessionTree([answered[0]], interrupted));
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('treats a still-running reloaded Task as the Session mode, not as planning', () => {
+    renderSession(
+      [answered[0]],
+      {
+        ...reloaded,
+        status: ChatTaskStatus.PENDING,
+        durableRunStatus: 'running',
+      },
+      SessionMode.SINGLE_AGENT
+    );
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('keeps the planning state of a Workforce Task that is still planning', () => {
+    renderSession([answered[0]], {
+      sessionMode: SessionMode.WORKFORCE,
+      activeAsk: '',
+      status: ChatTaskStatus.PENDING,
+    });
+
+    expect(screen.getByTestId('plan-task-box')).toBeInTheDocument();
+  });
+
+  it('does not animate reloaded history in again', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(messageWrapper().style.opacity).not.toBe('0');
+  });
+
+  it('still animates new activity in', () => {
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(messageWrapper().style.opacity).toBe('0');
   });
 });

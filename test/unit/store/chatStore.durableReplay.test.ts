@@ -31,6 +31,7 @@ import {
   removeResolvedInteractionMessages,
   shouldAppendTaskForConfirmedEvent,
 } from '@/store/chatStore';
+import { AgentStep } from '@/types/constants';
 import i18next from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -661,5 +662,76 @@ describe('canonical Run replay projection', () => {
         ]
       )
     ).toHaveLength(1);
+  });
+});
+
+describe('question history projection', () => {
+  it('projects the canonical request without a legacy ASK frame', () => {
+    expect(
+      canonicalRunEventToLegacyMessage({
+        event_type: 'interaction.requested',
+        run_id: 'run-1',
+        created_at: 123,
+        payload: {
+          interaction_id: 'question',
+          interaction_type: 'question',
+          request: { question: 'Which colour?', agent: 'single_agent' },
+        },
+      })
+    ).toEqual({
+      step: AgentStep.ASK,
+      timestamp: 123,
+      data: {
+        interaction_id: 'question',
+        interaction_type: 'question',
+        run_id: 'run-1',
+        question: 'Which colour?',
+        agent: 'single_agent',
+      },
+    });
+  });
+  it.each(['memory_change_review', 'merge_conflict'])(
+    'leaves a %s request to its legacy frame',
+    (interactionType) => {
+      expect(
+        canonicalRunEventToLegacyMessage({
+          event_type: 'interaction.requested',
+          run_id: 'run-1',
+          payload: {
+            interaction_id: 'review',
+            interaction_type: interactionType,
+            request: { question: 'Allow this change?' },
+            options: [{ id: 'keep_run', label: 'Keep Run version' }],
+          },
+        })
+      ).toBeNull();
+    }
+  );
+  it('retains resolved questions in history while removing their actionable queue entry', () => {
+    const ask = {
+      id: 'ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'Colour?',
+      interaction: {
+        interaction_id: 'question',
+        interaction_type: 'question',
+        run_id: 'run-1',
+      },
+    } as Message;
+    const store = createChatStoreInstance();
+    store.getState().create('run-1');
+    store.getState().addMessages('run-1', ask);
+    store.getState().setActiveAskList('run-1', [ask]);
+    store.getState().markHumanInteractionResolved('run-1', 'question');
+    expect(store.getState().tasks['run-1'].messages).toContainEqual(ask);
+    expect(store.getState().tasks['run-1'].askList).toEqual([]);
+    expect(store.getState().tasks['run-1'].resolvedInteractionIds).toEqual([
+      'question',
+    ]);
+    expect(removeResolvedInteractionMessages([ask], 'question', true)).toEqual([
+      ask,
+    ]);
+    expect(removeResolvedInteractionMessages([ask], 'question')).toEqual([]);
   });
 });

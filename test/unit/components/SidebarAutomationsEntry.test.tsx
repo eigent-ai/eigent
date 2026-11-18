@@ -27,7 +27,10 @@ const mocks = vi.hoisted(() => {
   };
   const space = {
     activeSpaceId: 'space-a',
-    spaces: {},
+    spaces: { 'space-a': { id: 'space-a', name: 'Research' } } as Record<
+      string,
+      { id: string; name: string }
+    >,
     projectsBySpaceId: { 'space-a': [meta] },
     getProjectMeta: () => meta,
     getProjectsForSpace: vi.fn((): (typeof meta)[] => []),
@@ -57,6 +60,7 @@ const mocks = vi.hoisted(() => {
     runtime,
     page,
     invoke: vi.fn(),
+    executeAppCommand: vi.fn(),
     archive: vi.fn(),
     stop: vi.fn(),
     SessionStopError: class SessionStopError extends Error {},
@@ -67,6 +71,9 @@ const mocks = vi.hoisted(() => {
     success: vi.fn(),
   };
 });
+vi.mock('@/components/Home/SpaceHeaderMenu', () => ({
+  SpaceHeaderMenu: () => <button type="button" aria-label="Space menu" />,
+}));
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
   fetchPut: vi.fn(),
@@ -93,10 +100,15 @@ vi.mock('@/store/spaceStore', () => ({
   getVisibleProjectMetasForSpace: () => [mocks.space.getProjectMeta()],
 }));
 vi.mock('@/store/projectRuntimeStore', () => ({
-  useProjectRuntimeStore: (selector?: any) =>
-    selector ? selector(mocks.runtime) : mocks.runtime,
+  useProjectRuntimeStore: Object.assign(
+    (selector?: any) => (selector ? selector(mocks.runtime) : mocks.runtime),
+    { getState: () => mocks.runtime }
+  ),
 }));
-vi.mock('@/store/pageTabStore', () => ({
+vi.mock('@/store/pageTabStore', async (importOriginal) => ({
+  displayedWorkspaceTab: (
+    await importOriginal<typeof import('@/store/pageTabStore')>()
+  ).displayedWorkspaceTab,
   usePageTabStore: (selector: any) => selector(mocks.page),
 }));
 vi.mock('@/store/triggerStore', () => ({
@@ -119,7 +131,7 @@ vi.mock('@/service/workspaceApi', () => ({
   deleteWorkspaceProjectWorkdir: mocks.deleteWorkdir,
 }));
 vi.mock('@/lib/sessionStop', () => ({
-  stopSessionAndWait: mocks.stop,
+  stopSessionForDeletion: mocks.stop,
   SessionStopError: mocks.SessionStopError,
 }));
 vi.mock('@/lib/projectAchievement', () => ({
@@ -144,7 +156,7 @@ vi.mock('@/components/GlobalSearch', () => ({
   GlobalSearchDialog: () => null,
 }));
 vi.mock('@/components/Layout/AppCommandProvider', () => ({
-  useAppCommand: () => vi.fn(),
+  useAppCommand: () => mocks.executeAppCommand,
 }));
 vi.mock('@/components/ui/shortcut-tooltip', () => ({
   ShortcutTooltipContent: () => null,
@@ -157,14 +169,27 @@ vi.mock('@/components/Layout/AppSidebar', () => {
   const Container = ({ children }: any) => <div>{children}</div>;
   return {
     SidebarShell: Container,
-    SidebarSection: Container,
+    SidebarSection: ({ children, className }: any) => (
+      <div className={className}>{children}</div>
+    ),
     SidebarNavGroup: Container,
     SidebarSeparator: () => null,
-    NavTab: ({ label, ariaLabel, onClick, endAction, disabled }: any) => (
+    SidebarRailSpacer: () => (
+      <span aria-hidden="true" data-sidebar-rail-spacer />
+    ),
+    NavTab: ({
+      label,
+      ariaLabel,
+      ariaCurrentPage,
+      onClick,
+      endAction,
+      disabled,
+    }: any) => (
       <div>
         <button
           type="button"
           aria-label={ariaLabel ?? label}
+          aria-current={ariaCurrentPage ? 'page' : undefined}
           onClick={onClick}
           disabled={disabled}
         >
@@ -189,7 +214,7 @@ vi.mock('sonner', () => ({
 function renderSidebar() {
   render(
     <MemoryRouter>
-      <SpaceSidebar chatStore={null} />
+      <SpaceSidebar />
     </MemoryRouter>
   );
 }
@@ -235,5 +260,73 @@ describe('Sidebar Automations entry', () => {
 
     expect(mocks.error).not.toHaveBeenCalled();
     expect(mocks.page.setActiveWorkspaceTab).toHaveBeenCalledWith('triggers');
+  });
+});
+
+describe('Space sidebar first rows', () => {
+  it('starts with the Space menu and settings, then New session, then Files', () => {
+    renderSidebar();
+
+    const names = screen
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'));
+    expect(names.slice(0, 4)).toEqual([
+      'Space menu',
+      'Space settings',
+      'New session',
+      'Files',
+    ]);
+    for (const removed of ['Workspace', 'Configuration']) {
+      expect(
+        screen.queryByRole('button', { name: removed })
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it('puts New session level with the rail’s first Space tile', () => {
+    renderSidebar();
+
+    // Name row, then an invisible copy of the rail's divider, then New
+    // session, so it lines up with the second rail item as in Home.
+    const nameRow = screen
+      .getByRole('button', { name: 'Space menu' })
+      .closest('[data-sidebar-row]') as HTMLElement;
+    const spacer = nameRow.nextElementSibling as HTMLElement;
+    expect(spacer).toHaveAttribute('data-sidebar-rail-spacer');
+    expect(spacer).toHaveAttribute('aria-hidden', 'true');
+    expect(spacer.parentElement).toHaveClass('gap-ds-4');
+    expect(
+      spacer.compareDocumentPosition(
+        screen.getByRole('button', { name: 'New session' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('opens Space settings from the row button', () => {
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Space settings' }));
+    expect(mocks.executeAppCommand).toHaveBeenCalledWith(
+      'navigate-configuration'
+    );
+  });
+
+  it('marks New session as the current page while the composer landing shows', () => {
+    mocks.page.activeWorkspaceTab = 'workforce';
+    try {
+      renderSidebar();
+      expect(
+        screen.getByRole('button', { name: 'New session' })
+      ).toHaveAttribute('aria-current', 'page');
+    } finally {
+      mocks.page.activeWorkspaceTab = 'project';
+    }
+  });
+
+  it('starts a New session from its row', () => {
+    renderSidebar();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    expect(mocks.executeAppCommand).toHaveBeenCalledWith('new-project');
   });
 });

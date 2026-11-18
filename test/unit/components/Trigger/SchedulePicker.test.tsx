@@ -159,6 +159,27 @@ describe('schedule initialization', () => {
 });
 
 describe('stored schedules the editor cannot show', () => {
+  it.each(['0 9 * * 1,3-5', '0 9 * * 1-5', '0 9 1-5 1 *', '0 9 1,15 1 *'])(
+    'keeps the range or list cron %s as stored',
+    async (cron) => {
+      const change = vi.fn();
+      const valid = vi.fn();
+      render(
+        <SchedulePicker
+          value={cron}
+          isEditing
+          onChange={change}
+          onValidationChange={valid}
+        />
+      );
+      await waitFor(() => expect(valid).toHaveBeenLastCalledWith(true));
+      expect(change).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(/This schedule can't be edited here/)
+      ).toBeInTheDocument();
+    }
+  );
+
   it('keeps the stored cron and dates until a frequency is chosen', async () => {
     const change = vi.fn();
     const valid = vi.fn();
@@ -572,4 +593,36 @@ describe('schedule preview across month and year ends', () => {
 
     expect(await openPreview(user)).toEqual(expected);
   });
+});
+
+describe('schedule preview with an end date', () => {
+  useTimeZone('Asia/Shanghai');
+
+  it.each([undefined, 'Asia/Shanghai'])(
+    'stops after the end date (zone %s)',
+    async (timezone) => {
+      vi.setSystemTime(new Date(2026, 9, 28, 10));
+      const user = userEvent.setup();
+      const schedule: LocalSchedule = {
+        frequency: 'daily',
+        hour: 8,
+        minute: 0,
+      };
+      render(
+        <SchedulePicker
+          value={scheduleToCron(schedule, new Date(), timezone)}
+          isEditing
+          timezone={timezone}
+          initialConfig={{ expirationDate: '2026-10-31', timezone }}
+          onChange={vi.fn()}
+        />
+      );
+
+      expect(await openPreview(user)).toEqual([
+        'October 29, 2026',
+        'October 30, 2026',
+        'October 31, 2026',
+      ]);
+    }
+  );
 });

@@ -70,6 +70,7 @@ import {
   __remoteControlBridgeTestHooks,
   ackFromDurableExecution,
 } from '@/hooks/useRemoteControlBridge';
+import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 
@@ -436,5 +437,56 @@ describe('remote human_reply command', () => {
       code: 'BRIDGE_HUMAN_REPLY_REJECTED',
       message: 'The requested human interaction is no longer pending.',
     });
+  });
+});
+
+describe('remote command auth failures', () => {
+  const command = {
+    id: 'rc_cmd_auth',
+    session_id: 'session-1',
+    user_id: 1,
+    source_channel: 'remote_control',
+    type: 'human_reply',
+    target_project_id: 'project-1',
+    payload: { agent: 'worker', reply: 'yes' },
+  };
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    useAuthStore.setState({ token: 'token-current', user_id: 1 });
+  });
+
+  it.each([401, 403])(
+    'fails only the command when the local Brain answers %i',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: false,
+          status,
+          headers: { get: () => 'application/json' },
+          json: async () => ({
+            detail: { code: 'local_control_capability_required' },
+          }),
+        }))
+      );
+
+      await expect(
+        __remoteControlBridgeTestHooks.executeRemoteCommand(
+          command,
+          'token-current'
+        )
+      ).rejects.toMatchObject({ code: 'BRIDGE_AUTH', status });
+
+      expect(useAuthStore.getState().token).toBe('token-current');
+    }
+  );
+
+  it('signs out only when the rejected token is still the current one', () => {
+    __remoteControlBridgeTestHooks.signOutRejectedBridgeToken('token-old');
+    expect(useAuthStore.getState().token).toBe('token-current');
+
+    __remoteControlBridgeTestHooks.signOutRejectedBridgeToken('token-current');
+    expect(useAuthStore.getState().token).toBeNull();
   });
 });

@@ -14,12 +14,17 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
 import { ChatTaskStatus, TaskStatus } from '@/types/constants';
 import {
   ChevronDown,
@@ -101,6 +106,8 @@ export function TaskCard({
 
   //Get Chatstore and ProjectStore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
 
   // Extract values for dependency arrays (must be before any conditional returns)
   const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
@@ -125,18 +132,35 @@ export function TaskCard({
   // Side-panel Progress section can ask the chat to surface this card. Each
   // bump of the counter forces the card open; ProjectChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
-  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
-  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (taskBoxFocusRequestId === lastSeenFocusRef.current) return;
+    lastSeenFocusRef.current = taskBoxFocusRequestId;
     if (
-      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId === sessionProjectId
+        : isFocusedPane) &&
       (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
     ) {
-      lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
-  }, [activeTaskId, taskBoxFocusRequestId, taskBoxFocusTaskId]);
+  }, [
+    activeTaskId,
+    taskBoxFocusRequestId,
+    taskBoxFocusTaskId,
+    taskBoxFocusProjectId,
+    sessionProjectId,
+    isFocusedPane,
+  ]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -346,7 +370,7 @@ export function TaskCard({
               <div>
                 {taskType === 1 && (
                   <Button variant="ghost" size="icon" onClick={onAddTask}>
-                    <Plus size={16} />
+                    <DsIcon icon={Plus} />
                   </Button>
                 )}
                 {taskType === 2 && (
@@ -366,11 +390,9 @@ export function TaskCard({
                       size="icon"
                       onClick={() => setIsExpanded((prev) => !prev)}
                     >
-                      <ChevronDown
-                        size={16}
-                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
-                          isExpanded ? 'rotate-180' : ''
-                        }`}
+                      <DsIcon
+                        icon={ChevronDown}
+                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
                       />
                     </Button>
                   </div>
@@ -414,11 +436,12 @@ export function TaskCard({
                         onClick={() => {
                           if (task.agent) {
                             // Switch to the chatStore that owns this task card (for multi-turn conversations)
-                            if (chatId && projectStore.activeProjectId) {
-                              const activeProjectId =
-                                projectStore.activeProjectId;
+                            if (chatId && sessionProjectId) {
+                              const activeProjectId = sessionProjectId;
                               const activeChatStore =
-                                projectStore.getActiveChatStore();
+                                projectStore.getActiveChatStore(
+                                  sessionProjectId ?? undefined
+                                );
                               const currentChatId = activeChatStore
                                 ? Object.keys(
                                     projectStore.projects[activeProjectId]
@@ -484,42 +507,39 @@ export function TaskCard({
                       >
                         <div className="pt-0.5">
                           {task.status === TaskStatus.RUNNING && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-ds-icon-information-default-default ${
-                                activeTaskStatus === ChatTaskStatus.RUNNING &&
-                                'animate-spin'
-                              } `}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className={`text-ds-icon-information-default-default ${activeTaskStatus === ChatTaskStatus.RUNNING && 'animate-spin'}`}
                             />
                           )}
                           {task.status === TaskStatus.SKIPPED && (
-                            <LoaderCircle
-                              size={16}
+                            <DsIcon
+                              icon={LoaderCircle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
-                            <CircleCheckBig
-                              size={16}
+                            <DsIcon
+                              icon={CircleCheckBig}
                               className="text-ds-icon-success-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
-                            <CircleSlash
-                              size={16}
+                            <DsIcon
+                              icon={CircleSlash}
                               className="text-ds-icon-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
-                            <TriangleAlert
-                              size={16}
+                            <DsIcon
+                              icon={TriangleAlert}
                               className="text-ds-icon-warning-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle
-                              size={16}
+                            <DsIcon
+                              icon={Circle}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           )}

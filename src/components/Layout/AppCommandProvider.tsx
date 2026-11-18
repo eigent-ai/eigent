@@ -15,16 +15,28 @@
 import KeyboardShortcutsDialog from '@/components/Dialog/KeyboardShortcutsDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
+import { useSpaceSwitch } from '@/hooks/useSpaceSwitch';
 import { useHost, type AppShellElectronAPI } from '@/host';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
-import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import { getSessionWindowRole } from '@/lib/sessionWindows';
+import { isHomePagePath } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
-import { APP_COMMAND, type AppCommandId } from '@/shared/appCommands';
+import {
+  APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
+  type AppCommandId,
+} from '@/shared/appCommands';
 import { normalizeNativeMenuLocale } from '@/shared/nativeMenu';
-import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
+import {
+  displayedWorkspaceTab,
+  isHomePlaceTab,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings, useSettingsStore } from '@/store/settingsStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import { getCurrentPinnedSpaceIds, useSpaceStore } from '@/store/spaceStore';
 import {
   createContext,
   useCallback,
@@ -65,6 +77,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const requestWorkspaceChatFocus = usePageTabStore(
     (state) => state.requestWorkspaceChatFocus
   );
+  const setShellPlace = usePageTabStore((state) => state.setShellPlace);
   const activeWorkspaceTab = usePageTabStore(
     (state) => state.activeWorkspaceTab
   );
@@ -86,12 +99,18 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   );
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const closeSettings = useSettingsStore((state) => state.closeSettings);
+  const { openSpaceView } = useSpaceSwitch();
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const shortcutPlatform = useDesktopShortcutPlatform();
   const isWorkspacePage = location.pathname === '/';
   const isProjectTab =
     isWorkspacePage && activeWorkspaceTab === WorkspaceTab.Project;
+  // Preview and Summary columns also exist on the New session page.
+  const isSessionLayoutTab =
+    isProjectTab ||
+    (isWorkspacePage &&
+      displayedWorkspaceTab(activeWorkspaceTab) === WorkspaceTab.NewProject);
 
   const openFilesTab = useCallback(() => {
     const projectStore = useProjectRuntimeStore.getState();
@@ -164,6 +183,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         case APP_COMMAND.newProject:
           void runAfterWorkspaceConfigurationSave(() => {
             closeSettings();
+            // From a Home page, New session opens in Home; elsewhere it stays
+            // in the place `/` showed last.
+            if (isHomePagePath(location.pathname)) setShellPlace('home');
             setActiveProject(null);
             setActiveWorkspaceTab(WorkspaceTab.NewProject);
             requestWorkspaceChatFocus();
@@ -177,7 +199,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           setReportBugOpen(true);
           return;
         case APP_COMMAND.toggleTimelineView:
-          if (isProjectTab) {
+          // Dev mode exists only in the event-native timeline; the Session
+          // menu hides it otherwise, so the shortcut does nothing there.
+          if (isProjectTab && isChatEventTimelineEnabled()) {
             setChatTimelineDetailLevel(
               chatTimelineDetailLevel === 'trajectory'
                 ? 'narrative'
@@ -186,35 +210,48 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           }
           return;
         case APP_COMMAND.togglePreviewPanel:
-          if (isProjectTab) toggleSessionPreview();
+          if (isSessionLayoutTab) toggleSessionPreview({ immediate: true });
           return;
         case APP_COMMAND.openPreviewBrowser:
-          if (isProjectTab) openPreviewTab('browser');
+          if (isSessionLayoutTab)
+            openPreviewTab('browser', { immediate: true });
           return;
         case APP_COMMAND.openPreviewTerminal:
-          if (isProjectTab) openPreviewTab('terminal');
+          if (isSessionLayoutTab)
+            openPreviewTab('terminal', { immediate: true });
           return;
         case APP_COMMAND.toggleWorkspaceSidebar:
           if (isWorkspacePage) toggleWorkspaceSidebar();
           return;
         case APP_COMMAND.toggleSessionSidePanel:
-          if (isProjectTab) requestToggleSessionSidePanel();
+          if (isSessionLayoutTab) requestToggleSessionSidePanel();
           return;
         case APP_COMMAND.navigateHome:
+          // Home keeps an open Session or New session; any Space view tab
+          // gives way to New session.
           void runAfterWorkspaceConfigurationSave(() => {
-            setActiveProject(null);
             closeSettings();
-            navigate('/home?section=spaces', {
-              state: isSettingsRoutePath(location.pathname)
-                ? location.state
-                : shellBackState(`${location.pathname}${location.search}`),
-            });
+            if (
+              !isHomePlaceTab(usePageTabStore.getState().activeWorkspaceTab)
+            ) {
+              setActiveProject(null);
+              setActiveWorkspaceTab(WorkspaceTab.NewProject);
+            }
+            setShellPlace('home');
+            requestWorkspaceChatFocus();
+            if (location.pathname !== '/') navigate('/');
           });
           return;
         case APP_COMMAND.navigateWorkspace:
+          // ⌘1 opens the Space's Workspace page, the Space row in the sidebar.
           void runAfterWorkspaceConfigurationSave(() => {
             closeSettings();
-            setActiveWorkspaceTab(WorkspaceTab.Workforce);
+            if (activeSpaceId) {
+              usePageTabStore.getState().openSpaceWorkspaceTab('projects');
+            } else {
+              setActiveWorkspaceTab(WorkspaceTab.Workforce);
+            }
+            setShellPlace('space');
             navigate('/');
           });
           return;
@@ -244,14 +281,21 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           if (!activeSpaceId) return;
           void runAfterWorkspaceConfigurationSave(() => {
             closeSettings();
-            navigate(
-              `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=workspace-profile`,
-              {
-                state: shellBackState(`${location.pathname}${location.search}`),
-              }
-            );
+            usePageTabStore
+              .getState()
+              .openSpaceWorkspaceTab('workspace-profile');
+            navigate('/');
           });
           return;
+        default: {
+          const pinIndex = (
+            PINNED_SPACE_COMMANDS as readonly AppCommandId[]
+          ).indexOf(command);
+          if (pinIndex === -1) return;
+          const spaceId = getCurrentPinnedSpaceIds()[pinIndex];
+          if (spaceId) openSpaceView(spaceId);
+          return;
+        }
       }
     },
     [
@@ -260,18 +304,19 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       chatTimelineDetailLevel,
       closeSettings,
       isProjectTab,
+      isSessionLayoutTab,
       isWorkspacePage,
       location.pathname,
-      location.search,
-      location.state,
       navigate,
       openFilesTab,
       openPreviewTab,
+      openSpaceView,
       requestToggleSessionSidePanel,
       requestWorkspaceChatFocus,
       setActiveProject,
       setChatTimelineDetailLevel,
       setActiveWorkspaceTab,
+      setShellPlace,
       toggleSessionPreview,
       toggleWorkspaceSidebar,
     ]
@@ -319,6 +364,15 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           active.closest('.xterm') !== null ||
           ['INPUT', 'TEXTAREA'].includes(active.tagName))
       ) {
+        return;
+      }
+
+      // A Session window only closes itself; app commands stay in the main
+      // window, which owns navigation.
+      if (getSessionWindowRole() === 'session') {
+        if (key !== 'w') return;
+        event.preventDefault();
+        window.close();
         return;
       }
 

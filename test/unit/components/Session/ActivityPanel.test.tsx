@@ -62,7 +62,10 @@ vi.mock('@/api/connectors', () => ({
 vi.mock('@/client/platform', () => ({ isWeb: () => false }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
-  default: () => ({ chatStore: mocks.chatStore }),
+  default: () => ({
+    chatStore: mocks.chatStore,
+    projectId: mocks.activeProjectId,
+  }),
 }));
 
 vi.mock('@/hooks/useProjectEventRuntime', () => ({

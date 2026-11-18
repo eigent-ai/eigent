@@ -286,6 +286,14 @@ async def startup_event():
 
     initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
     await start_default_execution_service()
+    from app.utils.runtime_environment_cleanup import (
+        runtime_environment_gc_loop,
+    )
+
+    global runtime_environment_gc_task
+    runtime_environment_gc_task = asyncio.create_task(
+        runtime_environment_gc_loop(journal)
+    )
 
 
 @api.on_event("shutdown")
@@ -296,7 +304,17 @@ async def shutdown_event_handler():
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
+    gc_task = globals().get("runtime_environment_gc_task")
+    if gc_task is not None:
+        gc_task.cancel()
+        await asyncio.gather(gc_task, return_exceptions=True)
     app_logger.info("Starting graceful shutdown process")
+
+    from app.run_runtime.runtime import mark_process_shutting_down
+
+    # Quitting is not a tool outcome: undispatched tools and their approvals
+    # stay open so restart recovery records the interruption.
+    mark_process_shutting_down()
 
     from app.workspace_runtime.runtime import close_default_execution_service
 
@@ -330,11 +348,12 @@ async def cleanup_resources():
         except asyncio.CancelledError:
             pass
 
-    # Cleanup all task locks
+    # Cleanup all task locks. Runs still active here become interrupted on
+    # the next start, so keep their environment copies for Resume.
     for task_id in list(task_locks.keys()):
         try:
             task_lock = task_locks[task_id]
-            await task_lock.cleanup()
+            await task_lock.cleanup(keep_run_environments=True)
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
 

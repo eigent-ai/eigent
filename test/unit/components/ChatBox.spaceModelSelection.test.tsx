@@ -54,6 +54,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   input: null as any,
   variant: null as any,
+  decisionVariant: null as any,
   snapshot: null as any,
   space: null as any,
   interrupted: null as any,
@@ -71,6 +72,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   realInterrupted: false,
   realTransport: false,
+  idleRunId: null as string | null,
   durableRun: null as any,
   host: null as any,
 }));
@@ -113,7 +115,10 @@ vi.mock('@/store/authStore', () => ({
   useWorkerList: () => [],
 }));
 vi.mock('@/store/projectStore', () => ({
-  useProjectStore: { getState: () => mocks.projectStore },
+  useProjectStore: Object.assign(
+    (selector: any) => selector(mocks.projectStore),
+    { getState: () => mocks.projectStore }
+  ),
   useProjectRuntimeStore: { getState: () => mocks.projectStore },
   waitForPendingStaleRuntimeEviction: vi.fn(async () => undefined),
 }));
@@ -171,6 +176,9 @@ vi.mock('@/hooks/useInterruptedRunStatus', async (load) => {
             run: mocks.interrupted,
             setRun: mocks.setInterrupted,
             refresh: mocks.refreshInterrupted,
+            // The real hook settles once the status loaded and no Run is
+            // still interrupted; mirror that so queued admission can proceed.
+            settled: !mocks.interrupted,
           },
   };
 });
@@ -203,9 +211,24 @@ vi.mock('@/components/ChatBox/ProjectChatContainer', () => ({
 vi.mock('@/components/ChatBox/EventNativeProjectTimeline', () => ({
   EventNativeProjectTimeline: () => null,
 }));
+// The active human decision renders above the composer, which then stays a
+// plain input. Record whichever control currently owns the decision.
+vi.mock('@/components/ChatBox/BottomBox/HumanDecisionCard', () => ({
+  HumanDecisionCard: ({ variant }: any) => {
+    mocks.decisionVariant = variant;
+    return variant?.kind === 'approval' ? (
+      <button
+        disabled={variant.disabled}
+        onClick={() => variant.onApprove('once')}
+      >
+        Approve
+      </button>
+    ) : null;
+  },
+}));
 vi.mock('@/components/ChatBox/BottomBox', () => ({
   default: ({ inputProps, noModelOverlay, variant }: any) => {
-    mocks.variant = variant;
+    mocks.variant = mocks.decisionVariant ?? variant;
     mocks.input = inputProps;
     if (!inputProps) return null;
     return (
@@ -224,14 +247,6 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
         >
           Follow up
         </button>
-        {variant?.kind === 'approval' ? (
-          <button
-            disabled={variant.disabled}
-            onClick={() => variant.onApprove('once')}
-          >
-            Approve
-          </button>
-        ) : null}
       </div>
     );
   },
@@ -251,6 +266,16 @@ vi.mock('@/lib/events/appEvents', () => ({
   recordFeatureUsed: vi.fn(),
   recordTaskStopped: vi.fn(),
 }));
+vi.mock('@/store/chatStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/store/chatStore')>();
+  return {
+    ...actual,
+    // The mocked stream never processes END, so let a test state which
+    // finished Run still holds an idle live transport for a warm follow-up.
+    getIdleSSETransportTaskId: (taskIds: string[]) =>
+      mocks.idleRunId ?? actual.getIdleSSETransportTaskId(taskIds),
+  };
+});
 vi.mock('@/lib/runEvents', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/runEvents')>();
   vi.spyOn(actual.runEventIngressRegistry, 'ensureLocal').mockImplementation(
@@ -290,6 +315,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     runDomainEventHub.clear();
     mocks.realInterrupted = false;
     mocks.realTransport = false;
+    mocks.idleRunId = null;
     mocks.durableRun = null;
     mocks.host = null;
     vi.stubGlobal(
@@ -360,6 +386,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     };
     mocks.projectStore = {
       activeProjectId: 'session-1',
+      historyLoadingProjectIds: {},
       projects: { 'session-1': project },
       getActiveChatStore: () => chat,
       getProjectById: () => project,
@@ -1834,6 +1861,22 @@ describe('ChatBox after an accepted Space model selection', () => {
   it('automatically admits a queued follow-up using the accepted Session pin', async () => {
     await acceptInitialSpaceRun();
     const pin = { ...project.metadata.modelSelection };
+    // The first Run finished and its consumer idles: a queued follow-up joins
+    // it warm. A consumer still working holds the queue until it is done.
+    const finishedRunId = chat.getState().activeTaskId!;
+    mocks.idleRunId = finishedRunId;
+    const localGet = mocks.localGet.getMockImplementation()!;
+    mocks.localGet.mockImplementation(async (url, ...args) =>
+      url.endsWith('/status')
+        ? {
+            has_lock: true,
+            status: 'done',
+            run_id: finishedRunId,
+            consumer_alive: true,
+            subscriber_count: 1,
+          }
+        : localGet(url, ...args)
+    );
     project.queuedMessages = [
       {
         task_id: 'queued-1',

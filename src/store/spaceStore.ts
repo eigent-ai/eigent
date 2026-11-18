@@ -77,6 +77,8 @@ export interface Space {
     legacy?: boolean;
     sharedMemoryEnabled?: boolean;
     preferredWorkdirMode?: 'worktree' | 'copy' | 'direct-write';
+    /** Chosen emoji; `null` or absent shows the name's first letter. */
+    emoji?: string | null;
     [key: string]: unknown;
   };
 }
@@ -131,6 +133,10 @@ interface SpaceStore {
   activeSpaceId: string | null;
   spaces: Record<string, Space>;
   lastVisitedProjectBySpace: Record<string, string>;
+  /** Active Space each account left at sign-out, reopened at sign-in. */
+  lastActiveSpaceIdByUser: Record<string, string>;
+  /** Spaces each account pinned on this device, in the order they chose. */
+  pinnedSpaceIdsByUser: Record<string, string[]>;
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>>;
   projectIdIndex: Record<string, string>;
   projectsSyncedAt: Record<string, number>;
@@ -191,6 +197,15 @@ interface SpaceStore {
     rootPath: string,
     force?: boolean
   ) => Promise<void>;
+  /** Sets the Space's emoji, or `null` for its first letter. */
+  setSpaceEmoji: (spaceId: string, emoji: string | null) => Promise<void>;
+  /** Refuses with `full` once `MAX_PINNED_SPACES` are pinned. */
+  pinSpace: (spaceId: string) => PinSpaceResult;
+  unpinSpace: (spaceId: string) => void;
+  /** Moves a pinned Space to `toIndex` within the pinned list. */
+  moveSpacePin: (spaceId: string, toIndex: number) => void;
+  /** Replaces the pinned list; extra and unknown ids are dropped. */
+  setPinnedSpaces: (spaceIds: string[]) => void;
   getActiveSpace: () => Space | null;
   getAllSpaces: () => Space[];
   getSpaceById: (spaceId: string | null | undefined) => Space | null;
@@ -202,6 +217,8 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   | 'activeSpaceId'
   | 'spaces'
   | 'lastVisitedProjectBySpace'
+  | 'lastActiveSpaceIdByUser'
+  | 'pinnedSpaceIdsByUser'
   | 'projectsBySpaceId'
   | 'projectIdIndex'
   | 'projectsSyncedAt'
@@ -210,6 +227,8 @@ const emptyEnvironmentScopedSpaceState = (): Pick<
   activeSpaceId: null,
   spaces: {},
   lastVisitedProjectBySpace: {},
+  lastActiveSpaceIdByUser: {},
+  pinnedSpaceIdsByUser: {},
   projectsBySpaceId: {},
   projectIdIndex: {},
   projectsSyncedAt: {},
@@ -282,6 +301,84 @@ const mergeServerSpaceWithLocalBinding = (
 
 export const legacySpaceIdForUser = (userId?: string | number | null) =>
   `legacy_${canonicalUserId(userId)}`;
+
+/**
+ * Ten pins plus the active Space's tile fit the rail at the 700px minimum
+ * window height, with room to spare.
+ */
+export const MAX_PINNED_SPACES = 10;
+
+export type PinSpaceResult = 'pinned' | 'already-pinned' | 'full' | 'missing';
+
+/** Pins are keyed like `lastActiveSpaceIdByUser`: by the signed-in account. */
+export const pinnedSpaceOwnerKey = (userId?: string | number | null) =>
+  canonicalUserId(userId);
+
+const isPinnableSpace = (space: Space | undefined): space is Space =>
+  Boolean(space && space.status !== 'archived');
+
+/**
+ * The pinned Spaces that can still be shown, in order. A Space that is gone
+ * or archived is skipped, so a hydration that briefly misses a Space does not
+ * lose the pin.
+ */
+export const getPinnedSpaceIds = (
+  state: Pick<SpaceStore, 'spaces' | 'pinnedSpaceIdsByUser'>,
+  ownerKey: string
+): string[] => {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const spaceId of state.pinnedSpaceIdsByUser[ownerKey] ?? []) {
+    if (seen.has(spaceId) || !isPinnableSpace(state.spaces[spaceId])) continue;
+    seen.add(spaceId);
+    ids.push(spaceId);
+    if (ids.length === MAX_PINNED_SPACES) break;
+  }
+  return ids;
+};
+
+/**
+ * Write a new order for the pins on show, leaving a pin whose Space is briefly
+ * missing where it was, so it's still there when that Space comes back.
+ */
+const withHiddenPins = (
+  saved: readonly string[],
+  shown: readonly string[],
+  next: readonly string[]
+): string[] => {
+  const queue = [...next];
+  const result: string[] = [];
+  for (const spaceId of new Set(saved)) {
+    if (shown.includes(spaceId)) {
+      const replacement = queue.shift();
+      if (replacement !== undefined) result.push(replacement);
+    } else if (!next.includes(spaceId)) {
+      result.push(spaceId);
+    }
+  }
+  return [...result, ...queue];
+};
+
+const withoutPinnedSpaces = (
+  pinnedSpaceIdsByUser: Record<string, string[]>,
+  spaceIds: ReadonlySet<string>
+): Record<string, string[]> => {
+  if (spaceIds.size === 0) return pinnedSpaceIdsByUser;
+  let changed = false;
+  const next: Record<string, string[]> = {};
+  for (const [ownerKey, ids] of Object.entries(pinnedSpaceIdsByUser)) {
+    const kept = ids.filter((spaceId) => !spaceIds.has(spaceId));
+    if (kept.length !== ids.length) changed = true;
+    next[ownerKey] = kept;
+  }
+  return changed ? next : pinnedSpaceIdsByUser;
+};
+
+const currentPinOwnerKey = () => pinnedSpaceOwnerKey(getAuthStore().user_id);
+
+/** The signed-in account's pinned Spaces, for callers outside React. */
+export const getCurrentPinnedSpaceIds = () =>
+  getPinnedSpaceIds(useSpaceStore.getState(), currentPinOwnerKey());
 
 const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
   const timestamp = parseServerTimestamp(value);
@@ -688,6 +785,8 @@ export const useSpaceStore = create<SpaceStore>()(
       activeSpaceId: null,
       spaces: {},
       lastVisitedProjectBySpace: {},
+      lastActiveSpaceIdByUser: {},
+      pinnedSpaceIdsByUser: {},
       projectsBySpaceId: {},
       projectIdIndex: {},
       projectsSyncedAt: {},
@@ -732,10 +831,23 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
+          // Remember where the outgoing account was, so signing back in
+          // reopens that Space instead of the most recently updated one.
+          const departingSpace = state.activeSpaceId
+            ? state.spaces[state.activeSpaceId]
+            : undefined;
+          const lastActiveSpaceIdByUser = departingSpace?.userId
+            ? {
+                ...state.lastActiveSpaceIdByUser,
+                [String(departingSpace.userId)]: departingSpace.id,
+              }
+            : state.lastActiveSpaceIdByUser;
+
           const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
           return {
             storageEnvironmentKey: getAuthEnvironmentKey(),
             spaces: nextSpaces,
+            lastActiveSpaceIdByUser,
             activeSpaceId: pickHydratedActiveSpaceId(
               nextSpaces,
               state.activeSpaceId,
@@ -816,9 +928,19 @@ export const useSpaceStore = create<SpaceStore>()(
                 legacySpaceIdsWithProjects.has(space.id)) &&
               !currentHydration.deletedSpaceIds.has(space.id)
           );
-          const shouldCreateInitialBlankSpace = !visibleOwnedSpaces.some(
-            (space) => space.status === 'active'
+          // The list holds only the signed-in account's Spaces. One with
+          // another owner means this hydration started with a placeholder or
+          // stale user id, so it cannot conclude the account has no Spaces.
+          // Relies on GET /spaces returning only the caller's own Spaces.
+          const listedForAnotherOwner = serverSpaces.some(
+            (space) =>
+              space.status === 'active' &&
+              Boolean(space.userId) &&
+              String(space.userId) !== ownerId
           );
+          const shouldCreateInitialBlankSpace =
+            !listedForAnotherOwner &&
+            !visibleOwnedSpaces.some((space) => space.status === 'active');
 
           if (shouldCreateInitialBlankSpace) {
             try {
@@ -927,12 +1049,18 @@ export const useSpaceStore = create<SpaceStore>()(
               }
               nextSpaces[space.id] = merged;
             }
+            const currentActiveSpace = state.activeSpaceId
+              ? nextSpaces[state.activeSpaceId]
+              : undefined;
             return {
               spaces: nextSpaces,
               activeSpaceId: pickHydratedActiveSpaceId(
                 nextSpaces,
                 state.activeSpaceId,
-                localLegacyId
+                localLegacyId,
+                currentActiveSpace?.status === 'active'
+                  ? null
+                  : state.lastActiveSpaceIdByUser[ownerId]
               ),
             };
           });
@@ -1006,6 +1134,14 @@ export const useSpaceStore = create<SpaceStore>()(
           }
           return {
             spaces: nextSpaces,
+            pinnedSpaceIdsByUser: withoutPinnedSpaces(
+              state.pinnedSpaceIdsByUser,
+              new Set(
+                spaces
+                  .filter((space) => space.status === 'archived')
+                  .map((space) => space.id)
+              )
+            ),
             activeSpaceId:
               activeSpaceId === undefined ? state.activeSpaceId : activeSpaceId,
           };
@@ -1061,6 +1197,7 @@ export const useSpaceStore = create<SpaceStore>()(
           return;
         }
 
+        const syncStartedAt = Date.now();
         const context = {
           accountKey,
           spaceIds: new Set([spaceId]),
@@ -1137,8 +1274,22 @@ export const useSpaceStore = create<SpaceStore>()(
             const activeNamedProjects = namedProjects.filter(
               (project) => project.status !== 'archived'
             );
+            // The reply can't know a Session created while it was on its way.
+            const serverProjectIds = new Set(
+              namedProjects.map((project) => project.id)
+            );
+            const createdDuringSync = Object.values(
+              get().projectsBySpaceId[targetSpaceId] ?? {}
+            ).filter(
+              (meta) =>
+                meta.createdAt >= syncStartedAt &&
+                !serverProjectIds.has(meta.id)
+            );
             get().upsertProjectMetas(
-              activeNamedProjects.map(projectMetaFromServer),
+              [
+                ...activeNamedProjects.map(projectMetaFromServer),
+                ...createdDuringSync,
+              ],
               {
                 syncedSpaceId: targetSpaceId,
                 replaceSpace: true,
@@ -1492,6 +1643,10 @@ export const useSpaceStore = create<SpaceStore>()(
           return {
             spaces: nextSpaces,
             activeSpaceId: nextActiveSpaceId,
+            pinnedSpaceIdsByUser: withoutPinnedSpaces(
+              state.pinnedSpaceIdsByUser,
+              new Set([spaceId])
+            ),
             projectsBySpaceId: nextProjectsBySpaceId,
             projectIdIndex: nextProjectIdIndex,
             projectsSyncedAt: nextProjectsSyncedAt,
@@ -1632,8 +1787,35 @@ export const useSpaceStore = create<SpaceStore>()(
                 updatedAt: Date.now(),
               },
             },
+            pinnedSpaceIdsByUser:
+              updates.status === 'archived'
+                ? withoutPinnedSpaces(
+                    state.pinnedSpaceIdsByUser,
+                    new Set([spaceId])
+                  )
+                : state.pinnedSpaceIdsByUser,
           };
         }),
+
+      setSpaceEmoji: async (spaceId, emoji) => {
+        const space = get().spaces[spaceId];
+        if (!space) return;
+        const previous = space.metadata;
+        const metadata = { ...previous, emoji };
+        get().updateSpace(spaceId, { metadata });
+        // A signed-out local Space lives only on this device.
+        if (space.metadata?.legacy === true) return;
+        try {
+          await get().updateSpaceOnServer(spaceId, { metadata });
+        } catch (error) {
+          // `updateSpace` merges metadata, so name the emoji key explicitly:
+          // a Space that had none would otherwise keep the new one.
+          get().updateSpace(spaceId, {
+            metadata: { emoji: previous?.emoji ?? null },
+          });
+          throw error;
+        }
+      },
 
       renameSpaceOnServer: async (spaceId, name) => {
         const nextName = name.trim();
@@ -1831,6 +2013,83 @@ export const useSpaceStore = create<SpaceStore>()(
         }
       },
 
+      pinSpace: (spaceId) => {
+        const state = get();
+        if (!isPinnableSpace(state.spaces[spaceId])) return 'missing';
+        const ownerKey = currentPinOwnerKey();
+        const pinned = getPinnedSpaceIds(state, ownerKey);
+        if (pinned.includes(spaceId)) return 'already-pinned';
+        if (pinned.length >= MAX_PINNED_SPACES) return 'full';
+        set({
+          pinnedSpaceIdsByUser: {
+            ...state.pinnedSpaceIdsByUser,
+            [ownerKey]: withHiddenPins(
+              state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+              pinned,
+              [...pinned, spaceId]
+            ),
+          },
+        });
+        return 'pinned';
+      },
+
+      unpinSpace: (spaceId) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          const ids = state.pinnedSpaceIdsByUser[ownerKey];
+          if (!ids?.includes(spaceId)) return state;
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: ids.filter((id) => id !== spaceId),
+            },
+          };
+        }),
+
+      moveSpacePin: (spaceId, toIndex) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          const pinned = getPinnedSpaceIds(state, ownerKey);
+          const fromIndex = pinned.indexOf(spaceId);
+          if (fromIndex === -1) return state;
+          const target = Math.max(0, Math.min(pinned.length - 1, toIndex));
+          if (target === fromIndex) return state;
+          const next = [...pinned];
+          next.splice(fromIndex, 1);
+          next.splice(target, 0, spaceId);
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: withHiddenPins(
+                state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+                pinned,
+                next
+              ),
+            },
+          };
+        }),
+
+      setPinnedSpaces: (spaceIds) =>
+        set((state) => {
+          const ownerKey = currentPinOwnerKey();
+          return {
+            pinnedSpaceIdsByUser: {
+              ...state.pinnedSpaceIdsByUser,
+              [ownerKey]: withHiddenPins(
+                state.pinnedSpaceIdsByUser[ownerKey] ?? [],
+                getPinnedSpaceIds(state, ownerKey),
+                getPinnedSpaceIds(
+                  {
+                    spaces: state.spaces,
+                    pinnedSpaceIdsByUser: { [ownerKey]: spaceIds },
+                  },
+                  ownerKey
+                )
+              ),
+            },
+          };
+        }),
+
       getActiveSpace: () => {
         const { activeSpaceId, spaces } = get();
         return activeSpaceId ? spaces[activeSpaceId] || null : null;
@@ -1869,6 +2128,8 @@ export const useSpaceStore = create<SpaceStore>()(
           activeSpaceId: state.activeSpaceId ?? null,
           spaces: prunedSpaces.spaces,
           lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
+          lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser ?? {},
+          pinnedSpaceIdsByUser: state.pinnedSpaceIdsByUser ?? {},
           projectsBySpaceId: pruned.projectsBySpaceId,
           projectIdIndex: pruned.projectIdIndex,
           projectsSyncedAt: {},
@@ -1879,6 +2140,8 @@ export const useSpaceStore = create<SpaceStore>()(
         activeSpaceId: state.activeSpaceId,
         spaces: state.spaces,
         lastVisitedProjectBySpace: state.lastVisitedProjectBySpace,
+        lastActiveSpaceIdByUser: state.lastActiveSpaceIdByUser,
+        pinnedSpaceIdsByUser: state.pinnedSpaceIdsByUser,
         projectsBySpaceId: state.projectsBySpaceId,
         projectIdIndex: state.projectIdIndex,
       }),

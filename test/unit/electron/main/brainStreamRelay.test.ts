@@ -647,13 +647,20 @@ describe('Brain event stream relay (main process)', () => {
 });
 
 describe('Brain event stream relay wiring', () => {
-  it('registers the relay for the main renderer frame and the managed Brain', () => {
+  it('registers the relay for app window main frames and the managed Brain', () => {
     const source = fs.readFileSync(
       path.resolve(process.cwd(), 'electron/main/index.ts'),
       'utf8'
     );
     expect(source).toMatch(
-      /registerBrainStreamRelay\(\{[\s\S]*?getManagedBackendPort: \(\) =>\s*isPythonProcessRunning\(\) \? backendPort : null,[\s\S]*?isTrustedSender: \(event\) =>\s*isMainRendererFrame\(/u
+      /registerBrainStreamRelay\(\{[\s\S]*?getManagedBackendPort: \(\) =>\s*isPythonProcessRunning\(\) \? backendPort : null,[\s\S]*?isTrustedSender: \(event\) =>\s*isAppRendererFrame\(/u
+    );
+    // Session windows authenticate to the same Brain as the main window.
+    expect(source).toMatch(
+      /'get-local-control-capability', \(event\) => \{\s*if \(!isAppRendererFrame\(event\)\)/u
+    );
+    expect(source).toMatch(
+      /function isAppRendererFrame\([\s\S]*?if \(isMainRendererFrame\(event\)\) return true;[\s\S]*?sessionWindows\?\.ownsContents\(event\.sender\.id\) &&\s*event\.senderFrame === event\.sender\.mainFrame/u
     );
     expect(source).toMatch(
       /function isMainRendererFrame\([\s\S]*?event\.senderFrame === event\.sender\.mainFrame/u

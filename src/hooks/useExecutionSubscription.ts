@@ -25,8 +25,12 @@ import { toast } from 'sonner';
 
 // Ping interval: send ping every 2 minutes
 const PING_INTERVAL = 60 * 2 * 1000;
-// Pong timeout: if no pong received within 10 seconds after ping, mark as unhealthy
+// Pong timeout: if no pong received within 10 seconds after ping, reconnect.
+// The server routes pong through the same session registry as execution
+// events, while heartbeats bypass it, so only a pong proves delivery works.
 const PONG_TIMEOUT = 10 * 1000;
+// Application close code for a socket the server no longer routes to.
+const NO_PONG_CLOSE_CODE = 4000;
 
 interface ExecutionCreatedMessage {
   type: 'execution_created';
@@ -117,7 +121,6 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -135,6 +138,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
     setWsConnectionStatus,
     setLastPongTimestamp,
     setWsReconnectCallback,
+    markWsSubscribed,
   } = useTriggerStore();
 
   // Store latest values in refs to avoid recreating connect function
@@ -143,6 +147,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const emitWebSocketEventRef = useRef(emitWebSocketEvent);
   const setWsConnectionStatusRef = useRef(setWsConnectionStatus);
   const setLastPongTimestampRef = useRef(setLastPongTimestamp);
+  const markWsSubscribedRef = useRef(markWsSubscribed);
 
   // Update refs on every render
   useEffect(() => {
@@ -151,6 +156,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
     emitWebSocketEventRef.current = emitWebSocketEvent;
     setWsConnectionStatusRef.current = setWsConnectionStatus;
     setLastPongTimestampRef.current = setLastPongTimestamp;
+    markWsSubscribedRef.current = markWsSubscribed;
   });
 
   // Helper to start ping interval
@@ -170,9 +176,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
         // Set timeout to wait for pong
         pongTimeoutRef.current = setTimeout(() => {
           console.warn(
-            '[ExecutionSubscription] No pong received, marking connection as unhealthy'
+            '[ExecutionSubscription] No pong received, reconnecting'
           );
           setWsConnectionStatusRef.current('unhealthy');
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close(NO_PONG_CLOSE_CODE, 'No pong');
+          }
         }, PONG_TIMEOUT);
       }
     }, PING_INTERVAL);
@@ -230,6 +239,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
       console.log('[ExecutionSubscription] Connecting to:', fullURL);
 
+      // A new id for every connection. The server cleans up a closed
+      // connection by its id up to 30 s later; reusing the id would erase the
+      // registration of the connection that replaced it.
+      const sessionId = crypto.randomUUID();
       const ws = new WebSocket(fullURL);
       wsRef.current = ws;
 
@@ -247,7 +260,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
         // Send subscription message - server expects token WITHOUT "Bearer" prefix
         const subscribeMessage = {
           type: 'subscribe',
-          session_id: sessionIdRef.current,
+          session_id: sessionId,
           auth_token: token, // ⚠️ Remove "Bearer " prefix
         };
 
@@ -268,7 +281,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 `[ExecutionSubscription] Connected with session: ${message.session_id}`
               );
               setWsConnectionStatusRef.current('connected');
-              // toast.success('Connected to execution listener');
+              // Executions created while no socket was registered are only
+              // found by asking the server again.
+              markWsSubscribedRef.current();
               break;
 
             case 'execution_created': {
@@ -426,12 +441,8 @@ export function useExecutionSubscription(enabled: boolean = true) {
             }
 
             case 'heartbeat':
-              // Server is alive - also treat as healthy connection
-              if (pongTimeoutRef.current) {
-                clearTimeout(pongTimeoutRef.current);
-                pongTimeoutRef.current = null;
-              }
-              setWsConnectionStatusRef.current('connected');
+              // The server sends heartbeats straight down this socket, so they
+              // say nothing about routing; leave the pong check running.
               break;
 
             case 'pong':

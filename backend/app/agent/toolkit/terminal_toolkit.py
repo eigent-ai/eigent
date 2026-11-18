@@ -43,7 +43,10 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
-from app.run_journal import OutboxLeaseLostError
+from app.run_journal import (
+    OutboxLeaseLostError,
+    WorkspaceMutationBlockedError,
+)
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     BackgroundToolResult,
@@ -71,13 +74,14 @@ from app.utils.toolchain_preflight import inspect_toolchain
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
     get_default_workspace_mutation_service,
+    workspace_block_hint,
 )
 
 logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.8"
 
 
 _SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
@@ -288,6 +292,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             working_directory = base_dir
         self._agent_venv_dir = os.path.join(base_dir, self.agent_name)
         context = run_context_for_task(api_task_id)
+        self._environment_context = context
         self._workspace_run_id = (
             context.run_id if context is not None else None
         )
@@ -737,6 +742,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._preflight_venv_selection: (
             tuple[str, tuple[str, str] | None] | None
         ) = None
+        # Only an environment that was selected can later be rebuilt after a
+        # release; a missing base or failed clone keeps falling back silently.
+        self._cloned_env_ready = False
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
         context = run_context_for_task(self.api_task_id)
         selection = (
@@ -774,6 +782,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
             self.python_executable = cloned_python
             self._preflight_venv_selection = selection
+            self._cloned_env_ready = True
             return
 
         logger.info(f"Cloning terminal_base venv to: {self.cloned_env_path}")
@@ -789,6 +798,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
             self.python_executable = cloned_python
             self._preflight_venv_selection = selection
+            self._cloned_env_ready = True
             logger.info(
                 f"Successfully cloned environment to: {self.cloned_env_path}"
             )
@@ -826,7 +836,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         context = run_context_for_task(self.api_task_id)
         if context is not None and hasattr(self, "_agent_venv_dir"):
             directory = self._run_agent_environment_dir(context)
-            if directory != self._agent_venv_dir:
+            # A completed Run releases its copy and retention may remove an
+            # interrupted one; rebuild either before the next command.
+            if directory != self._agent_venv_dir or (
+                getattr(self, "_cloned_env_ready", False)
+                and not Path(directory, ".venv").exists()
+            ):
+                self._environment_context = context
                 self._agent_venv_dir = directory
                 self._setup_cloned_environment()
         cloned_env_path = getattr(self, "cloned_env_path", None)
@@ -1133,10 +1149,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # Workspace admission happens before CAMEL can spawn the
                 # command. Preserve that boundary even though FunctionTool
                 # later wraps this exception in a generic ValueError.
-                recovery_hint = (
+                recovery_hint = workspace_block_hint(error) or (
                     " Wait for or stop the active background Terminal "
                     "session, then retry."
-                    if isinstance(error, OutboxLeaseLostError)
+                    if self._block_may_be_a_live_session(error)
                     else ""
                 )
                 raise ToolInvocationNotDispatchedError(
@@ -1503,9 +1519,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     actor_id=self.agent_name,
                     trigger="terminal.execute",
                 )
-            except OutboxLeaseLostError:
+            except OutboxLeaseLostError as error:
                 remaining = deadline - time.monotonic()
-                if remaining <= 0:
+                if remaining <= 0 or (
+                    # A quarantined operation waits for the user, not for a
+                    # background session hand-off.
+                    isinstance(error, WorkspaceMutationBlockedError)
+                    and error.status == "needs_attention"
+                ):
                     raise
                 time.sleep(
                     min(_WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS, remaining)
@@ -1543,13 +1564,22 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     )
                 except Exception as error:
                     raise ToolInvocationNotDispatchedError(
-                        "Terminal file write was not started: " + str(error)
+                        "Terminal file write was not started: "
+                        + str(error)
+                        + workspace_block_hint(error)
                     ) from error
-            if prepared is not None:
-                self.working_dir = str(prepared.mutation_root)
-                file_path = str(prepared.target_path)
-            result = super().shell_write_content_to_file(content, file_path)
-            if prepared is not None:
+            if prepared is None:
+                return super().shell_write_content_to_file(content, file_path)
+            self.working_dir = str(prepared.mutation_root)
+            file_path = str(prepared.target_path)
+            try:
+                result = super().shell_write_content_to_file(
+                    content, file_path
+                )
+            finally:
+                # Every prepared write gets exactly one completion, even when
+                # the write itself failed; an unsettled completion is
+                # quarantined instead of fencing the checkout forever.
                 try:
                     service.complete_file_write(
                         prepared,
@@ -1562,6 +1592,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         prepared.context.run_id,
                         error,
                     )
+                    try:
+                        service.mark_file_write_needs_attention(prepared)
+                    except Exception:
+                        logger.exception(
+                            "Failed to quarantine an unsettled Terminal write",
+                            extra={"operation_request_id": request_id},
+                        )
                     raise
             return result
 
@@ -2034,6 +2071,23 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     self._close_local_stdin(session)
         return tuple(lingering)
 
+    def _block_may_be_a_live_session(self, error: BaseException) -> bool:
+        """Only blame a background session when one could hold the block."""
+        if not isinstance(error, OutboxLeaseLostError):
+            return False
+        if any(
+            self._workspace_session_running(session_id)
+            for session_id in tuple(getattr(self, "shell_sessions", {}) or {})
+        ):
+            return True
+        # Another Terminal's still-running command holds a prepared broad
+        # operation; a failed or settled file write never does.
+        return (
+            isinstance(error, WorkspaceMutationBlockedError)
+            and error.status == "prepared"
+            and error.mutation_scope == "broad_process"
+        )
+
     def _workspace_session_running(self, session_id: str) -> bool:
         session_lock = getattr(self, "_session_lock", None)
         if session_lock is None:
@@ -2058,13 +2112,47 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     session["eigent_group_stopped"] = True
             return bool(session.get("running", False))
 
-    def cleanup(self, remove_venv: bool = True):
+    def release_run_environment(self, run_id: str):
+        """Release a completed Run without closing the warm toolkit for follow-ups."""
+        context = getattr(self, "_environment_context", None)
+        if context is None or context.run_id != run_id:
+            return
+        lingering = self.quiesce_run_background_sessions(run_id)
+        if lingering:
+            raise RuntimeError(f"Terminal sessions did not stop: {lingering}")
+        from app.utils.runtime_environment_cleanup import validate_runtime_path
+
+        with self._terminal_mutation_lock:
+            if self._environment_context is not context:
+                return
+            # Eigent always clones (CAMEL's initial_env_path stays unset), and
+            # only the Run-owned clone is released here.
+            value = getattr(self, "cloned_env_path", None)
+            if not value:
+                return
+            root = runtime_storage(context).runtime
+            path = validate_runtime_path(Path(value))
+            if not path.is_relative_to(root):
+                raise ValueError("Terminal environment is outside its Run")
+            if path.exists():
+                shutil.rmtree(path)
+                logger.info("Removed terminal environment for Run %s", run_id)
+
+    def cleanup(
+        self, remove_venv: bool = True, *, keep_run_environment: bool = False
+    ):
         """Clean up all active sessions and optionally remove the virtual environment.
 
         Args:
             remove_venv: If True, removes the .venv or .initial_env folder created
                         by this toolkit. Defaults to True to prevent disk bloat.
+            keep_run_environment: Keep a Run-owned copy for Resume after a
+                        Brain restart. Later cleanups, including CAMEL's
+                        destructor fallback, keep it too; retention or a
+                        terminal Run removes it.
         """
+        if keep_run_environment:
+            self._keep_run_environment = True
         lingering = self._stop_owned_sessions(
             None, timeout=_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS
         )
@@ -2082,6 +2170,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             raise RuntimeError(f"Terminal sessions did not stop: {lingering}")
 
         if not remove_venv:
+            return
+        if (
+            getattr(self, "_keep_run_environment", False)
+            and getattr(self, "_environment_context", None) is not None
+        ):
             return
 
         # Remove cloned env (.venv) if it exists

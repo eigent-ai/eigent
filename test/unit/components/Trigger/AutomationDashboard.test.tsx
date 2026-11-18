@@ -215,6 +215,35 @@ describe('automation details and compact list', () => {
     expect(remove).toHaveBeenCalledWith(trigger);
   });
 
+  it('refreshes a pending run until the server settles it', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(proxyFetchTriggerExecutions)
+        .mockResolvedValueOnce({
+          items: [{ ...execution, status: ExecutionStatus.Pending }],
+        })
+        .mockResolvedValueOnce({ items: [execution] });
+      render(<AutomationDashboard trigger={trigger} />);
+      await act(async () => {});
+      expect(proxyFetchTriggerExecutions).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: /Pending/ })).toBeTruthy();
+
+      await act(async () => {
+        vi.advanceTimersByTime(15 * 1000);
+      });
+      expect(proxyFetchTriggerExecutions).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: /Not started/ })).toBeTruthy();
+
+      // Settled runs stop the refresh.
+      await act(async () => {
+        vi.advanceTimersByTime(60 * 1000);
+      });
+      expect(proxyFetchTriggerExecutions).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retains loading and fetch-error states without showing an empty history', () => {
     const props = {
       trigger,
@@ -295,7 +324,11 @@ describe('automation details and compact list', () => {
     const row = screen.getByRole('button', { name: /Not started/ });
     fireEvent.click(row);
     expect(row).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Execution was missed')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Eigent didn't receive this run in time, so it didn't start. Keep Eigent open and signed in, then try again."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText(/was not open/)).not.toBeInTheDocument();
     rerender(
       <Details

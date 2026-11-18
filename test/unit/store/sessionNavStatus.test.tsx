@@ -28,7 +28,10 @@ import {
   getSessionNavLeadFromHistoryTask,
   resolveSessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
-import { refreshSessionNavStatuses } from '@/service/sessionNavStatus';
+import {
+  refreshSessionNavStatuses,
+  SESSION_STATUS_FRESH_MS,
+} from '@/service/sessionNavStatus';
 import type { ServerProject } from '@/service/spaceApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import {
@@ -446,6 +449,26 @@ describe('Session navigation through production projections', () => {
     ).not.toBeNull();
   });
 
+  it('skips a recent read only when asked to, and keeps forced reads', async () => {
+    const accountKey = getAccountEnvironmentKey(getAuthStore());
+    const read = (skipFresh: boolean) =>
+      refreshSessionNavStatuses(
+        ['fresh-session'],
+        accountKey,
+        () => true,
+        undefined,
+        { skipFresh }
+      );
+    fetchGet.mockResolvedValue({ project_id: 'fresh-session', runs: [] });
+
+    await read(true);
+    expect(fetchGet).toHaveBeenCalledTimes(1);
+    await read(true);
+    expect(fetchGet).toHaveBeenCalledTimes(1);
+    await read(false);
+    expect(fetchGet).toHaveBeenCalledTimes(2);
+  });
+
   it('shares the concurrency bound across staggered overlapping refreshes', async () => {
     const ids = Array.from({ length: 12 }, (_, index) => `staggered-${index}`);
     const releases: (() => void)[] = [];
@@ -504,7 +527,14 @@ describe('Session navigation through production projections', () => {
       window.dispatchEvent(new CustomEvent(DURABLE_RUN_STATUS_CHANGED_EVENT));
     });
     expect(fetchGet).not.toHaveBeenCalled();
+    // Refocusing right after a read reuses it; later it reads again.
     await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(fetchGet).not.toHaveBeenCalled();
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.now() + SESSION_STATUS_FRESH_MS + 1);
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    clock.mockRestore();
     expect(fetchGet).toHaveBeenCalledTimes(3);
     fetchGet.mockClear();
     await act(async () => ipc.on.mock.calls[0][1]());

@@ -28,6 +28,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -40,6 +41,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { selectableConfiguredModels } from '@/lib/configuredModels';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { buildAgentModelConfig } from '@/lib/modelConfig';
@@ -99,7 +101,8 @@ export function AddWorker({
     typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
   const dialogOpen = isControlled ? isOpen : internalOpen;
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
   const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -181,7 +184,7 @@ export function AddWorker({
     };
   }, [records]);
 
-  const activeProjectId = projectStore?.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const activeTaskId = chatStore?.activeTaskId ?? null;
   const tasks = chatStore?.tasks ?? {};
 
@@ -434,8 +437,22 @@ export function AddWorker({
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
+      return (
+        <DsIcon
+          icon={Bot}
+          recipe="illustration"
+          illustrationSize={40}
+          className="text-ds-ink-default-default"
+        />
+      );
+    return (
+      <DsIcon
+        icon={Bot}
+        recipe="illustration"
+        illustrationSize={40}
+        className="text-ds-ink-default-default"
+      />
+    );
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -609,7 +626,7 @@ export function AddWorker({
                 setSelectedTools(workerInfo?.workerInfo?.selectedTools || []);
               }}
             >
-              <Edit size={16} />
+              <DsIcon icon={Edit} />
               {t('workforce.edit')}
             </Button>
           )}
@@ -692,13 +709,13 @@ export function AddWorker({
                           backIcon={
                             isSensitiveKey(key) ? (
                               secretVisible[key] ? (
-                                <EyeOff
-                                  size={16}
+                                <DsIcon
+                                  icon={EyeOff}
                                   className="text-ds-ink-muted-disabled"
                                 />
                               ) : (
-                                <Eye
-                                  size={16}
+                                <DsIcon
+                                  icon={Eye}
                                   className="text-ds-ink-muted-disabled"
                                 />
                               )
@@ -745,7 +762,12 @@ export function AddWorker({
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
-                      <Bot size={32} className="text-ds-ink-default-default" />
+                      <DsIcon
+                        icon={Bot}
+                        recipe="illustration"
+                        illustrationSize={32}
+                        className="text-ds-ink-default-default"
+                      />
                     </div>
                     <Input
                       size="sm"

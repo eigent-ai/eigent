@@ -17,8 +17,12 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { useHumanInteractionExpiry } from '@/hooks/useHumanInteractionExpiry';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { useHost } from '@/host';
-import { isInteractionTerminal } from '@/lib/approvalPresentation';
+import {
+  approvalTargets,
+  isInteractionTerminal,
+} from '@/lib/approvalPresentation';
 import { onRunStreamReopened } from '@/lib/events/durableRunEvents';
 import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { controlOwner } from '@/service/controlRequest';
@@ -32,7 +36,6 @@ import {
 } from '@/service/humanInteractionApi';
 import { watchHumanInteractionPending } from '@/service/humanInteractionPendingCheck';
 import { useAuthStore } from '@/store/authStore';
-import { useProjectStore } from '@/store/projectStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -137,7 +140,7 @@ export function HumanInteractionCard({
   const { t } = useTranslation();
   const host = useHost();
   const userId = useAuthStore((state) => state.user_id);
-  const projectId = useProjectStore((state) => state.activeProjectId);
+  const projectId = useSessionProjectId();
   const owner = controlOwner();
   const viewKey = JSON.stringify([
     owner,
@@ -290,9 +293,20 @@ export function HumanInteractionCard({
       host?.ipcRenderer?.off('backend-ready', readReceipt);
     };
   }, [viewKey, receiptNeedsReason, interaction, host?.ipcRenderer]);
+  // Shared with the BottomBox card so a restored request names the same file
+  // or command line as the live one did.
   const targets = useMemo(
-    () => interaction.target_resources?.filter(Boolean) || [],
-    [interaction.target_resources]
+    () =>
+      approvalTargets({
+        operation: interaction.operation,
+        targetResources: interaction.target_resources,
+        displayArguments: interaction.display_arguments,
+      }).map((target) => target.value),
+    [
+      interaction.operation,
+      interaction.target_resources,
+      interaction.display_arguments,
+    ]
   );
 
   const deliver = (receipt: Record<string, unknown>) => {
@@ -490,7 +504,10 @@ export function HumanInteractionCard({
       className={`${timelineReceipt ? 'w-full' : 'mx-6 my-3'} rounded-2xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4`}
     >
       <div className="flex items-start gap-3">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default" />
+        <DsIcon
+          icon={ShieldAlert}
+          className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
+        />
         <div className="min-w-0 flex-1 space-y-3">
           <div>
             <span className="block text-sm font-semibold text-ds-ink-default-default">

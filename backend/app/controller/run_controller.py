@@ -48,6 +48,11 @@ from app.run_journal import (
     UnsafeResumeError,
     get_default_run_journal,
 )
+from app.run_journal.models import (
+    EffectiveEnvironmentSpecRecord,
+    RunAttemptRecord,
+    latest_environment_attempt,
+)
 from app.run_journal.transitions import ATTEMPT_ACTIVE_STATES
 from app.run_policy import (
     RunTimeoutPolicy,
@@ -63,6 +68,7 @@ from app.run_runtime import (
 from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
+from app.workspace_runtime.runtime import get_default_execution_service
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -420,6 +426,29 @@ async def _unsafe_resume_blockers(
     ]
 
 
+def _resolved_model_for_attempt(
+    spec: EffectiveEnvironmentSpecRecord | None,
+    attempt: RunAttemptRecord | None,
+) -> dict[str, str] | None:
+    """Expose only the model identity from an attempt's immutable binding."""
+
+    if spec is None or attempt is None:
+        return None
+    if spec.owner_type == "run":
+        expected_owner = attempt.run_id
+    elif spec.owner_type == "run_attempt":
+        expected_owner = attempt.attempt_id
+    else:
+        return None
+    if (
+        spec.owner_id != expected_owner
+        or spec.environment_spec_id != attempt.environment_spec_id
+        or spec.environment_spec_digest != attempt.environment_spec_digest
+    ):
+        return None
+    return spec.bound_model()
+
+
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
@@ -451,14 +480,34 @@ async def list_project_runs(
         journal.list_attempt_user_waits, [run.run_id for run in runs]
     )
     now = time.time()
+    attempts_by_run = await asyncio.to_thread(
+        journal.list_attempts_for_runs, [run.run_id for run in runs]
+    )
+    bound_attempts = {
+        run_id: latest_environment_attempt(attempts)
+        for run_id, attempts in attempts_by_run.items()
+    }
+    specs = await asyncio.to_thread(
+        journal.get_effective_environment_specs,
+        [
+            attempt.environment_spec_id
+            for attempt in bound_attempts.values()
+            if attempt is not None and attempt.environment_spec_id is not None
+        ],
+    )
     for run in runs:
-        attempts = await asyncio.to_thread(
-            journal.list_run_attempts, run.run_id
-        )
+        attempts = attempts_by_run[run.run_id]
+        bound_attempt = bound_attempts[run.run_id]
         items.append(
             {
                 **asdict(run),
                 "latest_attempt": (asdict(attempts[-1]) if attempts else None),
+                "resolved_model": _resolved_model_for_attempt(
+                    specs.get(bound_attempt.environment_spec_id)
+                    if bound_attempt
+                    else None,
+                    bound_attempt,
+                ),
                 "total_attempt_elapsed_ms": (
                     _total_attempt_elapsed_ms(
                         attempts, now=now, user_waits=user_waits
@@ -480,8 +529,44 @@ async def list_project_runs(
     }
 
 
+@router.get("/runs/active")
+async def active_local_execution():
+    """One local registry read across every Space and Session.
+
+    A Run that is still being admitted has no Attempt yet, so the journal
+    alone cannot tell it apart from a row a refused admission left behind.
+    """
+    if get_default_run_coordinator().has_admission_in_progress():
+        return {"active": True}
+    service = get_default_execution_service()
+    active = await asyncio.to_thread(
+        get_default_run_journal().has_active_local_execution,
+        admission_owner_id=service.owner_id if service is not None else None,
+    )
+    return {"active": active}
+
+
+@router.get("/runs/attention")
+async def project_attention():
+    """Which Sessions have active work, across every Space.
+
+    Read-only. ``waiting`` means a Run waits for the user's reply or decision;
+    it outranks ``running`` when a Session has both.
+    """
+    rows = await asyncio.to_thread(
+        get_default_run_journal().list_project_attention
+    )
+    return [
+        {"project_id": project_id, "state": state}
+        for project_id, state in rows
+    ]
+
+
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(
+    run_id: str,
+    include_browser_evidence: Annotated[bool, Query()] = False,
+):
     run = await _load_run_or_404(run_id)
     handle = await get_default_run_coordinator().get_handle(run_id)
     journal = get_default_run_journal()
@@ -491,10 +576,31 @@ async def get_run(run_id: str):
         asyncio.to_thread(journal.list_human_interactions, run_id),
         asyncio.to_thread(journal.list_tool_calls, run_id),
     )
+    bound_attempt = latest_environment_attempt(attempts)
+    spec = (
+        await asyncio.to_thread(
+            journal.get_effective_environment_spec,
+            bound_attempt.environment_spec_id,
+        )
+        if bound_attempt and bound_attempt.environment_spec_id is not None
+        else None
+    )
+    # Only Resume reads browser evidence; other summary readers skip the scan.
+    browser_evidence = (
+        {
+            "used_browser": bool(
+                await asyncio.to_thread(journal.browser_tool_attempts, run_id)
+            )
+        }
+        if include_browser_evidence
+        else {}
+    )
     return {
         **asdict(run),
+        **browser_evidence,
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
+        "resolved_model": _resolved_model_for_attempt(spec, bound_attempt),
         "total_attempt_elapsed_ms": (
             _total_attempt_elapsed_ms(
                 attempts,

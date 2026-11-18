@@ -16,6 +16,7 @@ import {
   fetchSpaceModelSelection,
   spaceModelError,
 } from '@/lib/spaceModelBinding';
+import { getSpaceModelChoice } from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { errorCopy } from '@/lib/usageErrors';
 import { getAuthStore } from '@/store/authStore';
@@ -55,6 +56,7 @@ function contextSnapshot() {
     owner: space?.userId,
     source: space?.sourceType,
     status: space?.status,
+    spaceModel: getSpaceModelChoice(spaces.activeSpaceId)?.modelType,
   };
 }
 
@@ -89,6 +91,9 @@ export function useNewSessionModelQuota(
     assertCurrent();
     if (!spaceId) return modelType;
     const requestContext = contextSnapshot();
+    // A Space's saved model wins; startup falls back if it is gone.
+    const spaceModel = getSpaceModelChoice(spaceId)?.modelType;
+    if (spaceModel) return spaceModel;
     const selection = await fetchSpaceModelSelection(
       spaceId,
       { email: requestContext.email || '', userId: requestContext.userId },

@@ -226,3 +226,87 @@ def test_unsourced_managed_input_resolves_its_admitting_request(
     assert item.source_trust == (
         "user_asserted" if user_authored else "external_untrusted"
     )
+
+
+def queued_message(service, run_id, content, source, *, queued, command=None):
+    """Record a message the way ``/chat`` admits it, behind a queue row."""
+
+    service.journal.ensure_run(run_id=run_id, project_id="project-1")
+    if queued:
+        service.journal.put_follow_up_request(
+            request_id=run_id,
+            project_id="project-1",
+            content=content,
+            source=queued,
+            source_command_id=command,
+        )
+    event_id = f"user-message:initial:{run_id}:digest"
+    message(service, event_id, content, source, run_id=run_id)
+    return event_id
+
+
+def cite(service, event_id):
+    return service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="Cited statement.",
+        actor_type="agent",
+        reason="the user said so",
+        source_trust="user_asserted",
+        source_refs=(event_id,),
+    )
+
+
+@pytest.mark.parametrize(
+    ("run_id", "queued"),
+    [
+        # Schedules, webhooks and Slack all queue as scheduled:<execution>.
+        ("scheduled:execution-1", "scheduled"),
+        ("scheduled:execution-1", None),
+        ("queued-trigger", "scheduled"),
+    ],
+)
+@pytest.mark.parametrize("claimed", ["chat", "improve"])
+def test_trigger_run_claimed_as_chat_is_not_the_users_words(
+    service, run_id, queued, claimed
+):
+    """A user source on the message cannot vouch for a trigger run."""
+
+    event_id = queued_message(
+        service, run_id, TRIGGER_TEXT, claimed, queued=queued
+    )
+
+    IncrementalMemoryMaintainer(service).process_project("project-1")
+    [item] = service.search_history(project_id="project-1").items
+
+    assert receipts(service) == [(event_id, "excluded")]
+    assert contents(service) == []
+    assert item.source_trust == "external_untrusted"
+    with pytest.raises(ToolPreWriteValidationError) as raised:
+        cite(service, event_id)
+    assert raised.value.error_code == "MEMORY_PROVENANCE_REJECTED"
+
+
+@pytest.mark.parametrize(
+    ("run_id", "claimed", "queued", "command"),
+    [
+        ("typed", "chat", None, None),
+        ("queued-local", "improve", "local", None),
+        ("remote", "improve", "remote_control", "command-1"),
+    ],
+)
+def test_typed_and_remote_control_messages_stay_trusted(
+    service, run_id, claimed, queued, command
+):
+    event_id = queued_message(
+        service, run_id, CHAT_TEXT, claimed, queued=queued, command=command
+    )
+
+    IncrementalMemoryMaintainer(service).process_project("project-1")
+    [item] = service.search_history(project_id="project-1").items
+
+    assert receipts(service) == [(event_id, "processed")]
+    assert contents(service) == ["reports use ISO dates."]
+    assert item.source_trust == "user_asserted"
+    assert cite(service, event_id).entry.source_trust == "user_asserted"

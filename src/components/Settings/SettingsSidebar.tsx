@@ -14,8 +14,6 @@
 
 import { fetchConnectedProviders } from '@/api/connectors';
 import { fetchGet } from '@/api/http';
-import { HomeSidebarNavGroup } from '@/components/Home';
-import type { HomeSection } from '@/components/Home/hooks/useHomeSection';
 import {
   NavTab,
   SidebarCountBadge,
@@ -24,6 +22,7 @@ import {
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { useHost } from '@/host';
 import { selectableConfiguredModels } from '@/lib/configuredModels';
@@ -39,18 +38,14 @@ import { useSkillsLibrary } from './Skills/SkillsProvider';
 import { SETTINGS_NAVIGATION } from './settingsNavigation';
 
 interface SettingsSidebarProps {
-  activeHomeSection: HomeSection | null;
   activeSection: SettingsSectionId | null;
-  onHomeSectionChange: (section: HomeSection) => void;
   onSectionChange: (section: SettingsSectionId) => void;
   className?: string;
 }
 
-/** Combined Home / Settings rail, using the former Settings page layout. */
+/** Settings sidebar: the app-wide sections, grouped by scope. */
 export default function SettingsSidebar({
-  activeHomeSection,
   activeSection,
-  onHomeSectionChange,
   onSectionChange,
   className,
 }: SettingsSidebarProps) {
@@ -163,22 +158,25 @@ export default function SettingsSidebar({
   return (
     <SidebarShell
       className={className}
-      ariaLabel={t('layout.home', { defaultValue: 'Home' })}
+      ariaLabel={t('layout.settings', { defaultValue: 'Settings' })}
     >
       <SidebarSection grow="fill">
         <SidebarScrollArea
           role="navigation"
-          ariaLabel={t('layout.home', { defaultValue: 'Home' })}
-          className="gap-4 pt-1"
+          ariaLabel={t('layout.settings', { defaultValue: 'Settings' })}
+          // Centers the first heading on the rail's Home icon.
+          className="gap-4 pt-2"
         >
-          <HomeSidebarNavGroup
-            activeSection={activeHomeSection}
-            onSectionChange={onHomeSectionChange}
-          />
           {SETTINGS_NAVIGATION.map((group) => (
             <SidebarNavGroup
               key={group.scope}
-              label={t(group.labelKey, { defaultValue: group.defaultLabel })}
+              label={
+                group.label
+                  ? t(group.label.key, {
+                      defaultValue: group.label.defaultValue,
+                    })
+                  : undefined
+              }
             >
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -192,7 +190,7 @@ export default function SettingsSidebar({
                     key={item.id}
                     active={active}
                     onClick={() => onSectionChange(item.id)}
-                    leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
+                    leading={<DsIcon icon={Icon} />}
                     label={label}
                     trailing={
                       count == null ? undefined : (

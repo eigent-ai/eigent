@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -335,7 +336,7 @@ function Picker({
         description: t('layout.workspace-resource-local-folder-description', {
           defaultValue: 'Ask each recipient to connect a local folder.',
         }),
-        icon: <FolderOpen className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={FolderOpen} aria-hidden />,
       },
       {
         kind: 'bundle_asset',
@@ -345,7 +346,7 @@ function Picker({
         description: t('layout.workspace-resource-bundled-file-description', {
           defaultValue: 'Reference a file shipped with this Bundle.',
         }),
-        icon: <FileText className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={FileText} aria-hidden />,
       },
       {
         kind: 'inline',
@@ -355,7 +356,7 @@ function Picker({
         description: t('layout.workspace-resource-inline-text-description', {
           defaultValue: 'Store a short, portable context note.',
         }),
-        icon: <FileText className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={FileText} aria-hidden />,
       },
       {
         kind: 'connection_query',
@@ -368,7 +369,7 @@ function Picker({
             defaultValue: 'Resolve context through a configured connection.',
           }
         ),
-        icon: <Database className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={Database} aria-hidden />,
       },
       {
         kind: 'artifact_ref',
@@ -381,7 +382,7 @@ function Picker({
             defaultValue: 'Point to an authorized Eigent artifact.',
           }
         ),
-        icon: <Package className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={Package} aria-hidden />,
       },
       {
         kind: 'memory_scope',
@@ -391,7 +392,7 @@ function Picker({
         description: t('layout.workspace-resource-memory-scope-description', {
           defaultValue: 'Expose a defined Space memory scope.',
         }),
-        icon: <Database className="h-4 w-4" aria-hidden />,
+        icon: <DsIcon icon={Database} aria-hidden />,
       },
     ];
     return (
@@ -1106,7 +1107,7 @@ export function WorkspaceResourceEditorPanel({
               aria-label={t('layout.back', { defaultValue: 'Back' })}
               onClick={goBack}
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ArrowLeft} aria-hidden />
             </Button>
           ) : null}
           <div className="min-w-0">
@@ -1147,7 +1148,7 @@ export function WorkspaceResourceEditorPanel({
           data-resource-editor-close
           onClick={onClose}
         >
-          <X className="h-4 w-4" aria-hidden />
+          <DsIcon icon={X} aria-hidden />
         </Button>
       </header>
 
@@ -1213,7 +1214,7 @@ export function WorkspaceResourceEditorPanel({
               })}
               onClick={onDelete}
             >
-              <Trash2 className="h-4 w-4" aria-hidden />
+              <DsIcon icon={Trash2} aria-hidden />
               {t('layout.delete', { defaultValue: 'Delete' })}
             </Button>
           ) : null}

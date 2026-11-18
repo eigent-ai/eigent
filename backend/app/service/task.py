@@ -691,8 +691,12 @@ class TaskLock:
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
-    async def cleanup(self):
-        r"""Cancel all background tasks and clean up resources"""
+    async def cleanup(self, *, keep_run_environments: bool = False):
+        r"""Cancel all background tasks and clean up resources
+
+        Brain shutdown keeps Run-owned terminal environments: the Runs it
+        stops become interrupted, and Resume reuses their installed packages.
+        """
         logger.info(
             "Starting task lock cleanup",
             extra={
@@ -723,7 +727,14 @@ class TaskLock:
         for toolkit in self.registered_toolkits:
             try:
                 if hasattr(toolkit, "cleanup"):
-                    await asyncio.to_thread(toolkit.cleanup)
+                    # Only terminal toolkits own Run environment copies.
+                    keep = keep_run_environments and hasattr(
+                        toolkit, "release_run_environment"
+                    )
+                    await asyncio.to_thread(
+                        toolkit.cleanup,
+                        **({"keep_run_environment": True} if keep else {}),
+                    )
                     logger.info(
                         "Toolkit cleanup completed",
                         extra={

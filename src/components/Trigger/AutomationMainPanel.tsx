@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
 import { Trigger, TriggerStatus } from '@/types';
@@ -71,7 +72,7 @@ export function AutomationMainPanel({
               className="shrink-0"
               onClick={onBack}
             >
-              <ChevronLeft aria-hidden />
+              <DsIcon icon={ChevronLeft} aria-hidden />
               {t('triggers.title')}
             </Button>
           )
@@ -132,7 +133,7 @@ export function AutomationMainPanel({
                     name: trigger.name,
                   })}
                 >
-                  <MoreHorizontal aria-hidden />
+                  <DsIcon icon={MoreHorizontal} aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -140,7 +141,7 @@ export function AutomationMainPanel({
                   disabled={isBusy}
                   onSelect={() => onEdit(trigger)}
                 >
-                  <Pencil aria-hidden />
+                  <DsIcon icon={Pencil} aria-hidden />
                   {t('triggers.edit')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -148,7 +149,7 @@ export function AutomationMainPanel({
                   className="text-ds-text-error-default-default focus:text-ds-text-error-strong-default"
                   onSelect={() => onDelete(trigger)}
                 >
-                  <Trash2 aria-hidden />
+                  <DsIcon icon={Trash2} aria-hidden />
                   {t('triggers.delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>

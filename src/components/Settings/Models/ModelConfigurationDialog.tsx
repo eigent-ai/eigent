@@ -15,6 +15,7 @@
 import { fetchPost, proxyFetchPost, proxyFetchPut } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import {
@@ -364,7 +365,11 @@ export function ModelConfigurationContent({
                   )}
                   onClick={() => toggleSecret('api-key')}
                 >
-                  {visibleSecrets.includes('api-key') ? <EyeOff /> : <Eye />}
+                  {visibleSecrets.includes('api-key') ? (
+                    <DsIcon icon={EyeOff} />
+                  ) : (
+                    <DsIcon icon={Eye} />
+                  )}
                 </Button>
               </div>
               {keyError && (
@@ -452,9 +457,9 @@ export function ModelConfigurationContent({
                         onClick={() => toggleSecret(field.key)}
                       >
                         {visibleSecrets.includes(field.key) ? (
-                          <EyeOff />
+                          <DsIcon icon={EyeOff} />
                         ) : (
-                          <Eye />
+                          <DsIcon icon={Eye} />
                         )}
                       </Button>
                     )}
@@ -566,7 +571,7 @@ export function ModelConfigurationContent({
               disabled={busy}
               onClick={onBack}
             >
-              <ArrowLeft />
+              <DsIcon icon={ArrowLeft} />
               {t('layout.back')}
             </Button>
           )}
@@ -581,7 +586,10 @@ export function ModelConfigurationContent({
             </Button>
             <Button type="submit" variant="primary" disabled={busy}>
               {busy && (
-                <Loader2 className="animate-spin motion-reduce:animate-none" />
+                <DsIcon
+                  icon={Loader2}
+                  className="animate-spin motion-reduce:animate-none"
+                />
               )}
               {t('setting.save')}
             </Button>

@@ -66,8 +66,8 @@ export function stopTaskTimer(
  * while the Run waits and restarts it once the Run continues. A user pause
  * stays in force, and a decision that ends the Run leaves the clock stopped.
  * A clock stopped by a wait stays held through any status between the wait
- * and the Run continuing, such as the `interrupted` projected for a request
- * cancelled while another one is still open.
+ * and the Run continuing, such as the `interrupted` projected for an older
+ * request cancellation recorded without its count of requests still open.
  */
 export function createTaskTimerWaitSync({
   projectId,

@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
+import { authorizeBrainFile } from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -24,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
+import { previewLoadFailure, type PreviewLoadFailure } from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
 export interface FilePreviewProps {
@@ -63,7 +66,9 @@ export function FilePreview({
 
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<PreviewLoadFailure | false>(
+    false
+  );
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const previewRequestRef = useRef<AbortController | null>(null);
 
@@ -85,6 +90,7 @@ export function FilePreview({
       setSelectedFile(target);
       setLoading(true);
       void resolveArtifactAssetFile(target, controller.signal)
+        .then((resolved) => authorizeBrainFile(resolved, controller.signal))
         .then((resolved) =>
           loadFilePreview(resolved, {
             ipcRenderer,
@@ -97,7 +103,7 @@ export function FilePreview({
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
-            setLoadFailed(true);
+            setLoadFailed(previewLoadFailure(error));
             console.error('Failed to load file preview:', error);
           }
         })
@@ -164,10 +170,12 @@ export function FilePreview({
     if (!selectedFile) return;
     if (isRemotePreviewSource(selectedFile)) {
       if (selectedFile.preview?.kind === 'blocked') {
-        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+        void downloadOpenedFile(selectedFile, ipcRenderer);
         return;
       }
-      void downloadFromUrl(selectedFile.path, selectedFile.name);
+      void authorizeBrainFile(selectedFile)
+        .catch(() => selectedFile)
+        .then((file) => downloadFromUrl(file.path, file.name));
       return;
     }
     try {
@@ -186,14 +194,8 @@ export function FilePreview({
 
   const handleDownloadFile = useCallback(() => {
     if (!selectedFile || selectedFile.isFolder) return;
-    if (selectedFile.preview?.kind === 'blocked') {
-      if (isRemotePreviewSource(selectedFile)) {
-        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
-      }
-      return;
-    }
-    void downloadOpenedFile(selectedFile);
-  }, [selectedFile]);
+    void downloadOpenedFile(selectedFile, ipcRenderer);
+  }, [selectedFile, ipcRenderer]);
 
   const handleOpenExternalFile = useCallback(async () => {
     if (!selectedFile) return;
@@ -248,7 +250,12 @@ export function FilePreview({
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={
         <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-ds-ink-muted-default">
-          <FileText className="h-12 w-12 text-ds-ink-muted-default" />
+          <DsIcon
+            icon={FileText}
+            recipe="illustration"
+            illustrationSize={48}
+            className="text-ds-ink-muted-default"
+          />
           <p className="text-sm">
             {t('chat.no-file-selected', {
               defaultValue: 'No file selected.',
@@ -278,7 +285,7 @@ export function FilePreview({
             aria-label={t('common.close', { defaultValue: 'Close' })}
             onClick={onClose}
           >
-            <X aria-hidden />
+            <DsIcon icon={X} aria-hidden />
           </Button>
         ) : undefined
       }

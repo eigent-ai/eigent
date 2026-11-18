@@ -367,7 +367,9 @@ async def test_session_fifo_followup_atomic_message_and_next_input(world):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["local", "scheduled"])
-async def test_managed_input_records_its_admitting_source(world, source):
+async def test_managed_input_source_comes_from_its_admitting_request(
+    world, source
+):
     async def handler(_runtime, request):
         return request.request_id
 
@@ -378,15 +380,24 @@ async def test_managed_input_records_its_admitting_source(world, source):
     await world.service.start()
     await eventually(lambda: world.completed("second"))
 
-    # Memory needs the source to tell the user's sends from trigger text.
-    assert {
-        run_id: [
-            event.payload["source"]
+    for run_id in ("first", "second"):
+        [message] = [
+            event
             for event in world.journal.list_events(run_id)
             if event.event_type == "user.message"
         ]
-        for run_id in ("first", "second")
-    } == {"first": [source], "second": [source]}
+        # The stored shape stays readable by builds that compare it exactly.
+        assert set(message.payload) == {"content", "request_id"}
+        # Memory tells the user's sends from trigger text by the request.
+        assert (
+            world.journal.resolve_user_message_source(
+                project_id="p",
+                run_id=run_id,
+                event_id=message.event_id,
+                claimed=None,
+            )
+            == source
+        )
 
 
 @pytest.mark.asyncio

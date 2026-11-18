@@ -49,6 +49,7 @@ export function embeddedBrowserTargetUrl(id: string): string {
 export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>();
   private win: BrowserWindow | null = null;
+  private readonly presenterCloseWatched = new WeakSet<BrowserWindow>();
   private size: Size = { x: 0, y: 0, width: 0, height: 0 };
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
@@ -124,6 +125,30 @@ export class WebViewManager {
     const image = await targetContents.capturePage();
     const jpegBuffer = image.toJPEG(60);
     return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+  }
+
+  /**
+   * Moves every view into `window`, which then receives the view events.
+   * Views keep their pages; only their host window changes.
+   */
+  public presentIn(window: BrowserWindow) {
+    if (window === this.win || window.isDestroyed()) return;
+    const previous = this.win;
+    this.webViews.forEach((webview) => {
+      if (previous && !previous.isDestroyed())
+        previous.contentView.removeChildView(webview.view);
+      window.contentView.addChildView(webview.view);
+    });
+    this.win = window;
+    // A closing presenter hands the views back before its content goes away.
+    // One listener per window, however often the views move back and forth.
+    if (this.presenterCloseWatched.has(window)) return;
+    this.presenterCloseWatched.add(window);
+    window.once('close', () => {
+      if (this.win !== window || !previous || previous.isDestroyed()) return;
+      this.hideAllWebview();
+      this.presentIn(previous);
+    });
   }
 
   public setSize(size: Size) {

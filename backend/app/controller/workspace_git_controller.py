@@ -16,11 +16,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import mimetypes
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path as FastApiPath,
+    Query,
+    Response,
+)
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth import require_local_control_principal
@@ -38,6 +47,8 @@ from app.workspace_git import (
     AdvancedGitError,
     AdvancedGitOutcomeUnknown,
     AdvancedGitService,
+    BlockedWorkspaceOperation,
+    BlockedWorkspaceOperationNotFoundError,
     ContentRepositoryConsentRequired,
     ContentRepositoryError,
     ContentRepositoryService,
@@ -47,6 +58,7 @@ from app.workspace_git import (
     RepositoryStateChangedError,
     RunWorkspaceEditService,
     WorkspaceGitCoordinator,
+    WorkspaceMutationService,
     WorkspaceSnapshotError,
     WorkspaceSnapshotService,
 )
@@ -56,6 +68,7 @@ from app.workspace_git.backend import (
 )
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
+logger = logging.getLogger(__name__)
 
 _PROJECT_CHANGE_MAX_FILES = 500
 _PROJECT_CHANGE_MAX_BYTES = 2_000_000
@@ -111,6 +124,19 @@ class GitSavePointBody(BaseModel):
     expected_repo_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     actor_id: str = Field(min_length=1, max_length=200)
     message: str = Field(default="Save progress", min_length=1, max_length=500)
+
+
+class BlockedOperationIdentityBody(BaseModel):
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+
+
+class BlockedOperationCheckpointBody(BlockedOperationIdentityBody):
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    expected_repo_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+_BLOCKED_OPERATION_ID = r"^gitintent_[0-9a-f]{32}$"
 
 
 class GitRestoreBody(BaseModel):
@@ -215,6 +241,64 @@ def _coordinator() -> WorkspaceGitCoordinator:
         state_root=service.state_root,
         git_backend=service.git,
     )
+
+
+def _mutation_service() -> WorkspaceMutationService:
+    service = _service()
+    return WorkspaceMutationService(
+        service.journal,
+        state_root=service.state_root,
+        coordinator=_coordinator(),
+    )
+
+
+def _blocked_operation_payload(value: BlockedWorkspaceOperation) -> dict:
+    return {
+        "intent_id": value.intent.intent_id,
+        "run_id": value.run_id,
+        "project_id": value.project_id,
+        "status": value.intent.status,
+        "scope": value.intent.mutation_scope,
+        "relative_path": value.intent.relative_path,
+        "trigger": value.intent.trigger,
+        "created_at": value.intent.created_at,
+        "updated_at": value.intent.updated_at,
+        "actionable": value.actionable,
+        "can_checkpoint": value.can_checkpoint,
+        "repo_state_digest": value.repo_state_digest,
+    }
+
+
+def _blocked_operations_payload(repository_id: str) -> list[dict]:
+    # A listing failure must not hide the rest of the Git status.
+    try:
+        return [
+            _blocked_operation_payload(item)
+            for item in _mutation_service().list_blocked_operations(
+                repository_id
+            )
+        ]
+    except Exception:
+        logger.exception(
+            "Blocked workspace operations are unavailable",
+            extra={"repository_id": repository_id},
+        )
+        return []
+
+
+def _space_repository(space_id: str, *, email: str, user_id):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    repository = _service().journal.get_space_git_repository(space_id=space_id)
+    if repository is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "git_not_enabled",
+                "message": "Git is not enabled for this Space.",
+            },
+        )
+    _assert_repository_binding(repository, root)
+    return repository
 
 
 def _snapshot_service() -> WorkspaceSnapshotService:
@@ -476,9 +560,86 @@ async def git_status(
                 status.pending_managed_paths_truncated
             ),
             "diagnostics": _diagnostics_payload(status.diagnostics),
+            "blocked_operations": await asyncio.to_thread(
+                _blocked_operations_payload, repository.repository_id
+            ),
         }
     except Exception as exc:
         raise _git_error(exc) from exc
+
+
+@router.post(
+    "/spaces/{space_id}/git/blocked-operations/{intent_id}:checkpoint"
+)
+async def checkpoint_blocked_operation(
+    space_id: str,
+    intent_id: Annotated[str, FastApiPath(pattern=_BLOCKED_OPERATION_ID)],
+    body: BlockedOperationCheckpointBody,
+):
+    """Save what a stopped Task left on disk so the checkout can move on."""
+
+    repository = _space_repository(
+        space_id, email=body.email, user_id=body.user_id
+    )
+    try:
+        commits = await asyncio.to_thread(
+            lambda: _mutation_service().checkpoint_blocked_operation(
+                repository_id=repository.repository_id,
+                intent_id=intent_id,
+                operation_request_id=body.operation_request_id,
+                expected_repo_state_digest=body.expected_repo_state_digest,
+            )
+        )
+    except BlockedWorkspaceOperationNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "blocked_operation_not_found",
+                "message": str(exc),
+            },
+        ) from exc
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return {
+        "intent_id": intent_id,
+        "status": "completed",
+        "commit_oids": list(commits),
+    }
+
+
+@router.post("/spaces/{space_id}/git/blocked-operations/{intent_id}:dismiss")
+async def dismiss_blocked_operation(
+    space_id: str,
+    intent_id: Annotated[str, FastApiPath(pattern=_BLOCKED_OPERATION_ID)],
+    body: BlockedOperationIdentityBody,
+):
+    """Stop tracking a stopped Task's operation; files stay as they are."""
+
+    repository = _space_repository(
+        space_id, email=body.email, user_id=body.user_id
+    )
+    try:
+        intent = await asyncio.to_thread(
+            lambda: _mutation_service().dismiss_blocked_operation(
+                repository_id=repository.repository_id,
+                intent_id=intent_id,
+            )
+        )
+    except BlockedWorkspaceOperationNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "blocked_operation_not_found",
+                "message": str(exc),
+            },
+        ) from exc
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return {
+        "intent_id": intent.intent_id,
+        "status": intent.status,
+        "files_untouched": True,
+    }
 
 
 @router.post("/spaces/{space_id}/git/bootstrap")

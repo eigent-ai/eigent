@@ -269,7 +269,7 @@ function StepTheme({
                     : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
                 )}
               >
-                <Icon size={20} strokeWidth={1.5} />
+                <DsIcon icon={Icon} />
                 <span className="text-ds-text-base font-medium">{label}</span>
               </button>
             );
@@ -359,6 +359,7 @@ function PatternPreviewCard({
         {selected && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="h-6 w-6 rounded-full bg-ds-neutral-strong-default p-1 shadow-sm">
+              {/* ds-icon:allow heavier check mark inside a filled selection badge */}
               <Check
                 size={12}
                 strokeWidth={2.5}
@@ -613,7 +614,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
               setStep((s) => (s - 1) as Step);
             }}
           >
-            <ArrowLeftIcon />
+            <DsIcon icon={ArrowLeftIcon} />
             {t('layout.back')}
           </Button>
 
@@ -640,7 +641,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                 onClick={handleContinue}
               >
                 {t('layout.continue')}
-                <ArrowRightIcon />
+                <DsIcon icon={ArrowRightIcon} />
               </Button>
             </div>
           ) : (
