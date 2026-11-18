@@ -74,7 +74,18 @@ vi.mock('@xyflow/react', () => ({
 
 vi.mock('@/components/Layout/AppShellLayout', () => ({
   APP_SHELL_CONTENT_CLASS: '',
-  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  default: ({
+    sidebar,
+    children,
+  }: {
+    sidebar?: ReactNode;
+    children: ReactNode;
+  }) => (
+    <div>
+      {sidebar}
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('@/components/Background', () => ({
@@ -86,11 +97,22 @@ vi.mock('@/components/Background', () => ({
 }));
 
 vi.mock('@/components/Dispatch', () => ({ WorkspaceDispatch: () => null }));
-vi.mock('@/components/Workspace/SpaceOverview', () => ({
-  SpaceOverviewPanel: () => null,
-}));
 vi.mock('@/components/Folder', () => ({ default: () => null }));
-vi.mock('@/components/Session', () => ({ default: () => null }));
+vi.mock('@/components/Session', () => ({
+  default: ({
+    isNewProject,
+    newSessionComposer,
+  }: {
+    isNewProject?: boolean;
+    newSessionComposer?: unknown;
+  }) => (
+    <div
+      data-testid="session"
+      data-new-session={String(Boolean(isNewProject))}
+      data-home-composer={String(Boolean(newSessionComposer))}
+    />
+  ),
+}));
 vi.mock('@/components/Session/SplitView', () => ({
   SessionSplitView: () => null,
 }));
@@ -99,6 +121,9 @@ vi.mock('@/components/SessionWindow/SessionInOwnWindow', () => ({
 }));
 vi.mock('@/hooks/useSessionSplitView', () => ({
   useSessionSplitFocusTracking: vi.fn(),
+}));
+vi.mock('@/hooks/useMarkSessionOutcomeSeen', () => ({
+  useMarkSessionOutcomeSeen: vi.fn(),
 }));
 vi.mock('@/hooks/useSessionWindows', () => ({
   useMainWindowSessionWindows: vi.fn(),
@@ -110,7 +135,18 @@ vi.mock(
   '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer',
   () => ({ PreviewBrowserLayer: () => null })
 );
-vi.mock('@/components/SpaceSidebar', () => ({ default: () => null }));
+vi.mock('@/components/SpaceSidebar', () => ({
+  default: () => <nav data-testid="space-sidebar" />,
+}));
+vi.mock('@/components/Home/HomeSidebar', () => ({
+  default: () => <nav data-testid="home-sidebar" />,
+}));
+vi.mock('@/components/Home/NewSessionSpaceChip', () => ({
+  NewSessionSpaceChip: () => null,
+}));
+vi.mock('@/components/GlobalSearch', () => ({
+  GlobalSearchDialog: () => null,
+}));
 vi.mock('@/components/Workspace', () => ({ default: () => null }));
 vi.mock('@/components/Trigger', () => ({
   default: ({ isDialogOpen }: { isDialogOpen: boolean }) => (
@@ -130,6 +166,7 @@ describe('Workspace Automations tab without a selected Session', () => {
     mocks.spaceState.lastVisitedProjectBySpace = {};
     usePageTabStore.setState({
       activeWorkspaceTab: 'triggers',
+      shellPlace: 'space',
       triggerAddDialogRequestId: 0,
     });
   });
@@ -155,24 +192,34 @@ describe('Workspace Automations tab without a selected Session', () => {
     expect(usePageTabStore.getState().activeWorkspaceTab).toBe('triggers');
   });
 
-  it('returns to the Space workspace when the Space has no Sessions', () => {
+  it('returns to New session when the Space has no Sessions', () => {
     render(<WorkspacePage />);
 
     expect(mocks.projectStore.setActiveProject).not.toHaveBeenCalled();
-    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project');
+  });
+
+  it('draws the old composer landing as New session in the Space view', () => {
+    usePageTabStore.setState({
+      activeWorkspaceTab: 'workforce',
+      shellPlace: 'space',
+    });
+    const { getByTestId } = render(<WorkspacePage />);
+
+    expect(getByTestId('session')).toHaveAttribute('data-new-session', 'true');
   });
 
   it('does not reopen a bounced add request once the Space has a Session', async () => {
     usePageTabStore.setState({ activeWorkspaceTab: 'workforce' });
     const { getByTestId } = render(<WorkspacePage />);
 
-    // Adding an automation in a Space with no Sessions returns to the Space
-    // workspace instead of opening the Automations tab.
+    // Adding an automation in a Space with no Sessions returns to New session
+    // instead of opening the Automations tab.
     act(() => {
       usePageTabStore.getState().requestOpenTriggerAddDialog();
     });
     await act(async () => {});
-    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('workforce');
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project');
 
     // Later, with a Session selected, opening Automations must not pop up
     // the stale add dialog.
@@ -222,5 +269,60 @@ describe('Workspace Automations tab without a selected Session', () => {
     expect(getByTestId('automations-panel')).toBeInTheDocument();
     expect(mocks.projectStore.setActiveProject).not.toHaveBeenCalled();
     expect(usePageTabStore.getState().activeWorkspaceTab).toBe('triggers');
+  });
+});
+
+describe('Workspace page in Home', () => {
+  beforeEach(() => {
+    mocks.projectStore.activeProjectId = null;
+    mocks.spaceState.activeSpaceId = 'space-1';
+    usePageTabStore.setState({
+      activeWorkspaceTab: 'workforce',
+      shellPlace: 'home',
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("shows Home's sidebar and New session with its greeting and Space chip", () => {
+    const { getByTestId, queryByTestId } = render(<WorkspacePage />);
+
+    expect(getByTestId('home-sidebar')).toBeInTheDocument();
+    expect(queryByTestId('space-sidebar')).not.toBeInTheDocument();
+    expect(getByTestId('session')).toHaveAttribute('data-new-session', 'true');
+    expect(getByTestId('session')).toHaveAttribute(
+      'data-home-composer',
+      'true'
+    );
+    // Home has no composer landing of its own; it stores New session.
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('new-project');
+  });
+
+  it('moves to the Space view and its sidebar when a Space tab opens', async () => {
+    const { getByTestId, queryByTestId } = render(<WorkspacePage />);
+
+    act(() => {
+      usePageTabStore.getState().setActiveWorkspaceTab('dispatch');
+    });
+    await act(async () => {});
+
+    expect(usePageTabStore.getState().shellPlace).toBe('space');
+    expect(getByTestId('space-sidebar')).toBeInTheDocument();
+    expect(queryByTestId('home-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('keeps New session without Home extras in the Space view', () => {
+    usePageTabStore.setState({
+      activeWorkspaceTab: 'new-project',
+      shellPlace: 'space',
+    });
+    const { getByTestId } = render(<WorkspacePage />);
+
+    expect(getByTestId('session')).toHaveAttribute(
+      'data-home-composer',
+      'false'
+    );
   });
 });

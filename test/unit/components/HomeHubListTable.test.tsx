@@ -17,7 +17,9 @@ import {
   HomeHubItemBody,
   HomeHubItemShell,
 } from '@/components/Home/components/HomeHubItemShared';
-import HomeHubListTable from '@/components/Home/components/HomeHubListTable';
+import HomeHubListTable, {
+  HomeHubListInsetProvider,
+} from '@/components/Home/components/HomeHubListTable';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -147,5 +149,46 @@ describe('HomeHubListTable', () => {
 
     expect(onNestedAction).toHaveBeenCalledOnce();
     expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('insets rows 12px by default', () => {
+    render(
+      <HomeHubListTable kind="project">
+        <HomeHubItemShell layout="list" kind="project" onClick={vi.fn()}>
+          <HomeHubItemBody title="Forecast session" />
+        </HomeHubItemShell>
+      </HomeHubListTable>
+    );
+
+    const table = screen.getByRole('table');
+    expect(table).toHaveAttribute('data-home-hub-list-inset', 'default');
+    expect(table).not.toHaveClass('-mx-ds-8');
+    for (const row of screen.getAllByRole('row')) {
+      expect(row).toHaveClass('px-3');
+    }
+  });
+
+  it('lines row text up with the page edges when flush', () => {
+    render(
+      <HomeHubListInsetProvider value="flush">
+        <HomeHubListTable kind="project">
+          <HomeHubItemShell layout="list" kind="project" onClick={vi.fn()}>
+            <HomeHubItemBody title="Forecast session" />
+          </HomeHubItemShell>
+        </HomeHubListTable>
+      </HomeHubListInsetProvider>
+    );
+
+    // The table bleeds 8px each side and its rows inset 8px, so icons, names
+    // and the last column sit on the content edges; highlights bleed past.
+    const table = screen.getByRole('table');
+    expect(table).toHaveAttribute('data-home-hub-list-inset', 'flush');
+    expect(table).toHaveClass('-mx-ds-8', 'w-auto');
+    const rows = screen.getAllByRole('row');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toHaveClass('px-ds-8');
+      expect(row).not.toHaveClass('px-3');
+    }
   });
 });

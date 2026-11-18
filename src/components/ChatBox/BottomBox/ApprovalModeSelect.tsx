@@ -47,6 +47,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { FOOTER_COMPACT_TRIGGER_CLASS } from './footerCompact';
 
 interface ApprovalOption {
   value: PermissionProfileName;
@@ -67,7 +68,7 @@ export interface ApprovalModeSelectProps {
   disabled?: boolean;
   /** Shows the current mode in the same read-only shell as the model/mode controls. */
   readOnly?: boolean;
-  /** When true, hides the text label and shows only the icon (narrow footer). */
+  /** When true, shows only the mode icon: no label, no chevron (narrow footer). */
   compact?: boolean;
   className?: string;
 }
@@ -225,6 +226,7 @@ export function ApprovalModeSelect({
           triggerShellClass,
           'pointer-events-none bg-transparent',
           { 'opacity-50': disabled || loading },
+          compact && FOOTER_COMPACT_TRIGGER_CLASS,
           className
         )}
       >
@@ -256,6 +258,7 @@ export function ApprovalModeSelect({
             'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
             'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
+            compact && FOOTER_COMPACT_TRIGGER_CLASS,
             className
           )}
         >
@@ -267,7 +270,7 @@ export function ApprovalModeSelect({
               </span>
             )}
           </span>
-          <DsIcon icon={ChevronDown} className="opacity-80" />
+          {!compact && <DsIcon icon={ChevronDown} className="opacity-80" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

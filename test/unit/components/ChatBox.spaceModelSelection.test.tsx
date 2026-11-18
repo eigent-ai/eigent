@@ -386,6 +386,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     };
     mocks.projectStore = {
       activeProjectId: 'session-1',
+      historyLoadingProjectIds: {},
       projects: { 'session-1': project },
       getActiveChatStore: () => chat,
       getProjectById: () => project,

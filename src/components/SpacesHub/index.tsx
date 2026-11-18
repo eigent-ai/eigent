@@ -240,7 +240,7 @@ export default function SpacesHub() {
   if (spaceSections.length === 0) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center px-6">
-        <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <div className="flex w-full flex-col items-center gap-3 text-center">
           <DsIcon
             icon={FolderKanban}
             recipe="illustration"

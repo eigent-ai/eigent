@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -47,7 +48,12 @@ from app.utils.space_overlay_client import (
     sha256_of_file,
     should_record_overlay,
 )
-from app.workspace_git import get_default_workspace_mutation_service
+from app.workspace_git import (
+    get_default_workspace_mutation_service,
+    workspace_block_hint,
+)
+
+logger = logging.getLogger("file_write_toolkit")
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,19 @@ class PendingOverlayWrite:
     file_hash: str | None
     size: int
     mode: int
+
+
+def _describe_file_write(
+    *_args,
+    filename: str | None = None,
+    encoding: str | None = None,
+    use_latex: bool = False,
+    **_kwargs,
+) -> str:
+    return (
+        f"write content to file: {filename} with encoding: {encoding} "
+        f"and use_latex: {use_latex}"
+    )
 
 
 @auto_listen_toolkit(BaseFileToolkit)
@@ -119,8 +138,43 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
             detail = f"{error_code}: {error}" if error_code else str(error)
             raise ToolInvocationNotDispatchedError(
                 "File mutation was not started because its Workspace could "
-                f"not be prepared: {detail}"
+                f"not be prepared: {detail}.{workspace_block_hint(error)}"
             ) from error
+
+    def _settle_prepared_write(
+        self,
+        mutation_service,
+        prepared_write,
+        *,
+        operation_request_id: str,
+        trigger: str,
+    ) -> None:
+        """Give every prepared write exactly one completion.
+
+        Completion records a no-op when the file still matches its preimage
+        (for example an edit whose ``old_content`` was not found) and
+        checkpoints whatever the tool did write. A prepared operation left
+        behind would fence every later writer on the checkout, so a failed
+        completion is quarantined for the user to review instead.
+        """
+        try:
+            mutation_service.complete_file_write(
+                prepared_write,
+                operation_request_id=operation_request_id,
+                actor_id=self.agent_name,
+                trigger=trigger,
+            )
+        except Exception:
+            try:
+                mutation_service.mark_file_write_needs_attention(
+                    prepared_write
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to quarantine an unsettled workspace write",
+                    extra={"operation_request_id": operation_request_id},
+                )
+            raise
 
     def _overlay_write_context(
         self, filename: str
@@ -136,20 +190,46 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
             return None
         return OverlayWriteContext(context, rel_path, target_path)
 
-    @listen_toolkit(
-        BaseFileToolkit.write_to_file,
-        lambda _, title, content, filename, encoding=None, use_latex=False: (
-            f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}"
-        ),
-    )
+    @listen_toolkit(inputs=_describe_file_write)
     def write_to_file(
         self,
-        title: str,
+        title: str | None = None,
+        *,
         content: str | list[list[str]],
         filename: str,
         encoding: str | None = None,
         use_latex: bool = False,
     ) -> str:
+        r"""Write the given content to a file.
+
+        If the file exists, it will be overwritten. Supports multiple formats:
+        Markdown (.md, .markdown, default), Plaintext (.txt), CSV (.csv),
+        DOC/DOCX (.doc, .docx), PDF (.pdf), JSON (.json), YAML (.yml, .yaml),
+        and HTML (.html, .htm).
+
+        Args:
+            title (Optional[str]): The title of the document. When omitted,
+                the file name without its extension is used.
+                (default: :obj:`None`)
+            content (Union[str, List[List[str]]]): The content to write to the
+                file. Content format varies by file type:
+                - Text formats (txt, md, html, yaml): string
+                - CSV: string or list of lists
+                - JSON: string or serializable object
+            filename (str): The name or path of the file. If a relative path is
+                supplied, it is resolved to self.working_directory.
+            encoding (Optional[str]): The character encoding to use. (default:
+                :obj: `None`)
+            use_latex (bool): Whether to use LaTeX for math rendering.
+                (default: :obj:`False`)
+
+        Returns:
+            str: A message indicating success or error details.
+        """
+        if title is None:
+            # Models often fill only the status-message title; the document
+            # title is cosmetic, so its absence must not fail the write.
+            title = Path(filename).stem or filename
         run_context = run_context_for_task(self.api_task_id)
         prepared_write = None
         relative_path = None
@@ -172,22 +252,24 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 trigger="filesystem.write",
             )
         if prepared_write is not None:
-            res = super().write_to_file(
-                title,
-                content,
-                str(prepared_write.target_path),
-                encoding,
-                use_latex,
-            )
-            if "Content successfully written to file: " in res:
-                assert operation_request_id is not None
-                assert mutation_service is not None
-                mutation_service.complete_file_write(
+            assert operation_request_id is not None
+            assert mutation_service is not None
+            try:
+                res = super().write_to_file(
+                    title,
+                    content,
+                    str(prepared_write.target_path),
+                    encoding,
+                    use_latex,
+                )
+            finally:
+                self._settle_prepared_write(
+                    mutation_service,
                     prepared_write,
                     operation_request_id=operation_request_id,
-                    actor_id=self.agent_name,
                     trigger="filesystem.write",
                 )
+            if "Content successfully written to file: " in res:
                 res = (
                     "Content successfully written to file: "
                     f"{prepared_write.relative_path}"
@@ -261,20 +343,22 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 trigger="filesystem.edit",
             )
         if prepared_write is not None:
-            res = super().edit_file(
-                str(prepared_write.target_path),
-                old_content,
-                new_content,
-            )
-            if res.startswith("Successfully edited "):
-                assert operation_request_id is not None
-                assert mutation_service is not None
-                mutation_service.complete_file_write(
+            assert operation_request_id is not None
+            assert mutation_service is not None
+            try:
+                res = super().edit_file(
+                    str(prepared_write.target_path),
+                    old_content,
+                    new_content,
+                )
+            finally:
+                self._settle_prepared_write(
+                    mutation_service,
                     prepared_write,
                     operation_request_id=operation_request_id,
-                    actor_id=self.agent_name,
                     trigger="filesystem.edit",
                 )
+            if res.startswith("Successfully edited "):
                 relative_path = prepared_write.relative_path
                 res = f"Successfully edited {relative_path}"
         else:

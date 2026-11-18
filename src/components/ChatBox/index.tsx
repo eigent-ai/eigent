@@ -101,6 +101,7 @@ import {
 } from '@/store/followUpAdmissionClaims';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
 import {
   isSessionStarting,
@@ -111,6 +112,7 @@ import { useSpaceStore } from '@/store/spaceStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
+  dismissUsageBanner,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -128,6 +130,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BlockedWorkspaceOperationNotice } from './BlockedWorkspaceOperationCard';
 import BottomBox from './BottomBox';
 import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { HumanDecisionCard } from './BottomBox/HumanDecisionCard';
@@ -164,6 +167,7 @@ import {
   SessionExecutionChat,
   SessionExecutionStatus,
 } from './SessionExecutionChat';
+import { useReportSessionLoading } from './SessionLoadingHalo';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -397,6 +401,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType, token, user_id } = useAuthStore();
+  const authEmail = useAuthStore((s) => s.email);
   const sessionModelSelection =
     (activeProjectId
       ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
@@ -406,6 +411,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     : null;
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
+  );
+  // The blocked-operation card only needs the Session's Space, which its
+  // metadata knows before the runtime project has loaded.
+  const blockedOperationSpace = useSpaceStore((s) =>
+    s.getSpaceById(activeProject?.spaceId ?? activeProjectMeta?.spaceId)
   );
   const canUseSessionSpace = Boolean(
     token &&
@@ -438,8 +448,6 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
   const incident = activeUsageIncident(usage);
-  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
-    useState<string | null>(null);
   const {
     run: interruptedRun,
     setRun: setInterruptedRun,
@@ -501,6 +509,25 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       : null;
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
+  // A closed reminder stays closed across Sessions and restarts, until the
+  // reminder changes; once none applies, the next one shows again.
+  const dismissedUsageLimitBannerId = usage.dismissedBanner;
+  // Credits and the plan must both be known: a failed plan request also
+  // yields no reminder, and must not reopen the one that was closed.
+  useEffect(() => {
+    if (
+      currentCredits !== null &&
+      subscriptionUsage !== null &&
+      !bannerId &&
+      dismissedUsageLimitBannerId
+    )
+      dismissUsageBanner(null);
+  }, [
+    bannerId,
+    currentCredits,
+    dismissedUsageLimitBannerId,
+    subscriptionUsage,
+  ]);
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
   // An open incident owns this slot even while its toast hides the banner.
   const usageLimitBanner = incident
@@ -519,7 +546,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
           onAction: () => void refreshUsage(),
           onDismiss: () => {
-            setDismissedUsageLimitBannerId(bannerId ?? null);
+            dismissUsageBanner(bannerId ?? null);
             acknowledgeUsageNotice();
           },
         };
@@ -1031,6 +1058,20 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     activeProjectId &&
     (hasEventNativeTimelineContent || !hasAnyMessages)
   );
+  // The replayed history is what this view shows only while the event
+  // timeline has nothing durable yet (an older or cloud-restored Session), so
+  // only then does the Session's first load wait for the replay.
+  const isHistoryReplayLoading = useProjectRuntimeStore((state) =>
+    activeProjectId
+      ? Boolean(state.historyLoadingProjectIds[activeProjectId])
+      : false
+  );
+  useReportSessionLoading(
+    'history-replay',
+    eventNativeTimelineEnabled &&
+      !hasEventNativeTimelineContent &&
+      isHistoryReplayLoading
+  );
   const shouldRenderBottomBoxOverlay =
     shouldRenderChatTimeline &&
     Boolean(
@@ -1099,6 +1140,11 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
           ?.queuedMessages.map((item) => item.task_id)) ||
       [],
   });
+
+  // A failed write surfaces once its Task stops, on either timeline renderer.
+  const blockedWorkspaceRefreshKey = `${activeProjectId ?? ''}:${
+    chatStore?.activeTaskId ?? ''
+  }:${queueExecution.busy || isTaskBusy}`;
 
   const isCloudUsageLimited =
     composerModelType === 'cloud' && cloudUsageLimitReached;
@@ -3223,11 +3269,18 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onEditUserMessage={handleEditUserMessage}
+              sessionMode={displaySessionMode}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[736px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
+              />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   title={t(
@@ -3341,6 +3394,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                 key={activeProjectId ?? 'no-session'}
                 requestKey={humanDecisionKey}
                 variant={humanDecisionVariant}
+              />
+              <BlockedWorkspaceOperationNotice
+                space={blockedOperationSpace}
+                email={authEmail}
+                userId={user_id}
+                refreshKey={blockedWorkspaceRefreshKey}
               />
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner

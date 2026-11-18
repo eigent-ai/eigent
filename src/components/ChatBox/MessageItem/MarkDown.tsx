@@ -24,6 +24,11 @@ import DOMPurify from 'dompurify';
 import { Marked, Renderer, type Tokens } from 'marked';
 import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  readRenderedMarkdown,
+  renderedMarkdownKey,
+  saveRenderedMarkdown,
+} from './renderedMarkdownCache';
 
 // Helper functions for path resolution
 function joinPath(...paths: string[]): string {
@@ -197,8 +202,23 @@ export const MarkDown = memo(
     const openBrowserPreview = useSessionPageTabStore(
       (s) => s.openBrowserPreview
     );
-    const [displayedContent, setDisplayedContent] = useState('');
-    const [html, setHtml] = useState('');
+    const labels = {
+      code: t('markdown.code', { defaultValue: 'Code' }),
+      copy: t('markdown.copy-code', { defaultValue: 'Copy' }),
+      expand: t('markdown.show-more-code', { defaultValue: 'Show more' }),
+    };
+    const cacheKey = renderedMarkdownKey(
+      content,
+      profile,
+      labels,
+      contentBasePath
+    );
+    const [displayedContent, setDisplayedContent] = useState(
+      enableTypewriter ? '' : content
+    );
+    const [html, setHtml] = useState(() =>
+      enableTypewriter ? '' : (readRenderedMarkdown(cacheKey) ?? '')
+    );
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const rawCodeByElementRef = useRef(new WeakMap<Element, string>());
@@ -272,11 +292,14 @@ export const MarkDown = memo(
           return;
         }
 
-        const labels = {
-          code: t('markdown.code', { defaultValue: 'Code' }),
-          copy: t('markdown.copy-code', { defaultValue: 'Copy' }),
-          expand: t('markdown.show-more-code', { defaultValue: 'Show more' }),
-        };
+        if (displayedContent === content) {
+          const rendered = readRenderedMarkdown(cacheKey);
+          if (rendered !== undefined) {
+            setHtml(rendered);
+            renderCompleteRef.current?.();
+            return;
+          }
+        }
 
         // If content is pure HTML, handle it separately
         if (isHtmlDocument(displayedContent)) {
@@ -300,6 +323,8 @@ export const MarkDown = memo(
         // not flash empty while waiting for an unnecessary microtask.
         let rawHtml = parser.parse(displayedContent) as string;
         if (cancelled) return;
+        // Images become data URLs of files that can change, so skip those.
+        let cacheable = displayedContent === content;
 
         // Process images: replace relative paths with data URLs
         if (contentBasePath) {
@@ -325,6 +350,7 @@ export const MarkDown = memo(
                 const resolvedPath = resolveRelativePath(contentBasePath, src);
 
                 if (electronAPI?.readFileAsDataUrl) {
+                  cacheable = false;
                   const dataUrl =
                     await electronAPI.readFileAsDataUrl(resolvedPath);
                   if (cancelled) return;
@@ -410,6 +436,7 @@ export const MarkDown = memo(
           ],
         });
         if (cancelled) return;
+        if (cacheable) saveRenderedMarkdown(cacheKey, sanitized);
         setHtml(sanitized);
         if (displayedContent === content && renderCompleteRef.current) {
           renderCompleteRef.current();
@@ -420,7 +447,9 @@ export const MarkDown = memo(
       return () => {
         cancelled = true;
       };
-    }, [displayedContent, content, contentBasePath, electronAPI, profile, t]);
+      // `cacheKey` covers `labels`, which is a new object every render.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [displayedContent, content, contentBasePath, electronAPI, cacheKey]);
 
     useEffect(() => {
       const root = contentRef.current;
