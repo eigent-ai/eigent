@@ -43,5 +43,6 @@
   "open-in-explorer": "Abrir en el Explorador de archivos",
   "open-in-folder": "Abrir en el gestor de archivos",
   "preview-load-failed": "No se pudo previsualizar este archivo. Inténtalo de nuevo o ábrelo en una aplicación externa.",
-  "pdf-preview-failed": "No se pudo mostrar este PDF aquí. Ábrelo en otra aplicación."
+  "pdf-preview-failed": "No se pudo mostrar este PDF aquí. Ábrelo en otra aplicación.",
+  "preview-access-expired": "El acceso a esta vista previa ha caducado. Vuelve a abrir el archivo o inténtalo de nuevo."
 }

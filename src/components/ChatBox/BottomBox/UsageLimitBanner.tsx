@@ -32,6 +32,8 @@ export interface UsageLimitBannerProps {
   onDismiss?: () => void;
   /** Replaces the default buttons with Upgrade plan, Refresh, and own-key actions. */
   creditRecovery?: boolean;
+  /** With creditRecovery, false leaves out Upgrade plan (the daily trial cap). */
+  upgrade?: boolean;
 }
 
 export function UsageLimitBanner({
@@ -45,6 +47,7 @@ export function UsageLimitBanner({
   onRefresh,
   onDismiss,
   creditRecovery,
+  upgrade,
 }: UsageLimitBannerProps) {
   const { t } = useTranslation();
   return (
@@ -70,6 +73,7 @@ export function UsageLimitBanner({
             <CreditRecoveryActions
               refreshing={refreshing}
               onRefresh={onRefresh ?? onAction}
+              upgrade={upgrade}
             />
           ) : (
             <Button

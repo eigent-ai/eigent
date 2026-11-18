@@ -35,6 +35,15 @@ const CONTENT_HEADER_BASE_CLASS =
 
 export const CONTENT_HEADER_CLASS = `${CONTENT_HEADER_BASE_CLASS} h-ds-layout-row-header min-h-ds-layout-row-header px-ds-8`;
 
+/**
+ * Leading inset that lines a page header's first item up with the top bar's
+ * search icon, 18px in from the content column (the search button's 8px
+ * margin plus its 10px padding). Use it on headers whose left edge is the
+ * content column's left edge.
+ */
+export const CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS =
+  'pl-[calc(var(--ds-ref-space-8)_+_var(--ds-ref-space-10))]';
+
 /** Bottom hairline for headers that sit above a scrolling list. */
 export const CONTENT_HEADER_BORDER_CLASS =
   'border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default';
@@ -42,6 +51,15 @@ export const CONTENT_HEADER_BORDER_CLASS =
 /** Title typography, exported for `titleAsChild` callers to reapply. */
 export const CONTENT_HEADER_TITLE_CLASS =
   'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
+/**
+ * Title typography for a heading that holds a control, such as a menu
+ * trigger. The heading sizes to the control and does not clip it, so the
+ * control's focus ring stays visible and the control truncates its own label
+ * only when the header runs out of room.
+ */
+export const CONTENT_HEADER_TITLE_CONTROL_CLASS =
+  'flex min-w-0 shrink items-center !text-ds-text-body-large font-semibold text-ds-ink-default-default';
 
 const ContentHeaderFrameContext = createContext<{
   element: HTMLElement | null;

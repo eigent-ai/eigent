@@ -24,7 +24,7 @@ import { Check, TriangleAlert } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderDisplay } from './BoxHeader';
-import type { InputboxProps } from './InputBox';
+import type { ComposerContextPanelControl, InputboxProps } from './InputBox';
 import { Inputbox } from './InputBox';
 import type {
   BottomBoxApprovalVariant,
@@ -42,10 +42,8 @@ interface InputVariantRouterProps {
   inputProps: InputboxProps;
   borderlessApproval?: boolean;
   borderlessQuestion?: boolean;
-  connectorPanelOpen?: boolean;
-  onToggleConnectorPanel?: () => void;
-  skillPanelOpen?: boolean;
-  onToggleSkillPanel?: () => void;
+  /** The composer's floating "add context" panel. */
+  contextPanel?: ComposerContextPanelControl;
 }
 
 const controlSurfaceClassName =
@@ -574,10 +572,7 @@ export function ControlInputRouter({
   inputProps,
   borderlessApproval,
   borderlessQuestion,
-  connectorPanelOpen,
-  onToggleConnectorPanel,
-  skillPanelOpen,
-  onToggleSkillPanel,
+  contextPanel,
 }: InputVariantRouterProps) {
   let content: React.ReactNode;
 
@@ -587,10 +582,7 @@ export function ControlInputRouter({
         <Inputbox
           {...inputProps}
           header={variant.header}
-          connectorPanelOpen={connectorPanelOpen}
-          onToggleConnectorPanel={onToggleConnectorPanel}
-          skillPanelOpen={skillPanelOpen}
-          onToggleSkillPanel={onToggleSkillPanel}
+          contextPanel={contextPanel}
         />
       );
       break;

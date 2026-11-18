@@ -36,7 +36,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.run_journal.cloud_projection import cloud_event_payload
-from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.run_journal.memory_policy import (
+    assert_memory_entry_policy,
+    derive_user_message_source,
+    user_message_request_ids,
+)
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
@@ -152,7 +156,7 @@ from app.workspace_runtime.schema import (
     MIGRATION_V40,
 )
 
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 # Pending-only markers; never a terminal execution outcome.
 _WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
@@ -2541,6 +2545,63 @@ PRAGMA foreign_keys = ON;
 """
 
 
+_MIGRATION_V43 = """
+PRAGMA foreign_keys = OFF;
+BEGIN IMMEDIATE;
+
+-- A user can dismiss a blocked workspace operation without touching its
+-- files. SQLite cannot alter a CHECK constraint, so rebuild the table under
+-- its canonical name. Nothing references this table.
+DROP TABLE IF EXISTS git_mutation_intents_v43;
+CREATE TABLE git_mutation_intents_v43 (
+    intent_id TEXT PRIMARY KEY,
+    change_set_id TEXT NOT NULL REFERENCES git_change_sets(
+        change_set_id
+    ) ON DELETE CASCADE,
+    operation_request_id TEXT NOT NULL,
+    mutation_scope TEXT NOT NULL CHECK (
+        mutation_scope IN ('exact_path', 'broad_process')
+    ),
+    relative_path TEXT,
+    preimage_digest TEXT,
+    actor_id TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'prepared' CHECK (
+        status IN ('prepared', 'completed', 'needs_attention', 'abandoned')
+    ),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(change_set_id, operation_request_id),
+    CHECK (
+        (mutation_scope = 'exact_path' AND relative_path IS NOT NULL)
+        OR (mutation_scope = 'broad_process' AND relative_path IS NULL)
+    )
+);
+
+INSERT INTO git_mutation_intents_v43(
+    intent_id, change_set_id, operation_request_id, mutation_scope,
+    relative_path, preimage_digest, actor_id, trigger, status, created_at,
+    updated_at
+)
+SELECT intent_id, change_set_id, operation_request_id, mutation_scope,
+       relative_path, preimage_digest, actor_id, trigger, status, created_at,
+       updated_at
+FROM git_mutation_intents;
+
+DROP TABLE git_mutation_intents;
+ALTER TABLE git_mutation_intents_v43 RENAME TO git_mutation_intents;
+CREATE INDEX git_mutation_intents_reconcile_idx
+ON git_mutation_intents(status, updated_at, change_set_id);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (43, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 43;
+COMMIT;
+PRAGMA foreign_keys = ON;
+"""
+
+
 def _sql_run_terminal_cause(event_type: str, payload_json: str) -> str | None:
     # A malformed historical payload leaves the cause unknown rather than
     # failing the migration.
@@ -2580,6 +2641,33 @@ class OutboxLeaseLostError(RunJournalError):
 
 class WorkspaceWriterLeaseLostError(RunJournalError):
     pass
+
+
+class WorkspaceMutationBlockedError(OutboxLeaseLostError):
+    """An unresolved workspace operation still fences its checkout.
+
+    Subclasses ``OutboxLeaseLostError`` so existing admission retries keep
+    working, while carrying the blocking operation for diagnostics and the
+    user-facing recovery card.
+    """
+
+    def __init__(
+        self,
+        *,
+        intent_id: str,
+        run_id: str | None,
+        status: str,
+        mutation_scope: str | None = None,
+    ) -> None:
+        self.intent_id = intent_id
+        self.run_id = run_id
+        self.status = status
+        self.mutation_scope = mutation_scope
+        super().__init__(
+            "Workspace operation is still active or needs attention "
+            f"(operation {intent_id} from Run {run_id or 'unknown'} is "
+            f"{status})"
+        )
 
 
 class InvalidRunTransitionError(RunJournalError):
@@ -7831,19 +7919,25 @@ class SQLiteRunJournal:
                 # This transaction also fences separate service instances.
                 owner = connection.execute(
                     """
-                    SELECT intents.intent_id FROM git_mutation_intents intents
+                    SELECT intents.intent_id, intents.status,
+                           intents.mutation_scope, active.run_id
+                    FROM git_mutation_intents intents
                     JOIN git_change_sets active USING (change_set_id)
                     JOIN git_change_sets target ON target.change_set_id = ?
                     WHERE active.repository_id = target.repository_id
                       AND active.worktree_ref = target.worktree_ref
                       AND intents.status IN ('prepared', 'needs_attention')
+                    ORDER BY intents.created_at, intents.intent_id
                     LIMIT 1
                     """,
                     (change_set_id,),
                 ).fetchone()
                 if owner is not None:
-                    raise OutboxLeaseLostError(
-                        "Workspace operation is still active or needs attention"
+                    raise WorkspaceMutationBlockedError(
+                        intent_id=owner["intent_id"],
+                        run_id=owner["run_id"],
+                        status=owner["status"],
+                        mutation_scope=owner["mutation_scope"],
                     )
             row = connection.execute(
                 """
@@ -7911,9 +8005,10 @@ class SQLiteRunJournal:
         now: float | None = None,
     ) -> GitMutationIntentRecord:
         transitions = {
-            "prepared": {"completed", "needs_attention"},
+            "prepared": {"completed", "needs_attention", "abandoned"},
             "completed": set(),
-            "needs_attention": {"prepared"},
+            "needs_attention": {"prepared", "abandoned"},
+            "abandoned": set(),
         }
         if status != expected_status and status not in transitions.get(
             expected_status, set()
@@ -7944,6 +8039,123 @@ class SQLiteRunJournal:
                 """,
                 (status, timestamp, intent_id, expected_status),
             )
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_mutation_intent_from_row(row)
+
+    def abandon_git_mutation_intent(
+        self,
+        *,
+        intent_id: str,
+        expected_status: str,
+        now: float | None = None,
+    ) -> GitMutationIntentRecord:
+        """Record a user's decision to stop tracking one blocked operation.
+
+        This is bookkeeping only: no file, Git ref or ToolCall outcome is
+        changed. The operation's own unfinished ChangeSet items stop being
+        tracked. Once nothing else on a quarantined ChangeSet is unresolved,
+        it reopens when its Run is interrupted (Resume writes to it again)
+        and is discarded otherwise.
+        """
+        if expected_status not in {"prepared", "needs_attention"}:
+            raise InvalidRunTransitionError(
+                f"mutation intent cannot transition from {expected_status!r} "
+                "to 'abandoned'"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown mutation intent {intent_id!r}")
+            if row["status"] == "abandoned":
+                return self._git_mutation_intent_from_row(row)
+            if row["status"] != expected_status:
+                raise OptimisticConcurrencyError(
+                    f"mutation intent {intent_id!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_mutation_intents
+                SET status = 'abandoned', updated_at = ?
+                WHERE intent_id = ? AND status = ?
+                """,
+                (timestamp, intent_id, expected_status),
+            )
+            change_set_id = row["change_set_id"]
+            if row["mutation_scope"] == "exact_path":
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND relative_path = ?
+                    """,
+                    (timestamp, change_set_id, row["relative_path"]),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET item_state = 'ignored', updated_at = ?
+                    WHERE change_set_id = ? AND item_state = 'pending'
+                      AND operation_request_id = ?
+                    """,
+                    (timestamp, change_set_id, row["operation_request_id"]),
+                )
+            unresolved = connection.execute(
+                """
+                SELECT 1 FROM git_mutation_intents
+                WHERE change_set_id = ?
+                  AND status IN ('prepared', 'needs_attention')
+                UNION ALL
+                SELECT 1 FROM git_change_set_items
+                WHERE change_set_id = ?
+                  AND item_state IN ('pending', 'preimage_checkpointed')
+                LIMIT 1
+                """,
+                (change_set_id, change_set_id),
+            ).fetchone()
+            if unresolved is None:
+                owner = connection.execute(
+                    """
+                    SELECT runs.status FROM runs
+                    JOIN git_change_sets USING (run_id)
+                    WHERE git_change_sets.change_set_id = ?
+                    """,
+                    (change_set_id,),
+                ).fetchone()
+                # Resume reuses the Run's ChangeSet, so an interrupted Run
+                # gets it back open; only a Run that can never write again
+                # has it discarded.
+                resolved_state = (
+                    "open"
+                    if owner is not None and owner["status"] == "interrupted"
+                    else "discarded"
+                )
+                connection.execute(
+                    """
+                    UPDATE git_change_sets
+                    SET state = ?, version = version + 1, updated_at = ?
+                    WHERE change_set_id = ? AND state = 'needs_attention'
+                    """,
+                    (resolved_state, timestamp, change_set_id),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE git_change_sets
+                    SET version = version + 1, updated_at = ?
+                    WHERE change_set_id = ?
+                    """,
+                    (timestamp, change_set_id),
+                )
             row = connection.execute(
                 "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
                 (intent_id,),
@@ -9024,6 +9236,41 @@ class SQLiteRunJournal:
                 is not None
             )
 
+    def list_project_attention(self) -> list[tuple[str, str]]:
+        """Return ``(project_id, state)`` for every Project with active work.
+
+        ``state`` is ``waiting`` when a Run waits for the user or holds an
+        open HumanInteraction (questions and Approvals alike), and
+        ``running`` otherwise. Waiting outranks running across a Project's
+        Runs. A bare pending Run with no Attempt is not work yet, matching
+        ``has_active_local_execution``.
+        """
+
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT r.project_id AS project_id,
+                    MAX(CASE WHEN r.status = 'waiting_for_user' OR EXISTS (
+                        SELECT 1 FROM human_interactions h
+                        WHERE h.run_id = r.run_id
+                        AND h.status IN ('requested', 'presented')
+                    ) THEN 1 ELSE 0 END) AS waiting
+                FROM runs r
+                WHERE r.status IN ('running', 'waiting_for_user')
+                   OR (r.status = 'pending' AND EXISTS (
+                       SELECT 1 FROM run_attempts a WHERE a.run_id = r.run_id
+                       AND a.status IN ('pending', 'running', 'waiting_for_user')
+                   ))
+                GROUP BY r.project_id
+                ORDER BY r.project_id"""
+            ).fetchall()
+        return [
+            (
+                str(row["project_id"]),
+                "waiting" if row["waiting"] else "running",
+            )
+            for row in rows
+        ]
+
     def list_runs(
         self,
         *,
@@ -9608,6 +9855,67 @@ class SQLiteRunJournal:
                 if row is not None
                 else None
             )
+
+    def resolve_user_message_source(
+        self,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
+    ) -> str | None:
+        """Return the source Memory may trust for one ``user.message``.
+
+        See ``_resolve_user_message_source_in_transaction``.
+        """
+
+        with self._lock:
+            return self._resolve_user_message_source_in_transaction(
+                self._connection,
+                project_id=project_id,
+                run_id=run_id,
+                event_id=event_id,
+                claimed=claimed,
+            )
+
+    @staticmethod
+    def _resolve_user_message_source_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        project_id: str,
+        run_id: str,
+        event_id: str,
+        claimed: object,
+    ) -> str | None:
+        """Derive a message's source from the requests Brain persisted.
+
+        Follow-up rows and managed execution requests keep ``local``,
+        ``remote_control`` or ``scheduled`` for any status, and a queued
+        follow-up is admitted as the Run named by its request id. Those rows
+        and a ``scheduled:`` request id outrank the caller's ``claimed``
+        source, which can only lower trust. None means authorship is unknown.
+        """
+
+        request_ids = user_message_request_ids(
+            run_id=run_id, event_id=event_id
+        )
+        if not request_ids:
+            return None
+        # The Run id and the event's request id; the same id twice if equal.
+        first, second = request_ids[0], request_ids[-1]
+        rows = connection.execute(
+            """SELECT source FROM follow_up_requests
+            WHERE project_id = ? AND request_id IN (?, ?)
+            UNION ALL
+            SELECT source FROM execution_requests
+            WHERE project_id = ? AND request_id IN (?, ?)""",
+            (project_id, first, second, project_id, first, second),
+        ).fetchall()
+        return derive_user_message_source(
+            claimed=claimed,
+            persisted=[row[0] for row in rows],
+            request_ids=request_ids,
+        )
 
     def set_follow_up_delivery_mode(
         self,
@@ -11117,8 +11425,13 @@ class SQLiteRunJournal:
         attachment_names: list[str] | None = None,
         review_handoff_ids: list[str] | None = None,
         error_code: str | None = None,
+        source: str = "chat",
     ) -> bool:
-        """Close a refused admission without touching a consumer-owned Run."""
+        """Close a refused admission without touching a consumer-owned Run.
+
+        ``source`` is the admitting caller's claim for the recorded prompt;
+        the Run's persisted request can still mark it as trigger text.
+        """
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ? AND project_id = ?",
@@ -11138,15 +11451,24 @@ class SQLiteRunJournal:
                     (run_id,),
                 ).fetchone()
             ):
+                event_id = f"user-message:{request_id or run_id}"
                 self._append_event_in_transaction(
                     connection,
                     run_id,
                     RunEventDraft(
-                        event_id=f"user-message:{request_id or run_id}",
+                        event_id=event_id,
                         event_type="user.message",
                         payload={
                             "content": question,
-                            "source": "chat",
+                            "source": (
+                                self._resolve_user_message_source_in_transaction(
+                                    connection,
+                                    project_id=project_id,
+                                    run_id=run_id,
+                                    event_id=event_id,
+                                    claimed=source,
+                                )
+                            ),
                             "attachment_names": list(attachment_names or []),
                             "review_handoff_ids": list(
                                 review_handoff_ids or []
@@ -11851,7 +12173,9 @@ class SQLiteRunJournal:
         """Read metadata only, omitting already resolved extraction receipts.
 
         Even one multi-megabyte terminal event must not be materialized just
-        to discover that the explicit-user extractor cannot use it.
+        to discover that the explicit-user extractor cannot use it. The
+        source of a user.message is metadata for the same reason: trigger
+        text is excluded before its payload is loaded.
         """
 
         self._validate_memory_scope(target_scope_type, target_scope_id)
@@ -11864,7 +12188,10 @@ class SQLiteRunJournal:
             """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r
@@ -11881,7 +12208,10 @@ class SQLiteRunJournal:
             else """
             SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
                    e.created_at, r.last_error,
-                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes,
+                   CASE WHEN e.event_type = 'user.message'
+                        THEN json_extract(e.payload_json, '$.source')
+                   END AS message_source
             FROM project_history_events h
             JOIN run_events e ON e.event_id = h.event_id
             LEFT JOIN memory_extraction_receipts r
@@ -21275,6 +21605,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                 deterministic=True,
             )
             self._connection.executescript(migration)
+        if version < 43:
+            self._connection.executescript(_MIGRATION_V43)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

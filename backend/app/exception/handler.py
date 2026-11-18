@@ -19,6 +19,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.auth.file_access import redact_file_access
 from app.component import code
 from app.exception.exception import (
     NoPermissionException,
@@ -30,8 +31,15 @@ from app.exception.exception import (
 logger = logging.getLogger("exception_handler")
 
 
+def _request_path(request: Request) -> str:
+    """Request path for logs, without any file access grant in it."""
+    return redact_file_access(str(request.url.path))
+
+
 async def request_exception(request: Request, e: RequestValidationError):
-    logger.warning(f"Validation error on {request.url.path}: {e.errors()}")
+    logger.warning(
+        f"Validation error on {_request_path(request)}: {e.errors()}"
+    )
     errors = list(e.errors())
     try:
         # Translation support is optional in the packaged local runtime. Keep
@@ -53,12 +61,12 @@ async def request_exception(request: Request, e: RequestValidationError):
 
 
 async def token_exception(request: Request, e: TokenException):
-    logger.warning(f"Token exception on {request.url.path}: {e.text}")
+    logger.warning(f"Token exception on {_request_path(request)}: {e.text}")
     return JSONResponse(content={"code": e.code, "text": e.text})
 
 
 async def user_exception(request: Request, e: UserException):
-    logger.info(f"User exception on {request.url.path}: {e.description}")
+    logger.info(f"User exception on {_request_path(request)}: {e.description}")
     payload: dict[str, int | str] = {
         "code": e.code,
         "text": e.description,
@@ -69,7 +77,9 @@ async def user_exception(request: Request, e: UserException):
 
 
 async def no_permission(request: Request, exception: NoPermissionException):
-    logger.warning(f"No permission on {request.url.path}: {exception.text}")
+    logger.warning(
+        f"No permission on {_request_path(request)}: {exception.text}"
+    )
     return JSONResponse(
         status_code=200,
         content={"code": code.no_permission_error, "text": exception.text},
@@ -78,7 +88,7 @@ async def no_permission(request: Request, exception: NoPermissionException):
 
 async def program_exception(request: Request, exception: ProgramException):
     logger.error(
-        f"Program exception on {request.url.path}: {exception.text}",
+        f"Program exception on {_request_path(request)}: {exception.text}",
         exc_info=True,
     )
     return JSONResponse(
@@ -89,12 +99,12 @@ async def program_exception(request: Request, exception: ProgramException):
 
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(
-        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+        f"Unhandled exception on {request.method} {_request_path(request)}: {exc}",
         exc_info=True,
         extra={
             "request_method": request.method,
-            "request_path": str(request.url.path),
-            "request_query": str(request.url.query),
+            "request_path": _request_path(request),
+            "request_query": redact_file_access(str(request.url.query)),
             "client_host": request.client.host if request.client else None,
         },
     )

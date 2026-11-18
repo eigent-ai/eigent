@@ -15,23 +15,26 @@
 import { proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
-import {
-  SETTINGS_SECTIONS,
-  type SettingsSectionId,
-} from '@/store/settingsStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
 import { warnAuthClearedForEnvironment } from '@/lib/authEnvironment';
 import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
-import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
+import {
+  LegacyRouteRedirect,
+  LegacySettingRedirect,
+} from './LegacyRouteCompatibility';
 import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Workspace = lazy(() => import('@/pages/Workspace'));
-const Settings = lazy(() => import('@/pages/Settings'));
+const loadWorkspace = () => import('@/pages/Workspace');
+const loadHome = () => import('@/pages/Home');
+const loadSettings = () => import('@/pages/Settings');
+const Workspace = lazy(loadWorkspace);
+const Home = lazy(loadHome);
+const Settings = lazy(loadSettings);
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 const SessionWindow = lazy(() => import('@/pages/SessionWindow'));
@@ -161,82 +164,69 @@ const ProtectedRoute = () => {
   );
 };
 
-/** Keep legacy Settings links working while Home is the canonical surface. */
-function SettingsRouteRedirect() {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const sectionFromUrl = searchParams.get('section');
-  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
-    sectionFromUrl as SettingsSectionId
-  );
-
-  if (sectionFromUrl !== 'spaces') {
-    searchParams.set('section', 'settings');
-    if (
-      sectionFromUrl &&
-      isLegacySettingsSection &&
-      sectionFromUrl !== 'settings'
-    ) {
-      searchParams.set('tab', sectionFromUrl);
+/** Fetch the main pages once the app is idle, so the first click doesn't. */
+function usePreloadPages() {
+  useEffect(() => {
+    const preload = () => {
+      void Promise.all([
+        loadWorkspace(),
+        loadHome(),
+        loadSettings(),
+        import('@/components/Workspace/SpaceWorkspacePage'),
+      ]).catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
     }
-  }
-
-  return (
-    <Navigate
-      to={`/home?${searchParams.toString()}`}
-      replace
-      state={location.state}
-    />
-  );
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 }
 
-// Main route configuration
-const AppRoutes = () => (
-  <Routes>
-    <Route path="/login" element={<Login />} />
-    <Route path="/signup" element={<Signup />} />
-    {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
-      <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
-    ) : null}
-    <Route element={<ProtectedRoute />}>
-      {/* A Session in its own window: no app shell, sidebar or top bar. */}
-      <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
-      <Route element={<Layout />}>
-        <Route
-          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
-        >
-          <Route index element={null} />
-          <Route path="/home" element={<Settings />} />
+const AppRoutes = () => {
+  usePreloadPages();
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
+        <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
+      ) : null}
+      <Route element={<ProtectedRoute />}>
+        {/* A Session in its own window: no app shell, sidebar or top bar. */}
+        <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
+        <Route element={<Layout />}>
+          <Route
+            element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+          >
+            <Route index element={null} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route
+            path="/history"
+            element={<LegacyRouteRedirect kind="history" />}
+          />
+          <Route
+            path="/workspace-configuration"
+            element={<LegacyRouteRedirect kind="workspace-configuration" />}
+          />
+          <Route
+            path="/workspace-bundles/install"
+            element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+          />
+          <Route
+            path="/agent-plugins/import"
+            element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+          />
+          <Route path="/setting" element={<LegacySettingRedirect />} />
+          <Route path="/setting/*" element={<LegacySettingRedirect />} />
         </Route>
-        <Route path="/settings" element={<SettingsRouteRedirect />} />
-        <Route
-          path="/history"
-          element={<LegacyRouteRedirect kind="history" />}
-        />
-        <Route
-          path="/workspace-configuration"
-          element={<LegacyRouteRedirect kind="workspace-configuration" />}
-        />
-        <Route
-          path="/workspace-bundles/install"
-          element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
-        />
-        <Route
-          path="/agent-plugins/import"
-          element={<LegacyRouteRedirect kind="agent-plugin-import" />}
-        />
-        <Route
-          path="/setting"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
-        <Route
-          path="/setting/*"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
       </Route>
-    </Route>
-    <Route path="*" element={<NotFound />} />
-  </Routes>
-);
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+};
 
 export default AppRoutes;

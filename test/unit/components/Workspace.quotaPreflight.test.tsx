@@ -149,12 +149,6 @@ vi.mock('@/lib/runEvents', () => ({
   },
 }));
 vi.mock('@/components/AddWorker', () => ({ AddWorker: () => null }));
-vi.mock('@/components/Workspace/SingleAgentList', () => ({
-  SingleAgentList: () => null,
-}));
-vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
-  WorkforceAgentList: () => null,
-}));
 
 const attachment = {
   fileName: 'fixture.txt',

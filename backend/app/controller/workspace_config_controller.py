@@ -294,8 +294,13 @@ def _authorized_agent_plugin_source(request: Request, value: str) -> Path:
             detail={"code": "agent_plugin_source_invalid"},
         )
     hands = getattr(request.state, "hands", None) or get_environment_hands()
-    can_access = getattr(hands, "can_access_filesystem", None)
-    if can_access is None or not can_access(value):
+    validator = getattr(hands, "validate_agent_plugin_source_path", None)
+    if validator is not None:
+        allowed, _reason = validator(value)
+    else:
+        can_access = getattr(hands, "can_access_filesystem", None)
+        allowed = can_access is not None and can_access(value)
+    if not allowed:
         raise HTTPException(
             status_code=403,
             detail={"code": "agent_plugin_source_not_allowed"},

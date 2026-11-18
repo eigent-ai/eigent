@@ -73,11 +73,13 @@ async function renderRedirect({
   path,
   entry,
   state,
+  destination = '/home',
 }: {
   kind: LegacyRouteKind;
   path: string;
   entry: string;
   state?: unknown;
+  destination?: '/home' | '/settings';
 }) {
   render(
     <MemoryRouter
@@ -92,11 +94,12 @@ async function renderRedirect({
       <Routes>
         <Route path={path} element={<LegacyRouteRedirect kind={kind} />} />
         <Route path="/home" element={<LocationProbe />} />
+        <Route path="/settings" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>
   );
 
-  await waitFor(() => expect(locationSnapshot().pathname).toBe('/home'));
+  await waitFor(() => expect(locationSnapshot().pathname).toBe(destination));
   return locationSnapshot();
 }
 
@@ -110,30 +113,40 @@ describe('LegacyRouteRedirect', () => {
   it.each([
     {
       entry: '/history?tab=agents&section=memory&trace=keep',
-      expected: { section: 'settings', tab: 'memory' },
+      destination: '/settings' as const,
+      expected: { section: null, tab: 'memory' },
     },
     {
       entry: '/history?tab=mcp_tools&connectorAction=add&trace=keep',
-      expected: { section: 'settings', tab: 'connectors' },
+      destination: '/settings' as const,
+      expected: { section: null, tab: 'connectors' },
     },
     {
       entry:
         '/history?tab=browser&browserSection=extension&browserAction=launch&trace=keep',
-      expected: { section: 'settings', tab: 'browser-plugins' },
+      destination: '/settings' as const,
+      expected: { section: null, tab: 'browser-plugins' },
+    },
+    {
+      entry: '/history?tab=settings&trace=keep',
+      destination: '/settings' as const,
+      expected: { section: null, tab: 'settings' },
     },
     {
       entry: '/history?tab=projects&trace=keep',
+      destination: '/home' as const,
       expected: { section: 'spaces', tab: null },
     },
   ])(
-    'maps $entry into the current Home surface',
-    async ({ entry, expected }) => {
+    'maps $entry to $destination',
+    async ({ entry, destination, expected }) => {
       const routeState = { from: 'legacy-link' };
       const snapshot = await renderRedirect({
         kind: 'history',
         path: '/history',
         entry,
         state: routeState,
+        destination,
       });
       const params = new URLSearchParams(snapshot.search);
 
@@ -149,6 +162,7 @@ describe('LegacyRouteRedirect', () => {
       kind: 'history',
       path: '/history',
       entry: '/history?tab=browser&browserSection=cdp&browserAction=launch',
+      destination: '/settings',
     });
     const params = new URLSearchParams(snapshot.search);
 
