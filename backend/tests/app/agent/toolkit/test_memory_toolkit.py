@@ -221,7 +221,9 @@ async def test_single_agent_mentions_rules_only_with_memory_tools(
 
     with pytest.raises(_PromptCaptured):
         await factory.single_agent(
-            SimpleNamespace(task_id="task-1", project_id="project-1"),
+            SimpleNamespace(
+                task_id="task-1", project_id="project-1", timezone=None
+            ),
             managed_execution=managed_execution,
         )
 

@@ -737,7 +737,7 @@ export default function Memory({
                                   )
                                 }
                               >
-                                <Save aria-hidden />{' '}
+                                <DsIcon icon={Save} aria-hidden />{' '}
                                 {t('setting.save', { defaultValue: 'Save' })}
                               </Button>
                               <Button
@@ -766,7 +766,7 @@ export default function Memory({
                                   )
                                 }
                               >
-                                <Check aria-hidden />{' '}
+                                <DsIcon icon={Check} aria-hidden />{' '}
                                 {t('setting.memory-suggestion-accept', {
                                   defaultValue: 'Accept',
                                 })}
@@ -782,7 +782,7 @@ export default function Memory({
                                   setEditingText(entry.content);
                                 }}
                               >
-                                <Pencil aria-hidden />{' '}
+                                <DsIcon icon={Pencil} aria-hidden />{' '}
                                 {t('setting.edit', { defaultValue: 'Edit' })}
                               </Button>
                             </>
@@ -799,7 +799,7 @@ export default function Memory({
                               )
                             }
                           >
-                            <X aria-hidden />{' '}
+                            <DsIcon icon={X} aria-hidden />{' '}
                             {t('setting.memory-suggestion-dismiss', {
                               defaultValue: 'Dismiss',
                             })}
