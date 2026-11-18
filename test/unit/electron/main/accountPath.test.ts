@@ -17,6 +17,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The Codex credential store imports electron for safeStorage; CI has no
+// Electron binary, and these tests only need its folder lookup.
+vi.mock('electron', () => ({ safeStorage: {} }));
+
 vi.mock('electron-log', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
