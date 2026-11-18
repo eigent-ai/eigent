@@ -1684,6 +1684,7 @@
   "recording-state-stopping": "録画を停止しています",
   "recording-state-finalizing": "録画を保存しています",
   "recording-unavailable": "接続済みのデスクトップ録画機能が必要です。",
+  "recording-main-window-only": "録画はメインウィンドウからのみ開始できます。",
   "recording-task-required": "録画する前に、このセッションでタスクを開始してください。",
   "recording-start-failed": "開始できませんでした。デスクトップ接続を確認して再試行してください。",
   "recording-stop-failed": "録画を停止できませんでした。再試行してください。",

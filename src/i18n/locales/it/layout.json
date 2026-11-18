@@ -1730,6 +1730,7 @@
   "recording-state-stopping": "Interruzione della registrazione",
   "recording-state-finalizing": "Salvataggio della registrazione",
   "recording-unavailable": "La registrazione richiede un registratore desktop connesso.",
+  "recording-main-window-only": "Puoi registrare solo dalla finestra principale.",
   "recording-task-required": "Avvia un’attività in questa sessione prima di registrare.",
   "recording-start-failed": "Impossibile avviare. Controlla la connessione al desktop e riprova.",
   "recording-stop-failed": "Impossibile interrompere la registrazione. Riprova.",

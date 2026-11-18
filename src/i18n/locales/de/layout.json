@@ -1707,6 +1707,7 @@
   "recording-state-stopping": "Aufnahme wird gestoppt",
   "recording-state-finalizing": "Aufnahme wird gespeichert",
   "recording-unavailable": "Für Aufnahmen muss ein Desktop-Rekorder verbunden sein.",
+  "recording-main-window-only": "Aufnahmen sind nur im Hauptfenster möglich.",
   "recording-task-required": "Starte zuerst eine Aufgabe in dieser Sitzung.",
   "recording-start-failed": "Aufnahme konnte nicht gestartet werden. Prüfe die Desktop-Verbindung und versuche es erneut.",
   "recording-stop-failed": "Aufnahme konnte nicht gestoppt werden. Versuche es erneut.",

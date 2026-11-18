@@ -112,11 +112,9 @@ class RecordingService:
         with self.lock:
             provider = self.provider
             grants = list(provider.grants.items()) if provider else []
-        import os
+        from .media import secure_publication_supported
 
-        secure_io = (
-            os.open in os.supports_dir_fd and os.mkdir in os.supports_dir_fd
-        )
+        secure_io = secure_publication_supported()
         available = (
             provider is not None
             and provider.available()

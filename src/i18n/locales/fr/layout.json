@@ -1730,6 +1730,7 @@
   "recording-state-stopping": "Arrêt de l’enregistrement",
   "recording-state-finalizing": "Enregistrement de la vidéo",
   "recording-unavailable": "Un enregistreur de bureau connecté est nécessaire.",
+  "recording-main-window-only": "L’enregistrement n’est possible que depuis la fenêtre principale.",
   "recording-task-required": "Démarrez une tâche dans cette session avant d’enregistrer.",
   "recording-start-failed": "Impossible de démarrer. Vérifiez la connexion au bureau et réessayez.",
   "recording-stop-failed": "Impossible d’arrêter l’enregistrement. Réessayez.",

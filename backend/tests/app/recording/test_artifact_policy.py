@@ -14,16 +14,25 @@
 
 import subprocess
 
+import pytest
+
 from app.artifacts import (
     _artifact_path_filter,
     _artifact_upload_policy,
     _ArtifactRoot,
 )
 from app.recording import runtime
+from app.recording.media import secure_publication_supported
 from app.recording.models import RecordingScope
 from app.recording.service import RecordingService
 from app.recording.store import RecordingStore
 from app.workspace_git.path_policy import WorkspacePathPolicy
+
+# Publication needs POSIX directory handles (unavailable on Windows today).
+pytestmark = pytest.mark.skipif(
+    not secure_publication_supported(),
+    reason="recording publication needs POSIX directory handles",
+)
 
 
 def test_scratch_capture_is_excluded_before_bytes_exist_and_never_uploaded(

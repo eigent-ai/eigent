@@ -25,6 +25,7 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { useRecording, useRecordingStore } from '@/hooks/useRecording';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
+import { getSessionWindowRole } from '@/lib/sessionWindows';
 import { startRecording } from '@/service/recordingApi';
 import { Film, Video } from 'lucide-react';
 import { useState } from 'react';
@@ -50,11 +51,14 @@ export function SessionRecordingControl({
     .flatMap((item) =>
       item.clips.map((clip) => ({ ...clip, created_at: item.created_at }))
     );
+  // The adapter records the main window, and its consent dialog belongs to
+  // it, so a Session opened in its own window cannot start a recording.
+  const inSessionWindow = getSessionWindowRole() === 'session';
   const available = Boolean(
-    host?.recording && capabilities?.available && connected
+    host?.recording && capabilities?.available && connected && !inSessionWindow
   );
   const record = async () => {
-    if (!host?.recording || pending) return;
+    if (!host?.recording || !available || pending) return;
     setPending(true);
     try {
       const response = (await fetchGet('/runs', {
@@ -88,7 +92,9 @@ export function SessionRecordingControl({
         content={
           available
             ? t('layout.recording-record')
-            : t('layout.recording-unavailable')
+            : inSessionWindow
+              ? t('layout.recording-main-window-only')
+              : t('layout.recording-unavailable')
         }
         side="bottom"
         variant="instant"

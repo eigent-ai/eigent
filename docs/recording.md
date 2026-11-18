@@ -4,7 +4,9 @@ Implementation of the first-release clip workflow in [PR #2063](https://github.c
 
 ## User workflow
 
-In a Session with an active Task, choose **Record** and approve the native consent dialog. The source is Eigent's own content, including its visible embedded browser views. There is no audio, desktop capture, or capture of other applications. Recording continues when navigating to another Session or Settings. The app-wide indicator shows state, elapsed time, and **Stop recording**. Finished clips open in the existing Files preview from the Session's recordings menu.
+In a Session with an active Task, choose **Record** and approve the native consent dialog. The source is Eigent's own content, including its visible embedded browser views. There is no audio, desktop capture, or capture of other applications. Recording continues when navigating to another Session or Settings.
+
+The adapter records the main window. A Session opened in its own window shows **Record** disabled, with a hint to record from the main window; the app-wide indicator and **Stop recording** keep working there. Only the main window's main frame can request native consent. Any app window can revoke consent, so signing out from a Session window still revokes it. The app-wide indicator shows state, elapsed time, and **Stop recording**. Finished clips open in the existing Files preview from the Session's recordings menu.
 
 Stopping, pausing, or ending a Task ends its capture. Resuming a Task does not silently restart recording. Lock, suspend, minimize, account changes, permission revocation, renderer failure, and an expired provider lease also stop capture. The stopped clip may finish publication independently of Task completion.
 
@@ -53,7 +55,7 @@ On restart, complete media with a matching publication manifest can finish catal
 
 The repeatable fixture is documented in [the recording test README](../test/e2e/recording/README.md). macOS development testing used Electron 33.4.11 / Chromium 130.0.6723.191 and produced two playable H.264 clips across navigation and a later headless start. Native consent is mocked only by the dedicated fixture; fixture pixels are synthetic. External ffprobe/ffmpeg decoding and seeking passed.
 
-Windows currently reports `secure_publication_unavailable` because this implementation requires POSIX directory-handle publication. Linux is not validated. Signed/packaged macOS, manual native-consent acceptance, full authenticated product navigation, a real one-hour soak, and H.264 distribution/licensing review remain release checks. The one-hour rollover is covered by simulated-clock service tests. The browser screenshots exercise real production controls in a component fixture, not the complete signed application.
+Windows currently reports `secure_publication_unavailable` because this implementation requires POSIX directory-handle publication. The backend tests that publish clips are skipped on platforms without directory-handle support and run in Linux CI. Linux is not validated. Signed/packaged macOS, manual native-consent acceptance, full authenticated product navigation, a real one-hour soak, and H.264 distribution/licensing review remain release checks. The one-hour rollover is covered by simulated-clock service tests. The browser screenshots exercise real production controls in a component fixture, not the complete signed application.
 
 UI reuses `Button` (`ghost`/`secondary`, `sm`, `text`/`icon-only`), `DsIcon`, `DsText` (`meta`), `TooltipSimple` (`instant`), `DropdownMenu`, the existing Session header, and Files preview. It uses `gap-ds-control-gap`, `text-ds-ink-default-default`, and `text-ds-ink-muted-default`. No shared token changes or design exceptions were introduced. Verified fixture states: starting, recording, stopping, finalizing, completed, denied, and interrupted in light/dark themes; keyboard Stop, narrow 360×240 layout, 200% zoom, and reduced motion. Locale parity covers all 11 locales.
 

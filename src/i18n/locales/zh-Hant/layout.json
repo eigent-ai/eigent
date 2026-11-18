@@ -1684,6 +1684,7 @@
   "recording-state-stopping": "正在停止錄製",
   "recording-state-finalizing": "正在儲存影片",
   "recording-unavailable": "錄製需要連接桌面錄製器。",
+  "recording-main-window-only": "只能在主視窗中開始錄製。",
   "recording-task-required": "請先在此工作階段啟動一個任務。",
   "recording-start-failed": "無法開始錄製，請檢查桌面連線後重試。",
   "recording-stop-failed": "無法停止錄製，請重試。",

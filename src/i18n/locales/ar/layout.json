@@ -1799,6 +1799,7 @@
   "recording-state-stopping": "إيقاف التسجيل جارٍ",
   "recording-state-finalizing": "حفظ التسجيل",
   "recording-unavailable": "يتطلب التسجيل مسجلاً متصلاً على سطح المكتب.",
+  "recording-main-window-only": "يمكنك التسجيل من النافذة الرئيسية فقط.",
   "recording-task-required": "ابدأ مهمة في هذه الجلسة قبل التسجيل.",
   "recording-start-failed": "تعذر بدء التسجيل. تحقق من الاتصال بسطح المكتب وحاول مجددًا.",
   "recording-stop-failed": "تعذر إيقاف التسجيل. حاول مجددًا.",

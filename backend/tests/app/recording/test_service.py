@@ -19,11 +19,19 @@ from pathlib import Path
 
 import pytest
 
+from app.recording.media import secure_publication_supported
 from app.recording.models import RecordingError, RecordingScope
 from app.recording.service import RecordingService
 from app.recording.store import RecordingStore
 
 PRINCIPAL = "desktop_renderer:local"
+
+# Publication needs POSIX directory handles. Without them the service reports
+# secure_publication_unavailable (Windows today), so these flows cannot run.
+requires_secure_publication = pytest.mark.skipif(
+    not secure_publication_supported(),
+    reason="recording publication needs POSIX directory handles",
+)
 
 
 def atom(kind, data=b""):
@@ -84,6 +92,7 @@ def media(env, row):
     return {"duration": 2, "width": 640, "height": 480, "fps": 24}
 
 
+@requires_secure_publication
 def test_headless_start_requires_grant_without_creating_row(env):
     service, _, _, _ = env
     with pytest.raises(RecordingError, match="permission_required"):
@@ -99,6 +108,7 @@ def test_unavailable_provider_does_not_require_desktop_imports(env):
         service.start("run", PRINCIPAL, grant, "key")
 
 
+@requires_secure_publication
 def test_idempotency_busy_and_ownership(env):
     service, _, _, _ = env
     first = start(env)
@@ -113,6 +123,7 @@ def test_idempotency_busy_and_ownership(env):
     assert "grant_id" not in first and "root" not in first
 
 
+@requires_secure_publication
 def test_grants_expire_on_idle_and_registration(env):
     service, grant, state, spool = env
     service.provider.grants[grant] = (state["scope"].account, time.time() - 1)
@@ -127,6 +138,7 @@ def test_grants_expire_on_idle_and_registration(env):
         service.authenticate_provider(old.token)
 
 
+@requires_secure_publication
 def test_revoke_stops_capture_and_rejects_future_starts(env):
     service, _, _, _ = env
     row = start(env)
@@ -137,6 +149,7 @@ def test_revoke_stops_capture_and_rejects_future_starts(env):
         start(env, key="next")
 
 
+@requires_secure_publication
 def test_publication_is_independent_of_task_completion(env):
     service, _, state, _ = env
     row = start(env)
@@ -178,6 +191,7 @@ def test_publication_is_independent_of_task_completion(env):
     assert len(service.store.all()) == 1
 
 
+@requires_secure_publication
 def test_pause_resume_attempt_and_null_attempt(env):
     service, _, state, _ = env
     row = start(env)
@@ -192,6 +206,7 @@ def test_pause_resume_attempt_and_null_attempt(env):
     assert second["id"] != row["id"]
 
 
+@requires_secure_publication
 def test_rebinding_and_symlink_destination_never_publish(env, tmp_path):
     service, _, state, _ = env
     row = start(env)
@@ -225,6 +240,7 @@ def test_rebinding_and_symlink_destination_never_publish(env, tmp_path):
         )
 
 
+@requires_secure_publication
 def test_existing_destination_is_never_overwritten(env):
     service, _, state, _ = env
     row = start(env)
@@ -243,6 +259,7 @@ def test_existing_destination_is_never_overwritten(env):
     assert (dest / "clip_001.mp4").read_text() == "user content"
 
 
+@requires_secure_publication
 def test_restart_retains_clips_and_interrupts_orphans(env):
     service, grant, state, spool = env
     first = start(env)
@@ -266,6 +283,7 @@ def test_restart_retains_clips_and_interrupts_orphans(env):
     assert not recovered.capabilities()["available"]
 
 
+@requires_secure_publication
 def test_stale_callbacks_and_frame_progress_are_fenced(env):
     service, _, _, spool = env
     row = start(env)
@@ -279,6 +297,7 @@ def test_stale_callbacks_and_frame_progress_are_fenced(env):
         service.report(provider, row["id"], sequence=0, state="recording")
 
 
+@requires_secure_publication
 def test_disk_limit_and_invalid_container_are_truthful(env):
     service, _, _, _ = env
     row = start(env)
@@ -307,6 +326,7 @@ def test_disk_limit_and_invalid_container_are_truthful(env):
         )
 
 
+@requires_secure_publication
 def test_expired_provider_cannot_revive_old_grant(env):
     service, grant, _, _ = env
     row = start(env)
@@ -319,6 +339,7 @@ def test_expired_provider_cannot_revive_old_grant(env):
     assert provider.grants == {}
 
 
+@requires_secure_publication
 def test_authorized_headless_client_can_discover_live_grant(env):
     service, grant, _, _ = env
     assert (
@@ -329,6 +350,7 @@ def test_authorized_headless_client_can_discover_live_grant(env):
     assert service.capabilities()["capture_grants"] == []
 
 
+@requires_secure_publication
 def test_hour_limit_rolls_to_new_clip_without_a_new_consent(env):
     service, _, _, _ = env
     row = start(env)
@@ -356,6 +378,7 @@ def test_hour_limit_rolls_to_new_clip_without_a_new_consent(env):
     assert service.command(service.provider)["recording_id"] == rows[0]["id"]
 
 
+@requires_secure_publication
 def test_finalization_does_not_hold_lifecycle_lock(env, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -395,6 +418,7 @@ def test_finalization_does_not_hold_lifecycle_lock(env, monkeypatch):
         assert future.result()["state"] == "completed"
 
 
+@requires_secure_publication
 def test_provider_without_proved_encoder_is_unavailable(env):
     service, _, _, spool = env
     service.register("desktop", str(spool), formats=[])

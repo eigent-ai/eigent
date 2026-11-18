@@ -1730,6 +1730,7 @@
   "recording-state-stopping": "Deteniendo grabación",
   "recording-state-finalizing": "Guardando grabación",
   "recording-unavailable": "La grabación requiere un grabador de escritorio conectado.",
+  "recording-main-window-only": "Solo puedes grabar desde la ventana principal.",
   "recording-task-required": "Inicia una tarea en esta sesión antes de grabar.",
   "recording-start-failed": "No se pudo iniciar. Comprueba la conexión al escritorio e inténtalo de nuevo.",
   "recording-stop-failed": "No se pudo detener la grabación. Inténtalo de nuevo.",

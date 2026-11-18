@@ -1684,6 +1684,7 @@
   "recording-state-stopping": "正在停止录制",
   "recording-state-finalizing": "正在保存视频",
   "recording-unavailable": "录制需要连接桌面录制器。",
+  "recording-main-window-only": "只能在主窗口中开始录制。",
   "recording-task-required": "请先在此会话中启动一个任务。",
   "recording-start-failed": "无法开始录制，请检查桌面连接后重试。",
   "recording-stop-failed": "无法停止录制，请重试。",

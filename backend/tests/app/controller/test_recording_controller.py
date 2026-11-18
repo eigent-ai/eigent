@@ -22,9 +22,15 @@ from starlette.requests import Request
 from app.auth import LocalControlPrincipal, require_local_control_principal
 from app.controller import recording_controller as controller
 from app.recording import runtime
+from app.recording.media import secure_publication_supported
 from app.recording.models import RecordingScope
 from app.recording.service import RecordingService
 from app.recording.store import RecordingStore
+
+requires_secure_publication = pytest.mark.skipif(
+    not secure_publication_supported(),
+    reason="recording publication needs POSIX directory handles",
+)
 
 
 @pytest.fixture
@@ -61,6 +67,7 @@ def fixture(tmp_path, monkeypatch):
     return client, service, spool, api
 
 
+@requires_secure_publication
 def test_direct_headless_api_start_status_stop_and_listing(fixture):
     client, service, spool, _ = fixture
     assert (
@@ -155,6 +162,7 @@ def test_public_routes_require_real_control_auth(fixture):
     ).status_code in {401, 503}
 
 
+@requires_secure_publication
 @pytest.mark.asyncio
 async def test_command_stream_leases_and_disconnect_fences_generation(fixture):
     _, service, spool, _ = fixture

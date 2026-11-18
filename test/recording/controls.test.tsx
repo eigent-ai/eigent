@@ -26,6 +26,10 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   get: vi.fn(),
   openFile: vi.fn(),
+  windowRole: 'main' as 'main' | 'session',
+}));
+vi.mock('@/lib/sessionWindows', () => ({
+  getSessionWindowRole: () => mocks.windowRole,
 }));
 vi.mock('@/hooks/useRecording', async () => ({
   ...(await vi.importActual<typeof import('@/hooks/useRecording')>(
@@ -67,6 +71,7 @@ const row: Recording = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.windowRole = 'main';
   useRecordingStore.setState({
     recordings: [],
     connected: true,
@@ -165,5 +170,14 @@ describe('recording controls', () => {
     });
     render(<SessionRecordingControl sessionId="session" compact />);
     expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled();
+  });
+  it('keeps Record disabled in a Session window, which the adapter does not capture', async () => {
+    mocks.windowRole = 'session';
+    render(<SessionRecordingControl sessionId="session" />);
+    const record = screen.getByRole('button', { name: 'Record' });
+    expect(record).toBeDisabled();
+    await userEvent.click(record);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.authorize).not.toHaveBeenCalled();
   });
 });

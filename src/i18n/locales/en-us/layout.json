@@ -1707,6 +1707,7 @@
   "recording-state-stopping": "Stopping recording",
   "recording-state-finalizing": "Saving recording",
   "recording-unavailable": "Recording needs a connected desktop recorder.",
+  "recording-main-window-only": "Record from the main window.",
   "recording-task-required": "Start a Task in this Session before recording.",
   "recording-start-failed": "Could not start recording. Check the desktop connection and try again.",
   "recording-stop-failed": "Could not stop recording. Try again.",

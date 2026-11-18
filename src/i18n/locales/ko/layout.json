@@ -1684,6 +1684,7 @@
   "recording-state-stopping": "녹화 중지 중",
   "recording-state-finalizing": "녹화 저장 중",
   "recording-unavailable": "연결된 데스크톱 녹화기가 필요합니다.",
+  "recording-main-window-only": "녹화는 메인 창에서만 시작할 수 있습니다.",
   "recording-task-required": "녹화하기 전에 이 세션에서 작업을 시작하세요.",
   "recording-start-failed": "녹화를 시작할 수 없습니다. 데스크톱 연결을 확인하고 다시 시도하세요.",
   "recording-stop-failed": "녹화를 중지할 수 없습니다. 다시 시도하세요.",

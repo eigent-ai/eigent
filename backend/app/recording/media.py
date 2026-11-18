@@ -21,6 +21,16 @@ from pathlib import Path
 from .models import RecordingError
 
 
+def secure_publication_supported() -> bool:
+    """Publication walks directory handles; Windows has no dir_fd support."""
+    return (
+        os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
 def inspect_mp4(path: Path) -> tuple[int, str]:
     size = path.stat().st_size
     if size < 32:
@@ -94,7 +104,7 @@ def atomic_publish(
     """Anchor every destination operation to directory handles, never rewalk paths."""
     import json
 
-    if os.open not in os.supports_dir_fd or os.mkdir not in os.supports_dir_fd:
+    if not secure_publication_supported():
         raise RecordingError("secure_publication_unavailable", 503)
     handles = []
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
