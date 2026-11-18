@@ -173,7 +173,7 @@
   "execution-failed-toast": "Automation failed: {{name}}",
   "automation-verified": "Automation verified: #{{id}}",
   "automation-fallback-name": "Automation #{{id}}",
-  "automation-project-name": "Automation: {{name}}",
+  "session-from-automation": "From Automation · {{name}}",
   "automation-project-description": "Created automatically by a {{type}} automation",
   "status-created": "Created",
   "status-updated": "Updated",

@@ -37,7 +37,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   createProject: vi.fn(() => 'automation-session'),
   getProjectById: vi.fn((id: string) =>
-    id === 'automation-session' ? { name: 'Automation: Weekly digest' } : null
+    id === 'automation-session' ? { name: 'Weekly digest' } : null
   ),
   removeProject: vi.fn(),
 }));
@@ -351,7 +351,7 @@ describe('TriggerDialog opened from a Session', () => {
     );
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.createProject).toHaveBeenCalledWith(
-      'Automation: Weekly digest',
+      'Weekly digest',
       '',
       undefined,
       undefined,
@@ -367,7 +367,7 @@ describe('TriggerDialog opened from a Session', () => {
     );
     expect(mocks.proxySaveAutomationSessionName).toHaveBeenCalledWith(
       'automation-session',
-      'Automation: Weekly digest'
+      'Weekly digest'
     );
   });
 });

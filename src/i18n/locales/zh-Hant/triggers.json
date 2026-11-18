@@ -173,7 +173,7 @@
   "execution-failed-toast": "自動化失敗：{{name}}",
   "automation-verified": "自動化已驗證：#{{id}}",
   "automation-fallback-name": "自動化 #{{id}}",
-  "automation-project-name": "自動化：{{name}}",
+  "session-from-automation": "來自自動化 · {{name}}",
   "automation-project-description": "由 {{type}} 自動化自動建立",
   "status-created": "已創建",
   "status-updated": "已更新",

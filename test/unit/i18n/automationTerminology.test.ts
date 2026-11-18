@@ -53,7 +53,7 @@ const ENTITY_NOUN_KEYS = [
   'triggers.delete-trigger',
   'triggers.create-hint',
   'triggers.automation-fallback-name',
-  'triggers.automation-project-name',
+  'triggers.session-from-automation',
   'layout.triggers',
   'layout.scheduled-tab',
   'layout.search-triggers',

@@ -51,8 +51,12 @@ const RECONCILE_INTERVAL_MS = 30 * 1000;
 const RECONCILE_MAX_AGE_MS = 10 * 60 * 1000;
 const ADMITTED_EXECUTION_LIMIT = 500;
 
+/** An Automation's Session is named after the Automation, like any Session. */
 function automationProjectName(task: TriggeredTask): string {
-  return i18n.t('triggers.automation-project-name', { name: task.triggerName });
+  return (
+    task.triggerName?.trim() ||
+    i18n.t('triggers.automation-fallback-name', { id: task.triggerId })
+  );
 }
 
 /**
@@ -113,7 +117,8 @@ export function useTriggerTaskExecutor() {
   const loadProjectFromHistory = useCallback(
     async (
       projectId: string,
-      store: typeof projectStoreRef.current
+      store: typeof projectStoreRef.current,
+      automationName?: string
     ): Promise<boolean> => {
       try {
         console.log(
@@ -155,8 +160,14 @@ export function useTriggerTaskExecutor() {
 
         // Use replayProject to load the project from history
         // store.replayProject(taskIdsList, question, projectId, historyId);
+        // Prefer the Automation's name, then the Session's saved name, and
+        // only then its last prompt.
+        const sessionName =
+          automationName?.trim() ||
+          historyProject.project_name?.trim() ||
+          question;
         store.createProject(
-          i18n.t('triggers.automation-project-name', { name: question }),
+          sessionName,
           `No tasks to replay`,
           projectId,
           ProjectType.NORMAL,
@@ -247,7 +258,11 @@ export function useTriggerTaskExecutor() {
 
           if (!existingProject) {
             // Project doesn't exist locally, try to load from history
-            const loaded = await loadProjectFromHistory(targetProjectId, store);
+            const loaded = await loadProjectFromHistory(
+              targetProjectId,
+              store,
+              task.triggerName
+            );
 
             if (!loaded) {
               console.log(
