@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Recorded signals, and the process ids the code under test is allowed to
@@ -98,9 +98,20 @@ async function settle(): Promise<void> {
   }
 }
 
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', realPlatform);
+});
+
 beforeEach(() => {
   state.signals = [];
   state.alive = new Set();
+  // These cases cover the POSIX signal path; Windows uses taskkill instead.
+  Object.defineProperty(process, 'platform', {
+    ...realPlatform,
+    value: 'linux',
+  });
   vi.useFakeTimers();
   vi.spyOn(process, 'kill').mockImplementation(((
     pid: number,
