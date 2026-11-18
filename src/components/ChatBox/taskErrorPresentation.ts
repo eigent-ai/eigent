@@ -13,10 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatNoticeNode } from '@/lib/projector/chat/types';
-import { classifyError, type ErrorReason } from '@/lib/usageErrors';
+import { errorPresentationReason, type ErrorReason } from '@/lib/usageErrors';
 import { useProjectStore } from '@/store/projectStore';
 
-/** Presentation boundary shared by every timeline, including collapsed summaries. */
+/**
+ * The reason recorded with a failure, shared by every timeline. Show it through
+ * TaskErrorNotice or `usePresentedUsageReason`, which follow the account: a
+ * spend limit reached during a trial is the trial's allowance.
+ */
 export function taskErrorReason(
   node: Pick<ChatNoticeNode, 'severity' | 'content'> &
     Partial<Pick<ChatNoticeNode, 'legacyStep' | 'projectId' | 'code'>>
@@ -28,7 +32,7 @@ export function taskErrorReason(
     ? useProjectStore.getState().projects[node.projectId]?.metadata
         ?.modelSelection
     : undefined;
-  return classifyError(
+  return errorPresentationReason(
     { message: node.content, code: node.code },
     { modelType: model?.modelType }
   );

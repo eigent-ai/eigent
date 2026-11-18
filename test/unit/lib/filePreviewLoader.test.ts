@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  FileAccessDeniedError,
   loadFilePreview,
   parseBoundedCsvPreview,
   toLocalPreviewUrl,
@@ -50,6 +51,244 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  describe('bounded text completeness', () => {
+    const limit = FILE_PREVIEW_LIMITS.textBytes;
+    const file = {
+      name: 'unsupported.xyz',
+      type: 'xyz',
+      path: 'https://files.example/unsupported.xyz',
+      size: 10,
+    };
+
+    it('accepts the empty-file response to a Range request', async () => {
+      const cancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(new ReadableStream({ cancel }), {
+            status: 416,
+            headers: { 'Content-Range': 'bytes */0' },
+          })
+        )
+      );
+      const result = await loadFilePreview(file, {});
+      expect(result.content).toBe('');
+      expect(result.preview).toEqual({
+        kind: 'text',
+        completeness: 'complete',
+        bytesRead: 0,
+        totalBytes: 0,
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+
+    it.each(['bytes */10', 'bytes */*'])(
+      'does not mistake a range failure (%s) for an empty file',
+      async (range) => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(
+            new Response(null, {
+              status: 416,
+              headers: { 'Content-Range': range },
+            })
+          )
+        );
+        await expect(loadFilePreview(file, {})).rejects.toThrow('HTTP 416');
+      }
+    );
+
+    it('does not promote a partial full-mode response using stale listing bytes', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response('weird ext\n', {
+            status: 206,
+            headers: {
+              'Content-Range': 'bytes 0-9/*',
+              'Content-Length': '10',
+            },
+          })
+        )
+      );
+      const result = await loadFilePreview(
+        { ...file, name: 'file.txt', type: 'txt' },
+        {}
+      );
+      expect(result.preview).toEqual({
+        kind: 'text',
+        completeness: 'unknown',
+        bytesRead: 10,
+        totalBytes: null,
+      });
+    });
+
+    it.each([
+      { content: 'weird ext\n', totalBytes: 10, completeness: 'complete' },
+      { content: '', totalBytes: 0, completeness: 'complete' },
+      { content: 'weird ext\n', totalBytes: null, completeness: 'unknown' },
+      {
+        content: 'x'.repeat(limit),
+        totalBytes: limit + 1,
+        completeness: 'truncated',
+      },
+    ])(
+      'classifies desktop byte facts ($totalBytes, $completeness)',
+      async ({ content, totalBytes, completeness }) => {
+        const bytesRead = new TextEncoder().encode(content).length;
+        const invoke = vi
+          .fn()
+          .mockResolvedValueOnce({ size: totalBytes })
+          .mockResolvedValueOnce({
+            content,
+            bytesRead,
+            totalBytes,
+            binary: false,
+          });
+        const result = await loadFilePreview(
+          { ...file, path: '/workspace/unsupported.xyz' },
+          { ipcRenderer: { invoke } }
+        );
+        expect(result.content).toBe(content);
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness,
+          bytesRead,
+          totalBytes,
+        });
+        expect(invoke).toHaveBeenLastCalledWith(
+          'preview-text-file',
+          '/workspace/unsupported.xyz',
+          limit
+        );
+      }
+    );
+
+    it.each([
+      {
+        status: 200,
+        content: 'weird ext\n',
+        headers: { 'Content-Length': '10' },
+        completeness: 'complete',
+        totalBytes: 10,
+      },
+      {
+        status: 200,
+        content: '',
+        headers: { 'Content-Length': '0' },
+        completeness: 'complete',
+        totalBytes: 0,
+      },
+      {
+        status: 200,
+        content: 'weird ext\n',
+        headers: {},
+        completeness: 'complete',
+        totalBytes: null,
+      },
+      {
+        status: 200,
+        content: '',
+        headers: {},
+        completeness: 'complete',
+        totalBytes: null,
+      },
+      {
+        status: 200,
+        content: 'x'.repeat(limit),
+        headers: {},
+        completeness: 'complete',
+        totalBytes: null,
+      },
+      {
+        status: 200,
+        content: 'x'.repeat(limit + 1),
+        headers: {},
+        completeness: 'truncated',
+        totalBytes: null,
+      },
+      {
+        status: 206,
+        content: 'weird ext\n',
+        headers: { 'Content-Range': 'bytes 0-9/10', 'Content-Length': '10' },
+        completeness: 'complete',
+        totalBytes: 10,
+      },
+      {
+        status: 206,
+        content: 'weird ext\n',
+        headers: { 'Content-Range': 'bytes 0-9/20', 'Content-Length': '10' },
+        completeness: 'truncated',
+        totalBytes: 20,
+      },
+      {
+        status: 206,
+        content: 'weird ext\n',
+        headers: { 'Content-Range': 'bytes 0-9/*', 'Content-Length': '10' },
+        completeness: 'unknown',
+        totalBytes: null,
+      },
+      {
+        status: 206,
+        content: 'x'.repeat(limit + 1),
+        headers: { 'Content-Range': `bytes 0-${limit}/*` },
+        completeness: 'truncated',
+        totalBytes: null,
+      },
+    ])(
+      'classifies HTTP response facts over stale metadata (%#, $completeness)',
+      async ({ status, content, headers, completeness, totalBytes }) => {
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValue(
+            new Response(content, { status, headers: headers as HeadersInit })
+          );
+        vi.stubGlobal('fetch', fetchMock);
+        const result = await loadFilePreview(file, {});
+        expect(result.content).toBe(content.slice(0, limit));
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness,
+          bytesRead: Math.min(content.length, limit),
+          totalBytes,
+        });
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledWith(
+          file.path,
+          expect.objectContaining({ headers: { Range: `bytes=0-${limit}` } })
+        );
+      }
+    );
+
+    it('cancels an unbounded response after at most one lookahead byte', async () => {
+      const cancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode('x'.repeat(limit * 2))
+                );
+              },
+              cancel,
+            })
+          )
+        )
+      );
+      const result = await loadFilePreview(file, {});
+      expect(result.content).toHaveLength(limit);
+      expect(result.preview).toEqual({
+        kind: 'text',
+        completeness: 'truncated',
+        bytesRead: limit,
+        totalBytes: null,
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+  });
+
   it.each(['docx', 'xlsx', 'pptx'])(
     'parses a bounded remote %s archive through the Electron host',
     async (type) => {
@@ -144,7 +383,8 @@ describe('loadFilePreview', () => {
 
       expect(result.content).toHaveLength(1024 * 1024);
       expect(result.preview).toEqual({
-        kind: 'truncated-text',
+        kind: 'text',
+        completeness: 'truncated',
         bytesRead: 1024 * 1024,
         totalBytes,
       });
@@ -181,9 +421,10 @@ describe('loadFilePreview', () => {
 
       expect(result.content).toHaveLength(1024 * 1024);
       expect(result.preview).toEqual({
-        kind: 'truncated-text',
+        kind: 'text',
+        completeness: 'truncated',
         bytesRead: 1024 * 1024,
-        totalBytes: metadataSize,
+        totalBytes: null,
       });
     }
   );
@@ -256,7 +497,10 @@ describe('loadFilePreview', () => {
           '/workspace/index.html',
           1024 * 1024
         );
-        expect(result.preview).toMatchObject({ kind: 'truncated-text' });
+        expect(result.preview).toMatchObject({
+          kind: 'text',
+          completeness: size === null ? 'unknown' : 'truncated',
+        });
       }
     }
   );
@@ -299,20 +543,21 @@ describe('loadFilePreview', () => {
 
       expect(result.content).toHaveLength(1024 * 1024);
       expect(result.preview).toEqual({
-        kind: 'truncated-text',
+        kind: 'text',
+        completeness: 'truncated',
         bytesRead: 1024 * 1024,
-        totalBytes: size ?? null,
+        totalBytes: null,
       });
       expect(fetchMock).toHaveBeenLastCalledWith(
         'https://files.example/index.html',
-        expect.objectContaining({ headers: { Range: 'bytes=0-1048575' } })
+        expect.objectContaining({ headers: { Range: 'bytes=0-1048576' } })
       );
       expect(cancel).toHaveBeenCalledTimes(1);
     }
   );
 
   it.each([2 * 1024 * 1024, 10 * 1024 * 1024 + 1])(
-    'uses only a 1 MiB source excerpt when a full HTML response has an unexpected %i bytes',
+    'uses response EOF and the byte budget for an unexpected %i byte HTML response',
     async (actualSize) => {
       vi.stubGlobal(
         'fetch',
@@ -328,11 +573,17 @@ describe('loadFilePreview', () => {
         {}
       );
 
-      expect(result.content).toHaveLength(1024 * 1024);
-      expect(result.preview).toMatchObject({
-        kind: 'truncated-text',
-        bytesRead: 1024 * 1024,
-      });
+      if (actualSize <= FILE_PREVIEW_LIMITS.richHtmlBytes) {
+        expect(result.content).toHaveLength(actualSize);
+        expect(result.preview).toBeUndefined();
+      } else {
+        expect(result.content).toHaveLength(FILE_PREVIEW_LIMITS.textBytes);
+        expect(result.preview).toMatchObject({
+          kind: 'text',
+          completeness: 'truncated',
+          bytesRead: FILE_PREVIEW_LIMITS.textBytes,
+        });
+      }
     }
   );
 
@@ -492,6 +743,49 @@ describe('loadFilePreview', () => {
     expect(result.content).toBe('https://files.example/remote.pdf');
   });
 
+  it('reports an expired file access grant separately from other failures', async () => {
+    const denied = () =>
+      new Response(
+        JSON.stringify({ detail: { code: 'file_access_required' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    const brainFile = {
+      name: 'notes.txt',
+      type: 'txt',
+      path: 'http://localhost:5001/files/stream?path=notes.txt&access=old',
+      size: 5,
+      isRemote: true,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => denied())
+    );
+    await expect(loadFilePreview(brainFile, {})).rejects.toBeInstanceOf(
+      FileAccessDeniedError
+    );
+
+    // A PDF without known size is probed first; the probe must not read the
+    // refusal as file metadata.
+    await expect(
+      loadFilePreview(
+        { ...brainFile, name: 'a.pdf', type: 'pdf', size: undefined },
+        {}
+      )
+    ).rejects.toBeInstanceOf(FileAccessDeniedError);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Unauthorized' }), {
+          status: 401,
+        })
+      )
+    );
+    const other = loadFilePreview(brainFile, {});
+    await expect(other).rejects.toThrow('HTTP 401');
+    await expect(other).rejects.not.toBeInstanceOf(FileAccessDeniedError);
+  });
+
   it('does not send browser credentials to a cross-port local Brain preview', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(new TextEncoder().encode('<h1>preview</h1>'), {
@@ -618,9 +912,10 @@ describe('unsupported file recovery', () => {
 
       expect(file.content).toBe(expected);
       expect(file.preview).toEqual({
-        kind: 'truncated-text',
+        kind: 'text',
+        completeness: 'complete',
         bytesRead: bytes.length,
-        totalBytes: bytes.length,
+        totalBytes: null,
       });
     }
   );
@@ -641,7 +936,7 @@ describe('unsupported file recovery', () => {
         },
         {}
       );
-      expect(file.preview?.kind).toBe(blocked ? 'blocked' : 'truncated-text');
+      expect(file.preview?.kind).toBe(blocked ? 'blocked' : 'text');
       if (!blocked) expect(file.content).toMatch(/Hello|Hi/);
     }
   );

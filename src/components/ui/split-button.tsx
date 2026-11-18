@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from './button';
@@ -75,7 +76,7 @@ export function SplitButton({
             disabled={disabled || menuDisabled}
             className="!rounded-s-none !border-s-ds-hairline-default-default focus-visible:z-10 active:scale-100"
           >
-            <ChevronDown aria-hidden />
+            <DsIcon icon={ChevronDown} aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">{children}</DropdownMenuContent>

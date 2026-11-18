@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
@@ -42,7 +43,7 @@ export const ZoomControls = ({
           title={t('layout.zoom-out', { defaultValue: 'Zoom out' })}
           className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <ZoomOut className="h-3.5 w-3.5" />
+          <DsIcon icon={ZoomOut} recipe="main-compact" />
         </Button>
         <span className="min-w-[2.5rem] text-center text-xs font-medium text-ds-ink-default-default tabular-nums">
           {zoom}%
@@ -55,7 +56,7 @@ export const ZoomControls = ({
           title={t('layout.zoom-in', { defaultValue: 'Zoom in' })}
           className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <ZoomIn className="h-3.5 w-3.5" />
+          <DsIcon icon={ZoomIn} recipe="main-compact" />
         </Button>
         <div className="mx-0.5 h-4 w-px bg-ds-border-neutral-default-default" />
         <Button
@@ -66,7 +67,7 @@ export const ZoomControls = ({
           title={t('layout.reset-zoom', { defaultValue: 'Reset zoom' })}
           className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <DsIcon icon={RotateCcw} recipe="main-compact" />
         </Button>
       </div>
     </div>

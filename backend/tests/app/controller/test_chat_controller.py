@@ -209,6 +209,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             # Mock async generator
             async def mock_generator():
@@ -327,10 +333,12 @@ class TestChatController:
                     return_value=coordinator,
                 ),
             ):
-                with pytest.raises(UserException) as error:
+                with pytest.raises(HTTPException) as error:
                     await start_chat_stream(chat_data, mock_request)
 
-            assert error.value.error_code == "project_consumer_active"
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_consumer_active"
+            assert error.value.detail["run_id"] == "existing-run"
         finally:
             release.set()
             await subscription.aclose()
@@ -725,19 +733,23 @@ class TestChatController:
         await coordinator.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("session_mode", ["single-agent", "workforce"])
     async def test_resume_silently_backfills_legacy_environment_spec(
         self,
         sample_chat_data,
         mock_request,
         mock_task_lock,
         tmp_path,
+        session_mode,
     ):
+        from app.run_journal.models import RunEventDraft
+
         run_id = sample_chat_data["task_id"]
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,
             resume_request_id="resume-with-current-environment",
-            session_mode="single-agent",
+            session_mode=session_mode,
         )
         resolver = MagicMock()
         resolver.freeze_task_directories.return_value = SimpleNamespace(
@@ -750,12 +762,22 @@ class TestChatController:
         )
         resolver.space_root.return_value = tmp_path
         git_coordinator = MagicMock()
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
             journal.ensure_run(
                 run_id=run_id,
                 project_id=chat_data.project_id,
                 status="interrupted",
+            )
+            journal.append_event(
+                run_id,
+                RunEventDraft(
+                    event_type="user.message",
+                    payload={"content": "Original durable objective"},
+                ),
             )
             resume_attempt = journal.create_run_attempt(
                 run_id,
@@ -821,6 +843,48 @@ class TestChatController:
                 "legacy_environment_backfill"
             )
             git_coordinator.admit_run.assert_called_once()
+
+            # Preparation binds the durable Attempt consumed by either builder.
+            # Renderer fallback text must not carry a second ledger projection.
+            assert (
+                prepared.initial_action.data.project_context
+                == chat_data.project_context
+            )
+            from app.service import chat_service, single_agent_service
+
+            service = (
+                single_agent_service
+                if session_mode == "single-agent"
+                else chat_service
+            )
+            with (
+                patch.object(
+                    service, "get_default_run_journal", return_value=journal
+                ),
+                patch.object(
+                    service,
+                    "build_durable_context_projection_for_task_lock",
+                    return_value=SimpleNamespace(
+                        text="Reference Memory", source_memory_ids=()
+                    ),
+                ),
+            ):
+                if session_mode == "single-agent":
+                    prompt = service._build_single_agent_prompt(
+                        mock_task_lock,
+                        prepared.initial_action.data.question,
+                        [],
+                        prepared.initial_action.data.project_context,
+                    )
+                else:
+                    prompt = service.build_context_for_workforce(
+                        mock_task_lock, chat_data
+                    )
+                assert prompt.count("Original durable objective") == 1
+                assert (
+                    prompt.count("Canonical Project Recovery Context ===") == 2
+                )
+                assert "Reference Memory" in prompt
 
     @pytest.mark.asyncio
     async def test_initial_attempt_precedes_workspace_writer_admission(
@@ -899,6 +963,200 @@ class TestChatController:
                     await _prepare_chat_run(chat_data, mock_request)
 
         git_coordinator.admit_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("run_id", "declared", "queued", "recorded"),
+        [
+            ("run-trigger-source", None, None, "chat"),
+            ("run-trigger-source", None, "local", "chat"),
+            ("run-trigger-source", None, "remote_control", "chat"),
+            ("run-trigger-source", "scheduled", None, "scheduled"),
+            # The caller forgot the trigger label; Brain's queue row decides.
+            ("run-trigger-source", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, "scheduled", "scheduled"),
+            ("scheduled:execution-1", None, None, "scheduled"),
+        ],
+    )
+    async def test_trigger_text_is_recorded_with_its_source(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+        run_id,
+        declared,
+        queued,
+        recorded,
+    ):
+        """Memory must be able to tell trigger text from the user's words."""
+
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id=run_id,
+            session_mode="single-agent",
+            **({"source": declared} if declared else {}),
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            if queued:
+                # A queued follow-up is admitted as the Run named by its id.
+                journal.put_follow_up_request(
+                    request_id=run_id,
+                    project_id=chat_data.project_id,
+                    content=chat_data.question,
+                    source=queued,
+                    source_command_id=(
+                        "command-1" if queued == "remote_control" else None
+                    ),
+                )
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    return_value=None,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+            ):
+                await _prepare_chat_run(chat_data, mock_request)
+
+            sources = [
+                event.payload["source"]
+                for event in journal.list_events(run_id)
+                if event.event_type == "user.message"
+            ]
+
+        assert sources == [recorded]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "lease_taken", ["before_admission", "during_preparation"]
+    )
+    async def test_project_lease_conflict_is_a_typed_409_without_orphan_run(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+        lease_taken,
+    ):
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id="run-rejected",
+            session_mode="single-agent",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id="run-blocker", project_id=chat_data.project_id
+            )
+
+            def take_project_lease(*_args):
+                if not journal.list_run_attempts("run-blocker"):
+                    journal.create_run_attempt(
+                        "run-blocker",
+                        request_id="initial:run-blocker",
+                        reason="initial_execution",
+                        activate=True,
+                    )
+
+            if lease_taken == "before_admission":
+                take_project_lease()
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=RunCoordinator(),
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    side_effect=take_project_lease,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+                patch("app.controller.chat_controller.step_solve") as solve,
+            ):
+                with pytest.raises(HTTPException) as error:
+                    await post(chat_data, mock_request)
+
+            assert error.value.status_code == 409
+            assert error.value.detail["code"] == "project_run_active"
+            assert error.value.detail["run_id"] == "run-blocker"
+            solve.assert_not_called()
+            assert journal.list_run_attempts("run-rejected") == []
+            if lease_taken == "before_admission":
+                assert journal.get_run("run-rejected") is None
 
     def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
         with pytest.raises(EnvironmentSetupRequiredError) as error:
@@ -1050,7 +1308,7 @@ class TestChatController:
         self, sample_chat_data, mock_request, mock_task_lock
     ):
         """Run-scoped values stay in RunContext; CAMEL path keys are published."""
-        chat_data = Chat(**sample_chat_data)
+        chat_data = Chat(**sample_chat_data, timezone="America/New_York")
 
         with (
             patch(
@@ -1068,6 +1326,12 @@ class TestChatController:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1082,6 +1346,8 @@ class TestChatController:
             assert run_context.api_key == "test_key"
             assert run_context.api_base_url == "https://api.openai.com/v1"
             assert run_context.browser_port == 8080
+            assert run_context.timezone == "America/New_York"
+            assert "America/New_York" in run_context.prompt_current_time
             assert os.environ.get("CAMEL_LOG_DIR") == str(
                 run_context.camel_log_dir
             )
@@ -1117,6 +1383,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(os.environ, {}, clear=True),
         ):
 
@@ -1161,6 +1433,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://127.0.0.1:9222"},
@@ -1205,6 +1483,12 @@ class TestChatController:
             patch("app.controller.chat_controller.set_current_task_id"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
             patch.dict(
                 os.environ,
                 {"EIGENT_CDP_URL": "http://worker-17:9222"},
@@ -1794,6 +2078,10 @@ class TestChatController:
         mock_request,
         controller_run_journal,
     ):
+        controller_run_journal.resolve_human_interaction.return_value = (
+            SimpleNamespace(status="resolved"),
+            True,
+        )
         task_id = "test_task_stale_approval"
         mock_task_lock.run_context = RunContext(
             space_id="space-1",
@@ -1893,6 +2181,12 @@ class TestChatControllerIntegration:
             ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
+            # A mocked home folder is not a path; the Space folder check
+            # has its own tests.
+            patch(
+                "app.utils.workspace_resolver.space_folder_conflict",
+                return_value=None,
+            ),
         ):
             mock_task_lock = MagicMock()
             mock_task_lock.put_queue = AsyncMock()
@@ -2256,3 +2550,136 @@ def test_queued_stop_carries_expected_task_to_the_consumer():
             == 201
         )
         assert enqueue.call_args.args[1].expected_task_id == "run-original"
+
+
+class _PastSessionModelCheck(Exception):
+    pass
+
+
+def _chat_with_session_model(
+    sample_chat_data, run_platform, session_platform, session_type="gpt-4"
+):
+    return Chat(
+        **{**sample_chat_data, "model_platform": run_platform},
+        session_model_selection={
+            "modelType": "custom",
+            "provider_id": 7,
+            "model_platform": session_platform,
+            "model_type": session_type,
+        },
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", ["grok", "ModelArk", "z.ai", "ernie", "llama.cpp", "openai"]
+)
+async def test_session_model_matches_its_own_provider_alias(
+    sample_chat_data, platform
+):
+    chat_data = _chat_with_session_model(sample_chat_data, platform, platform)
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(_PastSessionModelCheck):
+            await _prepare_chat_run(chat_data, MagicMock())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "run_platform,session_platform,session_type",
+    [
+        ("openai", "grok", "gpt-4"),
+        ("grok", "openai", "gpt-4"),
+        ("z.ai", "grok", "gpt-4"),
+        ("grok", "grok", "another-model"),
+    ],
+)
+async def test_session_model_still_rejects_a_different_model(
+    sample_chat_data, run_platform, session_platform, session_type
+):
+    chat_data = _chat_with_session_model(
+        sample_chat_data, run_platform, session_platform, session_type
+    )
+    with patch(
+        "app.controller.chat_controller.get_or_create_task_lock",
+        side_effect=_PastSessionModelCheck,
+    ):
+        with pytest.raises(HTTPException) as error:
+            await _prepare_chat_run(chat_data, MagicMock())
+    assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_conflict", [False, True])
+async def test_refused_initial_admission_is_durably_failed(
+    sample_chat_data, mock_request, tmp_path, monkeypatch, retry_conflict
+):
+    import app.controller.chat_controller as controller
+    from app.workspace_config import UnsupportedThinkingEffortError
+
+    journal = SQLiteRunJournal(tmp_path / "refused.db")
+    coordinator = RunCoordinator(journal=journal)
+    data = Chat(**sample_chat_data)
+    run_id = data.run_id or data.task_id
+
+    async def refuse(*args, **kwargs):
+        journal.ensure_run(
+            run_id=run_id, project_id=data.project_id, status="pending"
+        )
+        if retry_conflict:
+            raise HTTPException(
+                status_code=409, detail={"code": "project_run_active"}
+            )
+        raise UnsupportedThinkingEffortError("Unsupported effort")
+
+    monkeypatch.setattr(controller, "get_default_run_journal", lambda: journal)
+    monkeypatch.setattr(
+        controller, "get_default_run_coordinator", lambda: coordinator
+    )
+    monkeypatch.setattr(controller, "get_task_lock_if_exists", lambda _: None)
+    monkeypatch.setattr(controller, "_prepare_chat_run", refuse)
+    with pytest.raises(HTTPException) as error:
+        await post(data, mock_request)
+    if retry_conflict:
+        assert error.value.status_code == 409
+        assert journal.get_run(run_id).status == "pending"
+        assert journal.list_events(run_id) == []
+        await coordinator.close()
+        return
+    assert error.value.status_code == 422
+    assert journal.get_run(run_id).status == "failed"
+    prompt, notice, failure = journal.list_events(run_id)
+    assert prompt.event_type == "user.message"
+    assert prompt.payload["content"] == data.question
+    assert notice.event_type == "legacy.error"
+    assert notice.payload["code"] == "unsupported_thinking_effort"
+    assert failure.event_type == "run.failed"
+    assert failure.payload["message"] == "Unsupported effort"
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_warm_follow_up_lease_conflict_is_a_typed_409(
+    sample_chat_data, mock_request, monkeypatch
+):
+    import app.controller.chat_controller as controller
+    from app.model.chat import SupplementChat
+    from app.run_journal import ProjectExecutionLeaseConflictError
+
+    async def busy(*args, **kwargs):
+        raise ProjectExecutionLeaseConflictError(
+            project_id="session", owner_run_id="owner"
+        )
+
+    monkeypatch.setattr(controller, "_admit_improve", busy)
+    with pytest.raises(HTTPException) as error:
+        await controller.improve(
+            "session",
+            SupplementChat(question="queued", task_id="next"),
+            mock_request,
+        )
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "project_run_active"
+    assert error.value.detail["run_id"] == "owner"

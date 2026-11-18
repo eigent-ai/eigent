@@ -12,6 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  CONNECTOR_CHIP_ICON_CLASSES,
+  connectorChipIconUrl,
+  connectorChipLabel,
+} from '@/lib/connectorChipIcon';
+
 /** Shared by `RichChatInput` and `UserMessageRichContent` (URLs, #skills, @connectors). */
 export type RichSegment = {
   type: 'text' | 'url' | 'skill' | 'connector';
@@ -174,9 +180,13 @@ export function segmentsToHtml(segments: RichSegment[]): string {
         parts.push(safe);
       }
     } else if (seg.type === 'connector') {
+      // The `@` stays in the text (visually hidden) so the plain value and
+      // caret offsets still match the token; the logo stands in for it.
       parts.push(
-        `<span data-rich-connector="1" contenteditable="false" class="${RICH_TAG_BASE_STYLE_CLASSES} ${RICH_CONNECTOR_STYLE_CLASSES}">${escapeHtml(
-          seg.text
+        `<span data-rich-connector="1" contenteditable="false" class="${RICH_TAG_BASE_STYLE_CLASSES} ${RICH_CONNECTOR_STYLE_CLASSES}"><img src="${escapeHtml(
+          connectorChipIconUrl(seg.text)
+        )}" alt="" aria-hidden="true" draggable="false" class="${CONNECTOR_CHIP_ICON_CLASSES}" /><span class="sr-only">@</span>${escapeHtml(
+          connectorChipLabel(seg.text)
         )}</span>`
       );
     } else {

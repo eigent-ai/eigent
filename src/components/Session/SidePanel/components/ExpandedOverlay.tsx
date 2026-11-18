@@ -18,6 +18,7 @@ import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import Workflow from '@/components/WorkFlow';
 import WorkforceMenu from '@/components/WorkforceMenu';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -229,7 +230,7 @@ export default function ExpandedOverlay({
                     aria-pressed={true}
                     aria-label={backdropDismissLabel}
                   >
-                    <X className="h-4 w-4" />
+                    <DsIcon icon={X} />
                   </Button>
                 </TooltipSimple>
               </div>

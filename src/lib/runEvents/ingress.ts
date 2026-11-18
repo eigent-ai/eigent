@@ -74,12 +74,19 @@ export class RunEventIngress {
     deliveryMode: RunEventDeliveryMode = 'live'
   ): { applied: boolean; gapDetected: boolean } {
     const canonical = normalizeEvent(raw);
+    return this.ingestCanonical(canonical, deliveryMode);
+  }
+
+  ingestCanonical(
+    canonical: CanonicalProjectEvent,
+    deliveryMode: RunEventDeliveryMode = 'live'
+  ): { applied: boolean; gapDetected: boolean } {
     this.assertScope(canonical);
     const event: RunDomainEvent = {
       ...canonical,
       schemaVersion: 1,
       deliveryMode,
-      origin: originFromRaw(raw, deliveryMode),
+      origin: canonical.origin ?? originFromRaw(canonical.raw, deliveryMode),
       category: categoryForRunEvent(canonical.eventType),
     };
     const result = this.store.apply(event);

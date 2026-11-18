@@ -20,6 +20,8 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { notifySessionWindowOfRun } from '@/hooks/useSessionWindows';
+import { prepareFollowUpAdmission } from '@/lib/legacyRuntimeAdmission';
 import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
@@ -372,10 +374,13 @@ function classifyBridgeError(error: any): any {
     return timeoutError;
   }
   if (error?.status === 401 || error?.status === 403) {
+    // Fail this command only. A 401/403 here comes from the local Brain's
+    // per-launch control check or from one Space the account cannot reach;
+    // neither means the account session ended. The server reports a real
+    // expiry on the bridge socket (auth_expired / revoke_bridge).
     const authError: any = new Error('Remote control authentication expired');
     authError.code = 'BRIDGE_AUTH';
     authError.status = error.status;
-    getAuthStore().logout();
     return authError;
   }
   return error;
@@ -665,6 +670,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
         }
       );
     scheduleRemoteProjectHistoryHydration(command);
+    notifySessionWindowOfRun(projectId);
   } catch (error: any) {
     if (error && typeof error === 'object' && !error.code) {
       error.code = 'BRIDGE_START_TASK_FAILED';
@@ -755,14 +761,15 @@ async function dispatchPersistedRemoteFollowUp(
   if (!next || next.request_id !== requestId) {
     return !pending.some((item) => item.request_id === requestId);
   }
-  const status = await fetchGet(
-    `/chat/${encodeURIComponent(projectId)}/status`
+  const admissionMode = await prepareFollowUpAdmission(
+    projectId,
+    useProjectStore.getState().getProjectById(projectId)
   );
-  if (status?.has_lock && status?.status !== 'done') {
+  if (admissionMode === 'busy') {
     return false;
   }
   try {
-    if (status?.has_lock) {
+    if (admissionMode === 'warm') {
       seedRemoteFollowUpPrompt(command);
       await fetchPost(`/chat/${encodeURIComponent(projectId)}`, {
         question: next.content,
@@ -770,6 +777,7 @@ async function dispatchPersistedRemoteFollowUp(
         attaches: next.attachment_paths,
         target: command.payload?.target,
       });
+      notifySessionWindowOfRun(projectId);
     } else {
       await startLocalRemoteTask(command);
     }
@@ -851,7 +859,9 @@ async function executeRemoteCommand(
       };
     }
     case 'human_reply': {
-      await requestBrain(
+      // The remote command id is the stable decision identity, so a
+      // redelivered command binds to the interaction it already answered.
+      const result = await requestBrain(
         command,
         token,
         'POST',
@@ -859,8 +869,18 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+          interaction_id: command.payload.interaction_id || null,
+          decision_request_id: `remote-human-reply:${command.id}`,
         }
       );
+      // Brain reports a rejected reply as HTTP 200 with `code: 1`.
+      if (result?.code === 1) {
+        const error: any = new Error(
+          result.text || 'Remote human reply was rejected'
+        );
+        error.code = result.error_code || 'BRIDGE_HUMAN_REPLY_REJECTED';
+        throw error;
+      }
       break;
     }
     case 'interaction_decision': {
@@ -1120,15 +1140,28 @@ async function executeSpaceCommand(
   };
 }
 
+/**
+ * Sign out after the server rejected `rejectedToken`, unless the user has
+ * already signed in again with a different token.
+ */
+function signOutRejectedBridgeToken(rejectedToken: string) {
+  const auth = getAuthStore();
+  if (auth.token && auth.token === rejectedToken) {
+    auth.logout();
+  }
+}
+
 export const __remoteControlBridgeTestHooks = {
   ackFromDurableFollowUp,
   ackFromPendingCommandResult,
+  classifyBridgeError,
   ensureRemoteProjectLoaded,
   executeRemoteCommand,
   pendingCommandResult,
   queuePendingCommandResult,
   removePendingCommandResult,
   serverBridgeError,
+  signOutRejectedBridgeToken,
 };
 
 function serverBridgeError(message: any): RemoteControlBridgeError | null {
@@ -1640,14 +1673,12 @@ export function useRemoteControlBridge(
             return;
           }
           if (message?.type === 'auth_expired') {
-            // JWT expired or rejected. Stop attempting; the auth store will
-            // refresh on its own schedule and the hook will rerun with the
-            // new token because `tokenRef.current` is captured fresh on
-            // the next mount.
+            // JWT expired or rejected. Stop attempting; a new sign-in reruns
+            // the hook with the new token.
             stopped = true;
             setRemoteControlBridgeConnected(false);
             ws?.close();
-            getAuthStore().logout();
+            signOutRejectedBridgeToken(token);
             return;
           }
           if (message?.type === 'revoke_bridge') {
@@ -1655,7 +1686,7 @@ export function useRemoteControlBridge(
             stopped = true;
             setRemoteControlBridgeConnected(false);
             ws?.close();
-            getAuthStore().logout();
+            signOutRejectedBridgeToken(token);
             return;
           }
           if (message?.type === 'remote_command' && message.command?.id) {

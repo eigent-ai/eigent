@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -69,8 +70,9 @@ export function DefaultModelMenuItem({
       </span>
       <span className="ml-auto flex size-ds-icon-md shrink-0 items-center justify-center">
         {selected ? (
-          <Check
-            className="size-ds-icon-md text-ds-ink-default-default"
+          <DsIcon
+            icon={Check}
+            className="text-ds-ink-default-default"
             aria-hidden
           />
         ) : null}

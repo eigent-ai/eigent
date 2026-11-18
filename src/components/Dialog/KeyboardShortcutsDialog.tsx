@@ -23,6 +23,7 @@ import {
   getKeyboardShortcutGroups,
   type DesktopShortcutPlatform,
 } from '@/shared/keyboardShortcuts';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { useTranslation } from 'react-i18next';
 
 export interface KeyboardShortcutsDialogProps {
@@ -37,7 +38,15 @@ export default function KeyboardShortcutsDialog({
   platform,
 }: KeyboardShortcutsDialogProps) {
   const { t } = useTranslation();
-  const groups = getKeyboardShortcutGroups(platform);
+  const devModeAvailable = isChatEventTimelineEnabled();
+  // Dev mode lives in the event-native Session menu; hide its shortcut when
+  // that menu cannot show it.
+  const groups = getKeyboardShortcutGroups(platform).map((group) => ({
+    ...group,
+    shortcuts: group.shortcuts.filter(
+      (shortcut) => devModeAvailable || shortcut.id !== 'toggle-timeline-view'
+    ),
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

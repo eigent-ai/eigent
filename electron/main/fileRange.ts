@@ -54,3 +54,13 @@ export function resolveFileByteRange(
   }
   return { status: 206, start, end: Math.min(end, size - 1) };
 }
+
+/** An RFC 6266 inline disposition whose filename* survives any file name. */
+export function inlineContentDisposition(fileName: string): string {
+  // encodeURIComponent leaves ' ( ) * as-is, but RFC 5987 does not allow them.
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+  return `inline; filename*=UTF-8''${encoded}`;
+}

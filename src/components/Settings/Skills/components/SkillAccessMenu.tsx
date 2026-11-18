@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useWorkerList } from '@/store/authStore';
 import type { Skill } from '@/store/skillsStore';
 import { ChevronDown } from 'lucide-react';
@@ -66,7 +67,7 @@ export default function SkillAccessMenu({
             aria-label={`${t('agents.library-agent-access', { name: skill.name })}: ${label}`}
           >
             {label}
-            <ChevronDown aria-hidden />
+            <DsIcon icon={ChevronDown} aria-hidden />
           </button>
         </SkillAccessTag>
       </DropdownMenuTrigger>

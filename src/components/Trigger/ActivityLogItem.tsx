@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AlarmClockIcon } from '@/components/ui/animate-ui/icons/alarm-clock';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import { ActivityLog, ActivityType } from '@/store/activityLogStore';
@@ -196,7 +197,7 @@ export function ActivityLogItem({
         <div
           className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} shrink-0`}
         >
-          <StatusIcon className={`h-4 w-4 ${statusIconColorClass}`} />
+          <DsIcon icon={StatusIcon} className={statusIconColorClass} />
         </div>
         <div className="w-[1px] flex-1 bg-ds-border-neutral-default-default" />
       </div>
@@ -206,6 +207,7 @@ export function ActivityLogItem({
         {/* Top row: Trigger type icon + timestamp */}
         <div className="mb-2 flex items-center justify-between px-1">
           <div className={`flex h-6 w-6 shrink-0 items-center justify-center`}>
+            {/* ds-icon:allow can be an animated icon, which sizes itself */}
             <TriggerTypeIcon className={`h-4 w-4 ${typeIconColorClass}`} />
           </div>
           <span className="text-ds-text-meta text-ds-ink-muted-default">
@@ -227,8 +229,9 @@ export function ActivityLogItem({
                 {stateText}
               </span>
             </div>
-            <ChevronDown
-              className={`h-4 w-4 text-ds-ink-muted-default opacity-30 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
+            <DsIcon
+              icon={ChevronDown}
+              className={`text-ds-ink-muted-default opacity-30 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
 

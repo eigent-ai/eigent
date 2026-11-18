@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  isHomePagePath,
+  isLegacyHomeSettingsSearch,
+  isSettingsPagePath,
   isSettingsRoutePath,
+  settingsPageSearch,
   shellBackState,
   shellDetailBackState,
   shellDetailBackTarget,
@@ -61,5 +65,47 @@ describe('detail back state', () => {
         from: '//example.com',
       })
     ).toBeNull();
+  });
+});
+
+describe('Home and Settings page paths', () => {
+  it('tells the two pages apart', () => {
+    expect(isHomePagePath('/home')).toBe(true);
+    expect(isHomePagePath('/settings')).toBe(false);
+    expect(isSettingsPagePath('/settings')).toBe(true);
+    expect(isSettingsPagePath('/home')).toBe(false);
+    expect(isSettingsPagePath('/')).toBe(false);
+  });
+});
+
+describe('settingsPageSearch', () => {
+  it.each([
+    [
+      '?section=settings&tab=models&provider=ant-ling',
+      '?tab=models&provider=ant-ling',
+    ],
+    ['?section=models', '?tab=models'],
+    ['?section=settings', ''],
+    ['?section=skills&tab=connectors', '?tab=connectors'],
+    [
+      '?section=settings&tab=skills&skillId=global%3Aresearch',
+      '?tab=skills&skillId=global%3Aresearch',
+    ],
+    ['?tab=memory', '?tab=memory'],
+    ['', ''],
+  ])('folds %s into %s', (search, expected) => {
+    expect(settingsPageSearch(search)).toBe(expected);
+  });
+});
+
+describe('isLegacyHomeSettingsSearch', () => {
+  it.each([
+    ['', false],
+    ['?section=spaces', false],
+    ['?section=spaces&spaceId=space-1', false],
+    ['?section=settings&tab=models', true],
+    ['?section=models', true],
+  ])('%s -> %s', (search, expected) => {
+    expect(isLegacyHomeSettingsSearch(search)).toBe(expected);
   });
 });

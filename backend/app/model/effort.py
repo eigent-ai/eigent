@@ -46,9 +46,12 @@ def resolve_model_effort_config(
 ) -> tuple[dict[str, Any], str]:
     """Return a copied request config and the selected CAMEL api_mode.
 
-    An admitted parameter/value wins over provider JSON. A custom agent must
-    resolve its own model, without the task's pin. Metadata is initializer-side
-    only; messages, tools, and Responses input conversion are untouched.
+    An admitted parameter/value wins over provider JSON. For a model without
+    registered efforts, the admitted provider default sends no effort unless
+    the user's own (non-Cloud) provider JSON sets one, which is sent as
+    written. A custom agent must resolve its own model, without the task's pin.
+    Metadata is initializer-side only; messages, tools, and Responses input
+    conversion are untouched.
     """
     config = deepcopy(model_config)
     extra_body = config.get("extra_body")
@@ -111,10 +114,39 @@ def resolve_model_effort_config(
     if pinned_transport and pinned_transport != transport:
         raise ModelCapabilityConfigError("admitted_model_transport_mismatch")
 
+    def supplied_effort() -> str:
+        if any(not isinstance(item, str) for item in supplied):
+            raise UnsupportedThinkingEffortError("invalid_provider_effort")
+        if len(set(supplied)) > 1:
+            raise UnsupportedThinkingEffortError(
+                "conflicting_provider_efforts"
+            )
+        return supplied[0]
+
+    # A model without registered efforts never receives the app's effort
+    # (it is admitted as provider_default). An effort written into the user's
+    # own provider configuration is sent as written instead: they own that
+    # endpoint, so it is not checked against a mapping. A pinned
+    # provider_default is only ever admitted for such a model, so the pin
+    # decides; Resume after the model is registered keeps the same request.
+    # Eigent Cloud requests never carry one, and a registered model's
+    # admitted value still wins over or rejects provider JSON.
+    own_endpoint_effort = (
+        bool(supplied)
+        and not is_cloud
+        and (
+            pinned_value == "provider_default"
+            if pinned
+            else not capability.supported_efforts
+        )
+    )
+
     value = None
     if pinned:
         if pinned_value == "provider_default":
-            if supplied:
+            if own_endpoint_effort:
+                value = supplied_effort()
+            elif supplied:
                 raise UnsupportedThinkingEffortError(
                     "effort_not_admitted: explicit provider effort conflicts "
                     "with the admitted provider default"
@@ -129,18 +161,18 @@ def resolve_model_effort_config(
                 )
             value = pinned_value
     elif requested_effort is not None:
-        value = capability.resolve(requested_effort).provider_value
-    elif supplied:
-        if any(not isinstance(item, str) for item in supplied):
-            raise UnsupportedThinkingEffortError("invalid_provider_effort")
-        if len(set(supplied)) > 1:
-            raise UnsupportedThinkingEffortError(
-                "conflicting_provider_efforts"
-            )
-        value = supplied[0]
-        if not capability.supported_efforts:
+        if capability.supported_efforts:
+            value = capability.resolve(requested_effort).provider_value
+        elif own_endpoint_effort:
+            value = supplied_effort()
+        elif supplied:
             raise UnsupportedThinkingEffortError(capability.diagnostic)
-        if value not in capability.provider_mapping.values():
+    elif supplied:
+        value = supplied_effort()
+        if not capability.supported_efforts:
+            if not own_endpoint_effort:
+                raise UnsupportedThinkingEffortError(capability.diagnostic)
+        elif value not in capability.provider_mapping.values():
             raise UnsupportedThinkingEffortError("unsupported_provider_effort")
 
     if transport == "responses":

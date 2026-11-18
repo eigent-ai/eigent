@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { localErrorMessage } from '@/lib/localError';
 import { adaptChatProjectionEvent } from '@/lib/projector/chat';
 import { normalizeEvent } from '@/lib/projector/normalize';
 import {
@@ -30,6 +31,8 @@ import {
   removeResolvedInteractionMessages,
   shouldAppendTaskForConfirmedEvent,
 } from '@/store/chatStore';
+import { AgentStep } from '@/types/constants';
+import i18next from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('canonical Run replay projection', () => {
@@ -135,6 +138,36 @@ describe('canonical Run replay projection', () => {
       request_id: 'resume-request-1',
       reason: 'explicit_resume',
     });
+  });
+
+  it('explains a Resume refused for an unknown write outcome', async () => {
+    const refusal = Object.assign(new Error('unsafe_resume_blocked'), {
+      status: 409,
+      response: {
+        status: 409,
+        data: {
+          detail: {
+            code: 'unsafe_resume_blocked',
+            tool_call_ids: ['shell-call'],
+          },
+        },
+      },
+    });
+
+    const error = await admitDurableRunResume(
+      'run-1',
+      'resume-request-1',
+      vi.fn().mockRejectedValue(refusal)
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(localErrorMessage(error)).toBe(
+      i18next.t('chat.run-resume-unsafe-blocked')
+    );
+    expect((error as Error).message).toContain(
+      "its changes can't be confirmed"
+    );
+    expect((error as Error).cause).toBe(refusal);
   });
 
   it.each([
@@ -281,6 +314,36 @@ describe('canonical Run replay projection', () => {
       })
     ).toBeNull();
   });
+
+  it.each([
+    [
+      'approval.cancelled',
+      { interaction_id: 'approval-1', decision: 'rejected' },
+    ],
+    ['interaction.cancelled', { interaction_id: 'approval-1' }],
+    ['approval.expired_rejected', { approval_id: 'approval-1' }],
+    ['interaction.expired', { interaction_id: 'approval-1' }],
+  ])(
+    'projects %s as the end of its durable interaction',
+    (eventType, payload) => {
+      expect(
+        canonicalRunEventToLegacyMessage({
+          event_type: eventType,
+          legacy_step: null,
+          payload,
+          created_at: 1_786_026_418,
+        })
+      ).toEqual({
+        step: 'human_reply',
+        data: {
+          ...payload,
+          interaction_id: 'approval-1',
+          __durable_interaction_resolution: true,
+        },
+        timestamp: 1_786_026_418,
+      });
+    }
+  );
 
   it('keeps Resume attempts of one local durable Run in one task', () => {
     expect(
@@ -599,5 +662,76 @@ describe('canonical Run replay projection', () => {
         ]
       )
     ).toHaveLength(1);
+  });
+});
+
+describe('question history projection', () => {
+  it('projects the canonical request without a legacy ASK frame', () => {
+    expect(
+      canonicalRunEventToLegacyMessage({
+        event_type: 'interaction.requested',
+        run_id: 'run-1',
+        created_at: 123,
+        payload: {
+          interaction_id: 'question',
+          interaction_type: 'question',
+          request: { question: 'Which colour?', agent: 'single_agent' },
+        },
+      })
+    ).toEqual({
+      step: AgentStep.ASK,
+      timestamp: 123,
+      data: {
+        interaction_id: 'question',
+        interaction_type: 'question',
+        run_id: 'run-1',
+        question: 'Which colour?',
+        agent: 'single_agent',
+      },
+    });
+  });
+  it.each(['memory_change_review', 'merge_conflict'])(
+    'leaves a %s request to its legacy frame',
+    (interactionType) => {
+      expect(
+        canonicalRunEventToLegacyMessage({
+          event_type: 'interaction.requested',
+          run_id: 'run-1',
+          payload: {
+            interaction_id: 'review',
+            interaction_type: interactionType,
+            request: { question: 'Allow this change?' },
+            options: [{ id: 'keep_run', label: 'Keep Run version' }],
+          },
+        })
+      ).toBeNull();
+    }
+  );
+  it('retains resolved questions in history while removing their actionable queue entry', () => {
+    const ask = {
+      id: 'ask',
+      role: 'agent',
+      step: AgentStep.ASK,
+      content: 'Colour?',
+      interaction: {
+        interaction_id: 'question',
+        interaction_type: 'question',
+        run_id: 'run-1',
+      },
+    } as Message;
+    const store = createChatStoreInstance();
+    store.getState().create('run-1');
+    store.getState().addMessages('run-1', ask);
+    store.getState().setActiveAskList('run-1', [ask]);
+    store.getState().markHumanInteractionResolved('run-1', 'question');
+    expect(store.getState().tasks['run-1'].messages).toContainEqual(ask);
+    expect(store.getState().tasks['run-1'].askList).toEqual([]);
+    expect(store.getState().tasks['run-1'].resolvedInteractionIds).toEqual([
+      'question',
+    ]);
+    expect(removeResolvedInteractionMessages([ask], 'question', true)).toEqual([
+      ask,
+    ]);
+    expect(removeResolvedInteractionMessages([ask], 'question')).toEqual([]);
   });
 });

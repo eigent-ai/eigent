@@ -39,7 +39,7 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
@@ -436,7 +436,7 @@ def browser_agent(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=agent_current_time(options),
         external_browser_notice=external_browser_notice,
     )
     system_message = append_connected_app_mcp_notice(system_message)

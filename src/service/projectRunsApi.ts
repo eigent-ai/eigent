@@ -13,6 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import type { DurableRunSummaryInput } from '@/lib/projector/runSummary';
+import {
+  createControlOperation,
+  submitControlOperation,
+} from './controlOperations';
 
 export type ProjectRunsResponse = {
   project_id?: unknown;
@@ -22,11 +27,117 @@ export type ProjectRunsResponse = {
     total_attempt_elapsed_ms?: unknown;
     created_at?: unknown;
     updated_at?: unknown;
+    resolved_model?: unknown;
     [key: string]: unknown;
   }>;
   has_more?: unknown;
   cloud_restore_pending?: unknown;
 };
+
+/** The non-secret model identity a Run's latest bound attempt ran on. */
+export interface ResolvedRunModel {
+  platform: string;
+  type: string;
+}
+
+/** Anything but a complete identity is unknown, never a guessed model. */
+export function parseResolvedRunModel(value: unknown): ResolvedRunModel | null {
+  if (!value || typeof value !== 'object') return null;
+  const { platform, type } = value as Record<string, unknown>;
+  if (typeof platform !== 'string' || !platform.trim()) return null;
+  if (typeof type !== 'string' || !type.trim()) return null;
+  return { platform, type };
+}
+
+/** Owner-checked `run_id → model` entries from one Run-list response. */
+export function projectResolvedRunModels(
+  projectId: string,
+  response: ProjectRunsResponse
+): Record<string, ResolvedRunModel | null> {
+  if (response?.project_id !== projectId || !Array.isArray(response.runs))
+    return {};
+  const models: Record<string, ResolvedRunModel | null> = {};
+  for (const run of response.runs) {
+    if (run?.project_id !== projectId) continue;
+    if (typeof run.run_id !== 'string' || !run.run_id) continue;
+    models[run.run_id] = parseResolvedRunModel(run.resolved_model);
+  }
+  return models;
+}
+
+const EMPTY_RESOLVED_RUN_MODELS: Readonly<
+  Record<string, ResolvedRunModel | null>
+> = Object.freeze({});
+const resolvedRunModelsByProject = new Map<
+  string,
+  Readonly<Record<string, ResolvedRunModel | null>>
+>();
+const resolvedRunModelListeners = new Map<string, Set<() => void>>();
+
+/**
+ * Every Run-list read already carries each Run's model, so the Session's
+ * model map is filled from those reads instead of a fetch of its own. A
+ * bounded read (for example the newest Run only) updates just its rows.
+ */
+export function recordResolvedRunModels(
+  projectId: string,
+  response: ProjectRunsResponse
+): void {
+  const incoming = projectResolvedRunModels(projectId, response);
+  const existing =
+    resolvedRunModelsByProject.get(projectId) ?? EMPTY_RESOLVED_RUN_MODELS;
+  const changed = Object.entries(incoming).some(
+    ([runId, model]) =>
+      !(runId in existing) ||
+      existing[runId]?.platform !== model?.platform ||
+      existing[runId]?.type !== model?.type
+  );
+  if (!changed) return;
+  resolvedRunModelsByProject.set(projectId, { ...existing, ...incoming });
+  resolvedRunModelListeners.get(projectId)?.forEach((listener) => listener());
+}
+
+export function getResolvedRunModels(
+  projectId: string
+): Readonly<Record<string, ResolvedRunModel | null>> {
+  return resolvedRunModelsByProject.get(projectId) ?? EMPTY_RESOLVED_RUN_MODELS;
+}
+
+export function subscribeResolvedRunModels(
+  projectId: string,
+  listener: () => void
+): () => void {
+  let listeners = resolvedRunModelListeners.get(projectId);
+  if (!listeners) {
+    listeners = new Set();
+    resolvedRunModelListeners.set(projectId, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners!.delete(listener);
+    if (listeners!.size === 0) resolvedRunModelListeners.delete(projectId);
+  };
+}
+
+/** Test seam: forget every recorded model. */
+export function resetResolvedRunModelsForTest(): void {
+  resolvedRunModelsByProject.clear();
+}
+
+/** Only owner-checked rows may enter the canonical projection. */
+export function projectRunSummaries(
+  projectId: string,
+  response: ProjectRunsResponse
+): DurableRunSummaryInput[] {
+  if (response.project_id !== projectId) return [];
+  return (response.runs ?? []).filter(
+    (run) =>
+      run.project_id === projectId &&
+      typeof run.run_id === 'string' &&
+      typeof run.status === 'string' &&
+      (typeof run.updated_at === 'number' || typeof run.updated_at === 'string')
+  ) as DurableRunSummaryInput[];
+}
 
 type RunControlRequest = (
   url: string,
@@ -126,7 +237,8 @@ export function fetchProjectRuns(
     };
     inFlightProjectRuns.set(key, entry);
     void request.then(
-      () => {
+      (response) => {
+        recordResolvedRunModels(projectId, response);
         entry!.settled = true;
         if (inFlightProjectRuns.get(key) === entry) {
           inFlightProjectRuns.delete(key);
@@ -156,18 +268,49 @@ export function fetchProjectRuns(
 /** Read only canonical Runs that still own live execution state. */
 export function fetchActiveProjectRuns(
   projectId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  limit = 1
 ): Promise<ProjectRunsResponse> {
   return fetchGet(
     '/runs',
     {
       project_id: projectId,
       status: ACTIVE_DURABLE_RUN_STATUSES,
-      limit: 1,
+      limit,
     },
     undefined,
     { signal }
   ) as Promise<ProjectRunsResponse>;
+}
+
+export type RunAttentionState = 'running' | 'waiting';
+
+export interface ProjectRunAttention {
+  projectId: string;
+  state: RunAttentionState;
+}
+
+/** Keeps only well-formed rows; an unreadable response means no rows. */
+export function parseRunAttention(value: unknown): ProjectRunAttention[] {
+  if (!Array.isArray(value)) return [];
+  const rows: ProjectRunAttention[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== 'object') continue;
+    const { project_id: projectId, state } = row as Record<string, unknown>;
+    if (typeof projectId !== 'string' || !projectId) continue;
+    if (state !== 'running' && state !== 'waiting') continue;
+    rows.push({ projectId, state });
+  }
+  return rows;
+}
+
+/** Every Session with active work across all Spaces, from the local journal. */
+export async function fetchRunAttention(
+  signal?: AbortSignal
+): Promise<ProjectRunAttention[]> {
+  return parseRunAttention(
+    await fetchGet('/runs/attention', undefined, undefined, { signal })
+  );
 }
 
 /** Cancel one exact durable Run; callers own stable request-id generation. */
@@ -175,10 +318,21 @@ export function cancelProjectRun(
   runId: string,
   requestId: string,
   reason: string,
-  request: RunControlRequest = fetchPost
+  request: RunControlRequest = fetchPost,
+  projectId?: string
 ): Promise<unknown> {
-  return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
-    request_id: requestId,
-    reason,
-  });
+  if (request !== fetchPost)
+    return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
+      request_id: requestId,
+      reason,
+    });
+  return submitControlOperation(
+    createControlOperation({
+      kind: 'cancel',
+      runId,
+      projectId,
+      path: `/runs/${encodeURIComponent(runId)}/cancel`,
+      body: { request_id: requestId, reason },
+    })
+  );
 }

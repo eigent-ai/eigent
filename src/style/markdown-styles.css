@@ -373,12 +373,24 @@
 }
 
 /* Tables scroll as a unit instead of clipping the last columns inside chat. */
-.markdown-body table {
-  display: block;
-  width: max-content;
+.markdown-body .markdown-table-scroll {
   max-width: 100%;
-  margin: 0 0 16px;
+  margin: 0 0 var(--ds-space-16);
   overflow-x: auto;
+}
+
+.markdown-body .markdown-table-scroll:focus-visible {
+  outline: var(--ds-border-strong) solid var(--ds-ring-focus);
+  outline-offset: var(--ds-space-2);
+}
+
+.markdown-body table {
+  display: table;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  overflow-wrap: normal;
+  word-break: normal;
   border-collapse: collapse;
   border-spacing: 0;
 }

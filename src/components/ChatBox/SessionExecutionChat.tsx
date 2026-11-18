@@ -15,10 +15,16 @@
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { EventNativeProjectTimeline } from '@/components/ChatBox/EventNativeProjectTimeline';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import {
+  SessionLoadingHalo,
+  useReportSessionLoading,
+} from '@/components/ChatBox/SessionLoadingHalo';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionDraft } from '@/hooks/useSessionDraft';
 import { useSessionExecution } from '@/hooks/useSessionExecution';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   assertExecutionScope,
   cancelSessionExecution,
@@ -30,7 +36,6 @@ import {
   sessionMessageConfiguration,
   submitSessionMessage,
 } from '@/service/sessionMessage';
-import { usePageTabStore } from '@/store/pageTabStore';
 import {
   loadMoreSessionExecutions,
   refreshSessionExecution,
@@ -39,24 +44,39 @@ import { SessionMode } from '@/types/constants';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/**
+ * The Session's route while it loads or after it failed. On first open the
+ * Session page's halo covers the whole page, so this draws no loading state
+ * of its own; on a later reload it shows the halo in the chat area.
+ */
 export function SessionExecutionStatus({ projectId }: { projectId: string }) {
   const { scope, state } = useSessionExecution(projectId);
   const { t } = useTranslation();
+  const loading = !state.error;
+  const pageShowsLoading = useReportSessionLoading(
+    'session-route',
+    loading,
+    t('chat.timeline-history-loading')
+  );
+  if (loading) {
+    return (
+      <div className="relative min-h-0 flex-1">
+        <SessionLoadingHalo
+          active={!pageShowsLoading}
+          label={t('chat.timeline-history-loading')}
+        />
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-3 p-4" role="status">
-      <DsText>
-        {t(
-          state.error ? 'chat.parallel-request-failed' : 'chat.parallel-loading'
-        )}
-      </DsText>
-      {Boolean(state.error) && (
-        <Button
-          variant="secondary"
-          onClick={() => refreshSessionExecution(scope)}
-        >
-          {t('chat.parallel-retry')}
-        </Button>
-      )}
+    <div className="flex flex-col gap-3 p-4" role="alert">
+      <DsText>{t('chat.parallel-request-failed')}</DsText>
+      <Button
+        variant="secondary"
+        onClick={() => refreshSessionExecution(scope)}
+      >
+        {t('chat.parallel-retry')}
+      </Button>
     </div>
   );
 }
@@ -65,14 +85,18 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
   const { scope, state } = useSessionExecution(projectId);
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
-  const [message, setMessage] = useState('');
+  // Switching Sessions remounts this composer; keep each Session's draft.
+  const { text: message, setText: setMessage } = useSessionDraft(
+    scope.accountKey,
+    projectId
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [unsupportedInput, setUnsupportedInput] = useState(false);
   const [controls, setControls] = useState<Set<string>>(new Set());
   const intent = useRef<SessionMessageIntent | null>(null);
   const accepted = useRef(false);
-  const externalDraft = usePageTabStore(
+  const externalDraft = useSessionPageTabStore(
     (store) => store.workspaceChatDraftRequest
   );
   const unsupportedHandoff = externalDraft?.projectId === projectId;
@@ -145,6 +169,11 @@ export function SessionExecutionChat({ projectId }: { projectId: string }) {
         // Before submission it is safe to fix an unsupported configuration.
         // Once sent, Retry keeps the exact original body and identity.
         if (!intent.current?.deliveryAttempted) intent.current = null;
+      } else if (intent.current?.deliveryAttempted) {
+        // Leaving the Session stopped the wait for a delivery the Session may
+        // already have accepted. Retry does not survive the switch, so never
+        // offer this text again as a draft that would send it twice.
+        setMessage('');
       }
     } finally {
       lock.current = false;

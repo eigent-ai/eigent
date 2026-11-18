@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FileViewerPanel } from '@/components/Folder';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { pdfPreviewUrl } from '@/components/Folder/PdfPreview';
+import { HostProvider } from '@/host';
+import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -247,21 +250,83 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it.each([386, 1000])(
+  it.each([1000, 1024 * 1024 + 1])(
     'keeps the complete-file warning visibly beside the preview for a %s byte file',
     (totalBytes) => {
       renderViewer(
         textFile({
-          preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
+          preview: {
+            kind: 'text',
+            completeness: 'truncated',
+            bytesRead: 386,
+            totalBytes,
+          },
         })
       );
       const notice = screen.getByText(
-        `Previewing 386 B of ${totalBytes} B. The complete file was not loaded.`
+        /Previewing 386 B of .+\. The complete file was not loaded\./
       );
       expect(notice.closest('header')).toBeNull();
       expect(notice).toHaveAttribute('aria-live', 'polite');
     }
   );
+
+  it.each([0, 10])(
+    'does not warn for complete %i B unknown-extension text',
+    (bytes) => {
+      renderViewer(
+        textFile({
+          name: 'unsupported.xyz',
+          type: 'xyz',
+          content: bytes ? 'weird ext\n' : '',
+          preview: {
+            kind: 'text',
+            completeness: 'complete',
+            bytesRead: bytes,
+            totalBytes: bytes,
+          },
+        })
+      );
+      expect(screen.queryByText(/Previewing/)).toBeNull();
+      expect(screen.getByTestId('source-code-viewer')).toBeInTheDocument();
+    }
+  );
+
+  it('shows a neutral byte summary when completeness is unknown', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'unknown',
+          bytesRead: 10,
+          totalBytes: null,
+        },
+      })
+    );
+    expect(screen.getByText('Previewing 10 B')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    );
+    expect(screen.queryByText(/complete file was not loaded/)).toBeNull();
+  });
+
+  it('warns when distinct byte counts round to the same formatted size', () => {
+    renderViewer(
+      textFile({
+        preview: {
+          kind: 'text',
+          completeness: 'truncated',
+          bytesRead: 1048576,
+          totalBytes: 1048577,
+        },
+      })
+    );
+    expect(
+      screen.getByText(
+        'Previewing 1.00 MiB of 1.00 MiB. The complete file was not loaded.'
+      )
+    ).toBeInTheDocument();
+  });
 
   it('renders ordinary text through the shared source viewer', () => {
     renderViewer(textFile());
@@ -453,7 +518,7 @@ describe('FileViewerPanel toolbar', () => {
       const { container, unmount } = renderViewer(file, { embedded });
       const frame = container.querySelector('iframe');
       expect(frame).toHaveAttribute('title', name);
-      expect(frame).toHaveAttribute('src', url);
+      expect(frame).toHaveAttribute('src', pdfPreviewUrl(url, name));
       // A sandbox or toolbar-hiding fragment would disable native PDF actions.
       expect(frame).not.toHaveAttribute('sandbox');
       expect(container.querySelector('canvas, [data-pdf-controls]')).toBeNull();
@@ -463,6 +528,132 @@ describe('FileViewerPanel toolbar', () => {
       ).toBeNull();
       unmount();
     }
+  });
+
+  describe('when the PDF frame fails to load', () => {
+    const pdfUrl =
+      'http://localhost:5001/files/stream?path=docs%2Freport.pdf&project_id=p1';
+    const pdfFile = textFile({
+      name: 'report.pdf',
+      type: 'pdf',
+      path: pdfUrl,
+      content: pdfUrl,
+      isRemote: true,
+      preview: { kind: 'range-pdf', size: 647 },
+    });
+
+    function renderWithFrameFailures(
+      file: ViewerFile,
+      overrides: Partial<ComponentProps<typeof FileViewerPanel>> = {}
+    ) {
+      const listeners = new Set<(failure: SubframeLoadFailure) => void>();
+      const unsubscribe = vi.fn();
+      const host = {
+        electronAPI: {
+          onSubframeLoadFailed: (
+            callback: (failure: SubframeLoadFailure) => void
+          ) => {
+            listeners.add(callback);
+            return () => {
+              unsubscribe();
+              listeners.delete(callback);
+            };
+          },
+        },
+        ipcRenderer: null,
+      };
+      const viewer = (selectedFile: ViewerFile) => (
+        <HostProvider host={host}>
+          <FileViewerPanel
+            selectedFile={selectedFile}
+            loading={false}
+            isShowSourceCode={false}
+            breadcrumbSegments={['Workspace', selectedFile.name]}
+            projectFiles={[]}
+            {...callbacks}
+            {...overrides}
+          />
+        </HostProvider>
+      );
+      const result = render(viewer(file));
+      const reportFailure = (failure: SubframeLoadFailure) =>
+        act(() => listeners.forEach((listener) => listener(failure)));
+      return {
+        ...result,
+        listeners,
+        unsubscribe,
+        reportFailure,
+        showFile: (next: ViewerFile) => result.rerender(viewer(next)),
+      };
+    }
+
+    it('replaces the blank frame with a message and the external-open action', async () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Open externally' })
+      ).toBeNull();
+
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+
+      expect(container.querySelector('iframe')).toBeNull();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Preview not loaded');
+      expect(alert).toHaveTextContent(
+        'This PDF could not be displayed here. Open it in another app instead.'
+      );
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: 'Open externally' }));
+      expect(callbacks.onOpenExternalFile).toHaveBeenCalledOnce();
+    });
+
+    it('keeps Show in Finder as the primary action beside the fallback', () => {
+      const { reportFailure } = renderWithFrameFailures(pdfFile, {
+        canRevealFile: true,
+      });
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Show in folder' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Open in' })).toBeEnabled();
+    });
+
+    it('ignores failures reported for other frames', () => {
+      const { container, reportFailure } = renderWithFrameFailures(pdfFile);
+      reportFailure({
+        url: 'http://localhost:5001/files/stream?path=docs%2Fother.pdf',
+        errorCode: -27,
+      });
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('loads the frame again when the PDF is selected again', () => {
+      const { container, reportFailure, showFile, unsubscribe, unmount } =
+        renderWithFrameFailures(pdfFile);
+      reportFailure({ url: pdfUrl, errorCode: -27 });
+      expect(container.querySelector('iframe')).toBeNull();
+
+      showFile(textFile());
+      expect(unsubscribe).toHaveBeenCalledOnce();
+      showFile(pdfFile);
+      expect(container.querySelector('iframe')).toHaveAttribute(
+        'src',
+        pdfPreviewUrl(pdfUrl, pdfFile.name)
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      unmount();
+      expect(unsubscribe).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps oversized PDFs in recovery instead of mounting the browser viewer', () => {
@@ -590,6 +781,62 @@ describe('FileViewerPanel toolbar', () => {
     expect(callbacks.onRevealFile).toHaveBeenCalledOnce();
     expect(callbacks.onOpenExternalFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+  });
+  it('gives Brain file links in a previewed HTML page the page grant', async () => {
+    const brain = 'http://localhost:5001';
+    const scope = 'project_id=42&email=dev%40example.com';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(new Blob(['png'], { type: 'image/png' }), { status: 200 })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderViewer(
+        textFile({
+          name: 'index.html',
+          path: `${brain}/files/stream?path=index.html&${scope}&access=G.1`,
+          relativePath: 'index.html',
+          type: 'html',
+          isRemote: true,
+          content: [
+            `<a href="/files/stream?path=report.pdf&${scope}">Report</a>`,
+            `<a href="/files/stream?path=x.pdf&project_id=43&email=dev%40example.com">Other</a>`,
+            `<div style="background:url('/files/stream?path=bg.png&${scope}')"></div>`,
+          ].join(''),
+        })
+      );
+
+      const frame = await waitFor(() => {
+        const element = document.querySelector('iframe');
+        expect(element?.getAttribute('srcdoc')).toContain('Report');
+        return element as HTMLIFrameElement;
+      });
+      const doc = new DOMParser().parseFromString(
+        frame.getAttribute('srcdoc') || '',
+        'text/html'
+      );
+      const [report, other] = Array.from(doc.querySelectorAll('a')).map(
+        (anchor) => new URL(anchor.getAttribute('href') || '', brain)
+      );
+      expect(report.searchParams.get('access')).toBe('G.1');
+      expect(other.searchParams.get('access')).toBeNull();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${brain}/files/stream?path=bg.png&${scope}&access=G.1`
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('asks to reopen a file whose access has expired', () => {
+    renderViewer(textFile(), {
+      loadFailed: 'access-expired',
+      onRetry: vi.fn(),
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Access to this preview has expired. Reopen the file or try again.'
+    );
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
   it('offers retry for a failed load without mounting the file renderer', async () => {
     const onRetry = vi.fn();

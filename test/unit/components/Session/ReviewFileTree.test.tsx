@@ -149,10 +149,10 @@ describe('ReviewFileTree', () => {
     expect(filterButton).toHaveAttribute('aria-pressed', 'true');
     expect(filterButton).toHaveAttribute('data-variant', 'secondary');
     expect(filterButton).toHaveClass(
-      'bg-ds-neutral-muted-default',
       'data-[state=open]:!bg-ds-neutral-muted-default'
     );
     await user.keyboard('{Escape}');
+    expect(filterButton).toHaveClass('bg-ds-neutral-muted-default');
     expect(
       screen.queryByRole('treeitem', { name: /added\.ts/i })
     ).not.toBeInTheDocument();

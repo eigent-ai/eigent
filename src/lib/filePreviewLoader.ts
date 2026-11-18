@@ -19,6 +19,7 @@ import {
   normalizePreviewFileType,
   type CsvFilePreview,
   type FilePreviewMetadata,
+  type TextPreviewCompleteness,
 } from '@/shared/filePreviewContract';
 import Papa from 'papaparse';
 
@@ -37,6 +38,7 @@ interface PrefixReadResult {
   bytesRead: number;
   totalBytes: number | null;
   isPartialResponse: boolean;
+  reachedEnd: boolean;
   contentType?: string;
   supportsRanges?: boolean;
 }
@@ -66,9 +68,41 @@ function headerSize(value: string | null): number | null {
   return finiteSize(Number(value));
 }
 
+function textCompleteness(
+  bytesRead: number,
+  totalBytes: number | null,
+  reachedEnd = false
+): TextPreviewCompleteness {
+  if (totalBytes !== null) {
+    return bytesRead < totalBytes ? 'truncated' : 'complete';
+  }
+  return reachedEnd ? 'complete' : 'unknown';
+}
+
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted)
     throw new DOMException('Preview cancelled', 'AbortError');
+}
+
+/** Brain refused a file URL whose access grant is missing or has expired. */
+export class FileAccessDeniedError extends Error {
+  constructor() {
+    super('File access grant is missing or expired');
+    this.name = 'FileAccessDeniedError';
+  }
+}
+
+const FILE_ACCESS_REQUIRED_CODE = 'file_access_required';
+
+async function throwIfFileAccessDenied(response: Response): Promise<void> {
+  if (response.status !== 401) return;
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  if (payload?.detail?.code !== FILE_ACCESS_REQUIRED_CODE) return;
+  await response.body?.cancel('File access denied').catch(() => undefined);
+  throw new FileAccessDeniedError();
 }
 
 function remoteTotalBytes(response: Response): number | null {
@@ -118,6 +152,7 @@ async function probeRemoteMetadata(
       headers: { Range: 'bytes=0-0' },
       signal,
     });
+    await throwIfFileAccessDenied(response);
     const supportsRanges =
       response.status === 206 &&
       /^bytes\s+0-0\//i.test(response.headers.get('content-range') || '');
@@ -130,7 +165,7 @@ async function probeRemoteMetadata(
     await response.body?.cancel('Metadata probe complete');
     return metadata;
   } catch (error) {
-    if (signal?.aborted) throw error;
+    if (signal?.aborted || error instanceof FileAccessDeniedError) throw error;
     return headMetadata ?? { size: null, supportsRanges: false };
   }
 }
@@ -145,7 +180,23 @@ async function readRemotePrefix(
     headers: { Range: `bytes=0-${Math.max(0, maxBytes - 1)}` },
     signal,
   });
+  // An empty representation has no satisfiable byte range. Its explicit zero
+  // total is still proof that the complete (empty) file has been loaded.
+  if (
+    response.status === 416 &&
+    response.headers.get('content-range') === 'bytes */0'
+  ) {
+    await response.body?.cancel('Empty preview complete');
+    return {
+      bytes: new Uint8Array(),
+      bytesRead: 0,
+      totalBytes: 0,
+      isPartialResponse: false,
+      reachedEnd: true,
+    };
+  }
   if (!response.ok && response.status !== 206) {
+    await throwIfFileAccessDenied(response);
     throw new Error(`Failed to preview file: HTTP ${response.status}`);
   }
 
@@ -156,6 +207,7 @@ async function readRemotePrefix(
       bytesRead: 0,
       totalBytes: remoteTotalBytes(response),
       isPartialResponse: response.status === 206,
+      reachedEnd: true,
       contentType: response.headers.get('content-type') || undefined,
       supportsRanges:
         response.status === 206 ||
@@ -165,10 +217,14 @@ async function readRemotePrefix(
 
   const chunks: Uint8Array[] = [];
   let bytesRead = 0;
+  let reachedEnd = false;
   while (bytesRead < maxBytes) {
     throwIfAborted(signal);
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      reachedEnd = true;
+      break;
+    }
     const remaining = maxBytes - bytesRead;
     const chunk =
       value.byteLength > remaining ? value.slice(0, remaining) : value;
@@ -192,6 +248,7 @@ async function readRemotePrefix(
     bytesRead,
     totalBytes: remoteTotalBytes(response),
     isPartialResponse: response.status === 206,
+    reachedEnd,
     contentType: response.headers.get('content-type') || undefined,
     supportsRanges:
       response.status === 206 ||
@@ -373,6 +430,7 @@ export async function loadFilePreview(
     let bytesRead = 0;
     let totalBytes = metadata.size;
     let binary = false;
+    let completeness: TextPreviewCompleteness;
     if (!isRemote && options.ipcRenderer) {
       const result = (await options.ipcRenderer.invoke(
         'preview-text-file',
@@ -381,21 +439,36 @@ export async function loadFilePreview(
       )) as {
         content: string;
         bytesRead: number;
-        totalBytes: number;
+        totalBytes: number | null;
         binary?: boolean;
       };
       binary = result.binary === true;
       content = result.content;
       bytesRead = result.bytesRead;
-      totalBytes = result.totalBytes;
+      totalBytes = finiteSize(result.totalBytes);
+      completeness = textCompleteness(bytesRead, totalBytes);
     } else {
-      const prefix = await readRemotePrefix(file.path, limit, options.signal);
-      bytesRead = prefix.bytesRead;
-      totalBytes = metadata.size ?? prefix.totalBytes;
-      const decoded = decodePreviewText(
-        prefix.bytes,
-        totalBytes === null || bytesRead < totalBytes
+      // One lookahead byte distinguishes a file exactly at the budget from
+      // an actual excerpt, even when the server omits its total size.
+      const prefix = await readRemotePrefix(
+        file.path,
+        limit + 1,
+        options.signal
       );
+      const bytes = prefix.bytes.subarray(0, limit);
+      bytesRead = bytes.byteLength;
+      // Listing/HEAD metadata may be stale. Only this response describes the
+      // bytes being previewed; a 206 fragment's EOF is not the file's EOF.
+      totalBytes = prefix.totalBytes;
+      completeness =
+        prefix.bytesRead > limit
+          ? 'truncated'
+          : textCompleteness(
+              bytesRead,
+              totalBytes,
+              prefix.reachedEnd && !prefix.isPartialResponse
+            );
+      const decoded = decodePreviewText(bytes, completeness !== 'complete');
       binary = decoded === null;
       content = decoded ?? '';
     }
@@ -415,7 +488,7 @@ export async function loadFilePreview(
     return {
       ...baseFile,
       content,
-      preview: { kind: 'truncated-text', bytesRead, totalBytes },
+      preview: { kind: 'text', completeness, bytesRead, totalBytes },
     };
   }
 
@@ -480,25 +553,35 @@ export async function loadFilePreview(
   const limit = decision.limit || FILE_PREVIEW_LIMITS.defaultBytes;
   const result = await readRemotePrefix(file.path, limit + 1, options.signal);
   // The current response may describe a newer file than the listing metadata.
-  const totalBytes = result.totalBytes ?? metadata.size;
-  const truncated =
-    result.bytesRead > limit ||
-    (result.isPartialResponse && result.totalBytes === null) ||
-    (totalBytes !== null && result.bytesRead < totalBytes);
-  const contentBytes = truncated
-    ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
-    : result.bytes;
+  const totalBytes = result.totalBytes;
+  const completeness =
+    result.bytesRead > limit
+      ? 'truncated'
+      : textCompleteness(
+          result.bytesRead,
+          totalBytes,
+          result.reachedEnd && !result.isPartialResponse
+        );
+  const contentBytes =
+    completeness !== 'complete'
+      ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+      : result.bytes;
   const content = new TextDecoder().decode(contentBytes);
   throwIfAborted(options.signal);
   return {
     ...baseFile,
     content,
-    preview: truncated
-      ? {
-          kind: 'truncated-text',
-          bytesRead: contentBytes.byteLength,
-          totalBytes,
-        }
-      : undefined,
+    preview:
+      completeness !== 'complete'
+        ? {
+            kind: 'text',
+            completeness:
+              contentBytes.byteLength < result.bytesRead
+                ? 'truncated'
+                : completeness,
+            bytesRead: contentBytes.byteLength,
+            totalBytes,
+          }
+        : undefined,
   };
 }

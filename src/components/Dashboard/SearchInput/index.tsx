@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -125,7 +126,7 @@ export default function SearchInput({
                   onClick={expand}
                   aria-label={searchLabel}
                 >
-                  <Search />
+                  <DsIcon icon={Search} recipe="main-compact" />
                 </Button>
               </TooltipSimple>
             </motion.div>
@@ -139,7 +140,7 @@ export default function SearchInput({
               transition={{ duration: 0.15 }}
             >
               <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default">
-                <Search className="h-4 w-4" />
+                <DsIcon icon={Search} />
               </span>
               <input
                 ref={inputRef}
@@ -175,7 +176,7 @@ export default function SearchInput({
                   onClick={collapse}
                   aria-label={clearLabel}
                 >
-                  <X />
+                  <DsIcon icon={X} />
                 </Button>
               </TooltipSimple>
             </motion.div>
@@ -198,7 +199,7 @@ export default function SearchInput({
       )}
     >
       <span className="leading-icon-wrapper pointer-events-none inline-flex shrink-0 items-center justify-center text-ds-ink-muted-default">
-        <Search className="size-ds-icon-sm" />
+        <DsIcon icon={Search} recipe="main-compact" />
       </span>
       <input
         type="text"

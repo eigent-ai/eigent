@@ -12,9 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DeleteSpaceDialog } from '@/components/SpaceSidebar/DeleteSpaceDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
+import {
+  getSessionDisplayName,
+  isPlaceholderProjectName,
+} from '@/lib/spaceLabel';
 import { iconForTriggerType } from '@/lib/triggerIcon';
 import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
@@ -35,7 +41,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useHomeHub } from '../context';
 import { useHomeHubNavigation } from '../hooks/useHomeHubNavigation';
-import { formatCompactCount, formatHubCreatedTime } from '../utils';
+import { formatCompactCount, formatHubRelativeAgo } from '../utils';
 import { getProjectCardRuntimeStatus } from '../utils/boardStatus';
 import {
   getSpaceKindLabel,
@@ -76,13 +82,11 @@ function SpaceItemContent({
   const { t } = useTranslation();
   const { openSpace, openWorkspace } = useHomeHubNavigation();
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
-  const deleteSpaceOnServer = useSpaceStore((s) => s.deleteSpaceOnServer);
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const canManage = space.status === 'active' && !isLegacy;
   const title = space.name?.trim() || t('layout.spaces-untitled');
@@ -103,24 +107,6 @@ function SpaceItemContent({
       setRenaming(false);
     }
   }, [canManage, renameSpaceOnServer, renameValue, renaming, space.id, t]);
-
-  const handleDelete = useCallback(async () => {
-    if (deleting || !canManage) return;
-    setDeleting(true);
-    try {
-      await deleteSpaceOnServer(space.id);
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      console.warn('[HomeHubCard] Failed to delete Space:', error);
-      toast.error(
-        t('layout.spaces-delete-failed', {
-          defaultValue: 'Failed to delete Space',
-        })
-      );
-    } finally {
-      setDeleting(false);
-    }
-  }, [canManage, deleteSpaceOnServer, deleting, space.id, t]);
 
   const handleOpenWorkspace = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -148,7 +134,7 @@ function SpaceItemContent({
   const menuItems = [
     {
       label: t('layout.spaces-rename-space'),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => {
         setRenameValue(space.name?.trim() || '');
         setRenameDialogOpen(true);
@@ -157,7 +143,9 @@ function SpaceItemContent({
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => setDeleteDialogOpen(true),
       disabled: !canManage,
       destructive: true,
@@ -187,21 +175,9 @@ function SpaceItemContent({
         />
       </AlertDialog>
 
-      <AlertDialog
-        isOpen={deleteDialogOpen}
-        onClose={() => {
-          if (deleting) return;
-          setDeleteDialogOpen(false);
-        }}
-        onConfirm={() => void handleDelete()}
-        title={t('layout.delete')}
-        message={t('layout.delete-space-confirmation', {
-          defaultValue:
-            'Are you sure you want to delete this space and all its sessions? This action cannot be undone.',
-        })}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-        confirmDisabled={deleting}
+      <DeleteSpaceDialog
+        spaceId={deleteDialogOpen && canManage ? space.id : null}
+        onClose={() => setDeleteDialogOpen(false)}
       />
 
       <HomeHubItemShell
@@ -214,7 +190,7 @@ function SpaceItemContent({
           <>
             <HomeHubItemBody
               title={title}
-              nameIcon={<Folder className="h-4 w-4" />}
+              nameIcon={<DsIcon icon={Folder} />}
               listCells={[
                 { id: 'type', content: spaceKindLabel },
                 {
@@ -234,7 +210,7 @@ function SpaceItemContent({
                 },
                 {
                   id: 'created',
-                  content: formatHubCreatedTime(space.createdAt) || '—',
+                  content: formatHubRelativeAgo(space.createdAt, t) || '—',
                   align: 'right',
                   textSize: 'xs',
                 },
@@ -294,7 +270,12 @@ function ProjectItemContent({
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
-  const title = project.project_name?.trim() || t('layout.new-project');
+  const title = getSessionDisplayName(
+    project.project_name,
+    project.project_id,
+    t,
+    project.nameSource
+  );
   const tokenCount = resolveProjectTokenCount(project);
 
   const handleRename = useCallback(async () => {
@@ -314,16 +295,23 @@ function ProjectItemContent({
       label: t('layout.rename-project', {
         defaultValue: 'Rename session',
       }),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => {
-        setRenameValue(project.project_name?.trim() || '');
+        setRenameValue(
+          !project.nameSource &&
+            isPlaceholderProjectName(project.project_name, project.project_id)
+            ? ''
+            : project.project_name?.trim() || ''
+        );
         setRenameDialogOpen(true);
       },
       disabled: !onProjectRename,
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => onProjectDelete?.(project.project_id),
       disabled: !onProjectDelete,
       destructive: true,
@@ -364,13 +352,16 @@ function ProjectItemContent({
       >
         {loading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
+            <DsIcon
+              icon={Loader2}
+              className="animate-spin text-ds-ink-default-default"
+            />
           </div>
         ) : null}
         {layout === 'list' ? (
           <HomeHubItemBody
             title={title}
-            nameIcon={<MessageCircle className="h-4 w-4" />}
+            nameIcon={<DsIcon icon={MessageCircle} />}
             listCells={[
               { id: 'space', content: spaceLabel || '—' },
               {
@@ -385,7 +376,8 @@ function ProjectItemContent({
               },
               {
                 id: 'updated',
-                content: formatHubCreatedTime(project.latest_task_date) || '—',
+                content:
+                  formatHubRelativeAgo(project.latest_task_date, t) || '—',
                 align: 'right',
                 textSize: 'xs',
               },
@@ -433,8 +425,16 @@ function TaskItemContent({
   const { openTask, loadingProjectId } = useHomeHubNavigation();
   const loading = loadingProjectId === task.project_id;
   const title = task.question?.trim() || t('layout.new-project');
-  const projectName =
+  const storedProjectName =
     project?.project_name?.trim() || task.project_name?.trim() || '';
+  const projectName = storedProjectName
+    ? getSessionDisplayName(
+        storedProjectName,
+        task.project_id,
+        t,
+        project?.project_name?.trim() ? project.nameSource : undefined
+      )
+    : '';
   const menuItems = [
     ...(controlAction && onControl
       ? [
@@ -445,9 +445,9 @@ function TaskItemContent({
                 : t('layout.resume', { defaultValue: 'Resume' }),
             icon:
               controlAction === 'pause' ? (
-                <Pause className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Pause} aria-hidden />
               ) : (
-                <Play className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Play} aria-hidden />
               ),
             onSelect: onControl,
             disabled: controlPending,
@@ -456,12 +456,14 @@ function TaskItemContent({
       : []),
     {
       label: t('layout.share', { defaultValue: 'Share' }),
-      icon: <Share2 className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Share2} aria-hidden />,
       onSelect: onShare,
     },
     {
       label: t('layout.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: onDelete,
       destructive: true,
     },
@@ -477,19 +479,23 @@ function TaskItemContent({
     >
       {loading ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
+          <DsIcon
+            icon={Loader2}
+            className="animate-spin text-ds-ink-default-default"
+          />
         </div>
       ) : null}
       {layout === 'list' ? (
         <HomeHubItemBody
           title={title}
-          nameIcon={<ListChecks className="h-4 w-4" />}
+          nameIcon={<DsIcon icon={ListChecks} />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
             {
               id: 'created',
               content:
-                formatHubCreatedTime(task.created_at || task.updated_at) || '—',
+                formatHubRelativeAgo(task.created_at || task.updated_at, t) ||
+                '—',
               align: 'right',
               textSize: 'xs',
             },
@@ -535,19 +541,21 @@ function TriggerItemContent({
   const menuItems = [
     {
       label: t('triggers.edit'),
-      icon: <Pencil className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Pencil} aria-hidden />,
       onSelect: () => onEdit(trigger),
     },
     {
       label: isActive
         ? t('triggers.deactivate', { defaultValue: 'Deactivate' })
         : t('triggers.activate', { defaultValue: 'Activate' }),
-      icon: <Power className="h-4 w-4" aria-hidden />,
+      icon: <DsIcon icon={Power} aria-hidden />,
       onSelect: () => onToggleActive(trigger),
     },
     {
       label: t('triggers.delete'),
-      icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
+      icon: (
+        <DsIcon icon={Trash2} className="text-ds-icon-error-default-default" />
+      ),
       onSelect: () => onDelete(trigger),
       destructive: true,
     },
@@ -565,7 +573,7 @@ function TriggerItemContent({
       {layout === 'list' ? (
         <HomeHubItemBody
           title={trigger.name}
-          nameIcon={<TriggerIcon className="h-4 w-4" />}
+          nameIcon={<DsIcon icon={TriggerIcon} />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
             { id: 'type', content: triggerTypeLabel },
@@ -573,8 +581,9 @@ function TriggerItemContent({
             {
               id: 'created',
               content:
-                formatHubCreatedTime(
-                  trigger.created_at || trigger.last_executed_at
+                formatHubRelativeAgo(
+                  trigger.created_at || trigger.last_executed_at,
+                  t
                 ) || '—',
               align: 'right',
               textSize: 'xs',

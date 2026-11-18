@@ -12,13 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet } from '@/api/http';
+import { fetchGet, type FetchRequestOptions } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
 import type { CanonicalProjectEvent } from '@/lib/projector/types';
 import {
   getProjectEventStore,
   type ProjectEventStore,
 } from '@/store/projectEventStore';
+import { controlRequest } from './controlRequest';
 
 const PAGE_LIMIT = 500;
 const MAX_PAGES = 20;
@@ -41,6 +42,8 @@ export type ReconcileHumanInteractionEventsInput = {
   afterSequence: number;
   /** Primarily useful for bounded tests; production uses five seconds. */
   projectionTimeoutMs?: number;
+  /** Opt in only for Approval recovery; other human-input delivery is unchanged. */
+  bounded?: boolean;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -93,6 +96,7 @@ function waitForProjectedTerminal(
     interactionId: string;
     terminalEventId: string;
     timeoutMs: number;
+    signal?: AbortSignal;
   }
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -104,11 +108,14 @@ function waitForProjectedTerminal(
       if (settled) return;
       settled = true;
       unsubscribe();
+      input.signal?.removeEventListener('abort', abort);
       if (timeout) clearTimeout(timeout);
       if (error) reject(error);
       else resolve();
     };
 
+    const abort = () => finish(new Error('Control recovery expired'));
+    input.signal?.addEventListener('abort', abort, { once: true });
     const inspect = () => {
       const control = store.getControlSnapshot();
       if (control.projectId !== input.projectId) {
@@ -146,7 +153,8 @@ function waitForProjectedTerminal(
         ),
       input.timeoutMs
     );
-    inspect();
+    if (input.signal?.aborted) abort();
+    else inspect();
   });
 }
 
@@ -156,13 +164,27 @@ function waitForProjectedTerminal(
  * converted into a synthetic resolution event: the durable journal remains
  * the only authority for removing a control from BottomBox.
  */
-export async function reconcileHumanInteractionEvents({
-  projectId,
-  runId,
-  interactionId,
-  afterSequence,
-  projectionTimeoutMs = DEFAULT_PROJECTION_TIMEOUT_MS,
-}: ReconcileHumanInteractionEventsInput): Promise<CanonicalProjectEvent> {
+export function reconcileHumanInteractionEvents(
+  input: ReconcileHumanInteractionEventsInput,
+  options?: FetchRequestOptions
+) {
+  return options
+    ? reconcileEvents(input, options)
+    : input.bounded
+      ? controlRequest((bounded) => reconcileEvents(input, bounded))
+      : reconcileEvents(input, {});
+}
+
+async function reconcileEvents(
+  {
+    projectId,
+    runId,
+    interactionId,
+    afterSequence,
+    projectionTimeoutMs = DEFAULT_PROJECTION_TIMEOUT_MS,
+  }: ReconcileHumanInteractionEventsInput,
+  options: FetchRequestOptions
+): Promise<CanonicalProjectEvent> {
   if (!projectId || !runId || !interactionId) {
     throw new Error('Human interaction reconciliation requires durable ids');
   }
@@ -181,9 +203,12 @@ export async function reconcileHumanInteractionEvents({
       {
         after_sequence: cursor,
         limit: PAGE_LIMIT,
-      }
+      },
+      undefined,
+      options
     )) as RunEventsPage;
 
+    options.beforeRequest?.();
     if (rawPage.run_id !== undefined && rawPage.run_id !== runId) {
       throw new Error('Run event replay returned a different Run');
     }
@@ -220,6 +245,7 @@ export async function reconcileHumanInteractionEvents({
         interactionId,
         terminalEventId: terminal.eventId,
         timeoutMs,
+        signal: options.signal,
       });
       return terminal;
     }

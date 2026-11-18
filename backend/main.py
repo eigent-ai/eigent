@@ -157,12 +157,17 @@ async def startup_event():
     )
     from app.workspace_git.startup import reconcile_workspace_git_startup
 
+    writer_scheduler = get_default_workspace_writer_scheduler()
     writer_reconciliation = await asyncio.to_thread(
-        get_default_workspace_writer_scheduler().reconcile_orphaned_admissions
+        writer_scheduler.reconcile_orphaned_admissions
     )
     workspace_git_reconciliation = await asyncio.to_thread(
         reconcile_workspace_git_startup,
         journal,
+    )
+    # Git reconciliation settles interrupted writes before holders are judged.
+    writer_reclamation = await asyncio.to_thread(
+        writer_scheduler.reclaim_lost_writers
     )
     from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
@@ -206,15 +211,20 @@ async def startup_event():
             "interrupted_orphaned_workspace_writers": len(
                 writer_reconciliation.interrupted_request_ids
             ),
+            "reclaimed_workspace_writers": len(
+                writer_reclamation.reclaimed_request_ids
+            ),
             "promoted_workspace_writers": len(
                 writer_reconciliation.promoted_request_ids
-            ),
+            )
+            + len(writer_reclamation.promoted_request_ids),
             "preserved_workspace_writers": len(
                 writer_reconciliation.preserved_request_ids
             ),
             "workspace_writer_reconciliation_failures": len(
                 writer_reconciliation.failed_request_ids
-            ),
+            )
+            + len(writer_reclamation.failed_request_ids),
             "workspace_git_reconciliation_skipped": (
                 workspace_git_reconciliation.skipped
             ),
@@ -276,6 +286,14 @@ async def startup_event():
 
     initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
     await start_default_execution_service()
+    from app.utils.runtime_environment_cleanup import (
+        runtime_environment_gc_loop,
+    )
+
+    global runtime_environment_gc_task
+    runtime_environment_gc_task = asyncio.create_task(
+        runtime_environment_gc_loop(journal)
+    )
 
 
 @api.on_event("shutdown")
@@ -286,7 +304,17 @@ async def shutdown_event_handler():
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
+    gc_task = globals().get("runtime_environment_gc_task")
+    if gc_task is not None:
+        gc_task.cancel()
+        await asyncio.gather(gc_task, return_exceptions=True)
     app_logger.info("Starting graceful shutdown process")
+
+    from app.run_runtime.runtime import mark_process_shutting_down
+
+    # Quitting is not a tool outcome: undispatched tools and their approvals
+    # stay open so restart recovery records the interruption.
+    mark_process_shutting_down()
 
     from app.workspace_runtime.runtime import close_default_execution_service
 
@@ -320,11 +348,12 @@ async def cleanup_resources():
         except asyncio.CancelledError:
             pass
 
-    # Cleanup all task locks
+    # Cleanup all task locks. Runs still active here become interrupted on
+    # the next start, so keep their environment copies for Resume.
     for task_id in list(task_locks.keys()):
         try:
             task_lock = task_locks[task_id]
-            await task_lock.cleanup()
+            await task_lock.cleanup(keep_run_environments=True)
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
 

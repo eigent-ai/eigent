@@ -15,6 +15,21 @@
 import { usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+describe('pageTabStore information density default', () => {
+  it('starts new users and older preferences without a density at Moderate while preserving saved choices', async () => {
+    expect(usePageTabStore.getInitialState().narrativeInformationDensity).toBe(
+      'balanced'
+    );
+    const migrate = usePageTabStore.persist.getOptions().migrate!;
+    expect(await migrate({}, 5)).toMatchObject({
+      narrativeInformationDensity: 'balanced',
+    });
+    expect(
+      await migrate({ narrativeInformationDensity: 'compact' }, 5)
+    ).toMatchObject({ narrativeInformationDensity: 'compact' });
+  });
+});
+
 describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({
@@ -39,6 +54,33 @@ describe('pageTabStore side-panel requests', () => {
     });
   });
 
+  it('leaves unscoped focus requests unbound to the preview scope', () => {
+    // The draft sentinel (or a scope lagging setActiveProject) must never
+    // become the target of a request the caller did not scope.
+    usePageTabStore.setState({ sessionPreviewProjectId: 'new-session-draft' });
+    const store = usePageTabStore.getState();
+    store.requestTaskBoxFocus(undefined, 'task-1');
+    store.requestWorkspaceChatFocus();
+    store.requestToggleSessionSidePanel();
+    store.setScrollToQueryId('query-1');
+
+    expect(usePageTabStore.getState()).toMatchObject({
+      taskBoxFocusProjectId: null,
+      workspaceChatFocusProjectId: null,
+      scrollToQueryProjectId: null,
+      sessionSidePanelToggleProjectId: null,
+    });
+
+    usePageTabStore.getState().requestWorkspaceChatFocus('project-1');
+    expect(usePageTabStore.getState().workspaceChatFocusProjectId).toBe(
+      'project-1'
+    );
+    store.requestToggleSessionSidePanel('project-1');
+    expect(usePageTabStore.getState().sessionSidePanelToggleProjectId).toBe(
+      'project-1'
+    );
+  });
+
   it('stores a one-shot historical Run scroll request', () => {
     const request = { projectId: 'project-1', taskId: 'task-1' };
     usePageTabStore.getState().setScrollToTurnRequest(request);
@@ -53,6 +95,23 @@ describe('pageTabStore side-panel requests', () => {
     usePageTabStore.getState().requestToggleSessionSidePanel();
 
     expect(usePageTabStore.getState().sessionSidePanelToggleRequestId).toBe(2);
+  });
+
+  it('keeps a skill draft bound to its source Session and marks the composer handoff as conditional', () => {
+    usePageTabStore
+      .getState()
+      .requestWorkspaceChatDraft(
+        '#automation-draft Draft this task',
+        undefined,
+        'source-project',
+        { ifEmpty: true }
+      );
+
+    expect(usePageTabStore.getState().workspaceChatDraftRequest).toMatchObject({
+      projectId: 'source-project',
+      ifEmpty: true,
+      content: '#automation-draft Draft this task',
+    });
   });
 
   it('tracks unread project files and clears the active project when Files opens', () => {

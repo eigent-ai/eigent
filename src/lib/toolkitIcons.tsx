@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   AudioLines,
   Bird,
@@ -21,6 +22,7 @@ import {
   Bug,
   Calendar,
   Camera,
+  Database,
   Download,
   FileDown,
   FilePen,
@@ -28,6 +30,7 @@ import {
   Globe,
   HardDrive,
   Image,
+  ListTodo,
   type LucideIcon,
   Mail,
   MessageCircle,
@@ -41,6 +44,7 @@ import {
   Rocket,
   Search,
   Sheet,
+  Sparkles,
   StickyNote,
   Terminal,
   User,
@@ -95,14 +99,43 @@ const toolkitIconMap: Record<string, LucideIcon> = {
 
   // Meta
   'Thinking Toolkit': Brain,
+  'Memory Toolkit': Database,
+  'Todo Toolkit': ListTodo,
+  'Skill Toolkit': Sparkles,
   ElectronToolkit: Globe,
 };
+
+function toolkitIdentity(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/** Lookup by identity so `TodoToolkit` and `Todo Toolkit` share an icon. */
+const toolkitIconByIdentity = new Map(
+  Object.entries(toolkitIconMap).map(([name, icon]) => [
+    toolkitIdentity(name),
+    icon,
+  ])
+);
+
+/** The toolkit's own icon, or null when the toolkit is not recognized. */
+export function toolkitIconComponent(
+  toolkitName: string | undefined
+): LucideIcon | null {
+  if (!toolkitName?.trim()) return null;
+  return toolkitIconByIdentity.get(toolkitIdentity(toolkitName)) ?? null;
+}
 
 export function getToolkitIcon(
   toolkitName: string,
   size: number = 16,
   className: string = 'text-ds-ink-default-default'
 ): React.ReactNode {
-  const Icon = toolkitIconMap[toolkitName] ?? Wrench;
-  return <Icon size={size} className={className} />;
+  const Icon = toolkitIconComponent(toolkitName) ?? Wrench;
+  return (
+    <DsIcon
+      icon={Icon}
+      recipe={size <= 14 ? 'main-compact' : 'main'}
+      className={className}
+    />
+  );
 }
