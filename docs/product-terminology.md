@@ -19,25 +19,35 @@ The hierarchy shown in the product is:
 
 ## UI-to-backend match
 
-| UI wording      | Backend term or identifier                                    |
-| --------------- | ------------------------------------------------------------- |
-| Space           | `Space`, `space_id`, `spaceId`, `activeSpaceId`               |
-| Spaces          | Space collections and Space APIs                              |
-| Session         | `Project`, `project_id`, `projectId`, `activeProjectId`       |
-| Sessions        | Project collections such as `projectsBySpaceId`               |
-| New session     | New Project operation; `new-project` route and command values |
-| Session name    | `Project.name` and Project name fields                        |
-| Rename session  | Project rename or update operation                            |
-| Delete session  | Project delete or archive operation                           |
-| End session     | Project achieved state and Project update operation           |
-| Session details | Project metadata and Project history                          |
-| Task            | `Task`, `task_id`, `taskId`                                   |
-| Tasks           | Task collections and Task APIs                                |
+| UI wording                                    | Backend term or identifier                                                                                                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Space                                         | `Space`, `space_id`, `spaceId`, `activeSpaceId`                                                                                                                                                                 |
+| Spaces                                        | Space collections and Space APIs                                                                                                                                                                                |
+| Session                                       | `Project`, `project_id`, `projectId`, `activeProjectId`                                                                                                                                                         |
+| Sessions                                      | Project collections such as `projectsBySpaceId`                                                                                                                                                                 |
+| New session                                   | New Project operation; `new-project` route and command values                                                                                                                                                   |
+| Session name                                  | `Project.name` and Project name fields                                                                                                                                                                          |
+| Rename session                                | Project rename or update operation                                                                                                                                                                              |
+| Delete session                                | Project delete or archive operation                                                                                                                                                                             |
+| End session                                   | Project achieved state and Project update operation                                                                                                                                                             |
+| Session details                               | Project metadata and Project history                                                                                                                                                                            |
+| Task                                          | `Task`, `task_id`, `taskId`                                                                                                                                                                                     |
+| Tasks                                         | Task collections and Task APIs                                                                                                                                                                                  |
+| Dev mode                                      | `chatTimelineDetailLevel` in the `eigent-page-tab` store: `trajectory` when on, `narrative` when off; `toggle-timeline-view` command; `chat.timeline-dev-mode` and `layout.shortcuts.toggle-timeline-view` keys |
+| Information density (Minimum, Moderate, Full) | `narrativeInformationDensity` in the `eigent-page-tab` store: `compact`, `balanced`, `expanded`; `chat.timeline-information-density` and `chat.timeline-density-*` keys                                         |
 
 Use sentence case in headings, tabs, table headers, menus, dialogs, tooltips,
 toasts, empty states, and accessibility labels. Use **Task** or **Tasks**, never
 all-cap **TASK** or **TASKS**. Do not expose **Project** as the product entity
 name.
+
+**Dev mode** and **Information density** are the two view settings in the
+Session menu of the event-native conversation timeline. Dev mode shows the
+full tool-by-tool trajectory instead of the narrative summary; Information
+density sets how much of the narrative is shown. In English copy write them in
+sentence case ("Dev mode", "Toggle dev mode"); do not expose "Trajectory" or
+"Narrative", which are implementation words. Other locales keep their existing
+translations.
 
 ## Presentation naming match
 
@@ -67,7 +77,9 @@ terminology update. This includes:
 - `Project`, Project stores, services, runtime modules, and API models;
 - `project_id`, `projectId`, `activeProjectId`, and other Project-keyed fields;
 - route and tab values such as `project`, `projects`, and `new-project`;
-- command and shortcut IDs such as `new-project`;
+- command and shortcut IDs such as `new-project` and `toggle-timeline-view`;
+- stored view-setting values such as `trajectory`, `narrative`, `compact`,
+  `balanced`, and `expanded`;
 - API paths, request fields, response fields, database columns, and event
   payloads that use Project terminology;
 - persisted keys such as `projectsBySpaceId`, `lastVisitedProjectBySpace`, and

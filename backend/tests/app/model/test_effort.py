@@ -123,14 +123,143 @@ def test_legacy_azure_without_explicit_effort_retains_chat():
     assert config == {}
 
 
+@pytest.mark.parametrize("requested", [None, ThinkingEffort.HIGH])
 @pytest.mark.parametrize("pinned", [None, "provider_default"])
-def test_unknown_model_cannot_sneak_effort_through_provider_json(pinned):
+@pytest.mark.parametrize(
+    "model_config",
+    [
+        {"reasoning_effort": "max"},
+        {"thinking_effort": "max"},
+        {"reasoning.effort": "max"},
+        {"reasoning": {"effort": "max"}},
+        {"extra_body": {"reasoning_effort": "max"}},
+        {"extra_body": {"reasoning": {"effort": "max"}}},
+    ],
+)
+def test_unknown_model_sends_the_users_own_effort_as_written(
+    model_config, pinned, requested
+):
+    config, transport = resolve_model_effort_config(
+        model_platform="openai-compatible-model",
+        model_type="grok-4",
+        model_config=model_config,
+        pinned_value=pinned,
+        requested_effort=requested,
+    )
+    assert transport == "chat_completions"
+    assert config == {"reasoning_effort": "max"}
+
+
+def test_unknown_model_effort_is_not_checked_against_a_mapping():
+    config, transport = resolve_model_effort_config(
+        model_platform="gemini",
+        model_type="gemini-2.5-flash",
+        model_config={"reasoning": {"effort": "none"}, "temperature": 0.2},
+        api_mode="responses",
+        pinned_value="provider_default",
+    )
+    assert transport == "responses"
+    assert config == {"reasoning": {"effort": "none"}, "temperature": 0.2}
+
+
+@pytest.mark.parametrize("pinned", [None, "provider_default"])
+@pytest.mark.parametrize("requested", [None, *ThinkingEffort])
+def test_unknown_model_without_own_effort_sends_none(pinned, requested):
+    config, transport = resolve_model_effort_config(
+        model_platform="anthropic",
+        model_type="claude-sonnet-4-5",
+        model_config={"max_tokens": 4096},
+        pinned_value=pinned,
+        requested_effort=requested,
+        has_function_tools=True,
+    )
+    assert transport == "chat_completions"
+    assert config == {"max_tokens": 4096}
+
+
+@pytest.mark.parametrize(
+    "model_config,error",
+    [
+        ({"reasoning_effort": 2}, "invalid_provider_effort"),
+        (
+            {"reasoning_effort": "high", "thinking_effort": "low"},
+            "conflicting_provider_efforts",
+        ),
+        (
+            {"reasoning": {"effort": "high", "summary": "auto"}},
+            "require api_mode=responses",
+        ),
+        (
+            {"extra_body": {"model": "other", "reasoning_effort": "high"}},
+            "cannot override the selected model",
+        ),
+    ],
+)
+@pytest.mark.parametrize("pinned", [None, "provider_default"])
+def test_unknown_model_own_effort_keeps_structural_checks(
+    model_config, error, pinned
+):
+    with pytest.raises(WorkspaceConfigError, match=error):
+        resolve_model_effort_config(
+            model_platform="deepseek",
+            model_type="deepseek-chat",
+            model_config=model_config,
+            pinned_value=pinned,
+        )
+
+
+@pytest.mark.parametrize(
+    "pinned,requested",
+    [
+        (None, None),
+        (None, ThinkingEffort.HIGH),
+        ("provider_default", None),
+        ("provider_default", ThinkingEffort.HIGH),
+    ],
+)
+def test_cloud_unknown_model_still_rejects_provider_json_effort(
+    pinned, requested
+):
     with pytest.raises(UnsupportedThinkingEffortError):
         resolve_model_effort_config(
-            model_platform="azure",
-            model_type="unregistered-deployment",
+            model_platform="openai-compatible-model",
+            model_type="claude-sonnet-4-5",
             model_config={"reasoning_effort": "max"},
             pinned_value=pinned,
+            requested_effort=requested,
+            is_cloud=True,
+        )
+
+
+def test_resume_after_registration_keeps_the_users_own_effort():
+    # Only an unknown model is admitted as provider_default. Resuming after
+    # it is registered must send the same request as before.
+    config, _ = resolve_model_effort_config(
+        model_platform="azure",
+        model_type="gpt-6-sol",
+        model_config={"reasoning_effort": "high"},
+        pinned_value="provider_default",
+    )
+    assert config == {"reasoning_effort": "high"}
+    with pytest.raises(UnsupportedThinkingEffortError, match="not_admitted"):
+        resolve_model_effort_config(
+            model_platform="azure",
+            model_type="gpt-6-sol",
+            model_config={"reasoning_effort": "high"},
+            pinned_value="provider_default",
+            is_cloud=True,
+        )
+
+
+@pytest.mark.parametrize("value", ["xhigh", "max", "minimal"])
+def test_registered_model_still_rejects_unsupported_provider_json(value):
+    with pytest.raises(
+        UnsupportedThinkingEffortError, match="unsupported_provider_effort"
+    ):
+        resolve_model_effort_config(
+            model_platform="azure",
+            model_type="gpt-6-sol",
+            model_config={"reasoning_effort": value},
         )
 
 

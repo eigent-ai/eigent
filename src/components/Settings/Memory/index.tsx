@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -601,7 +602,7 @@ export default function Memory({
             className="flex flex-col gap-3 rounded-2xl bg-ds-bg-information-subtle-default p-4 sm:flex-row sm:items-start"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-neutral-subtle-default text-ds-icon-information-default-default">
-              <ScopeIcon className="h-5 w-5" aria-hidden />
+              <DsIcon icon={ScopeIcon} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -788,7 +789,7 @@ export default function Memory({
                     role="status"
                     className="inline-flex items-center gap-1 rounded-full border border-x border-y border-solid border-ds-hairline-default-default px-3 py-1 text-ds-text-base font-medium text-ds-ink-muted-default"
                   >
-                    <Check className="h-3.5 w-3.5" aria-hidden />{' '}
+                    <DsIcon icon={Check} recipe="main-compact" aria-hidden />{' '}
                     {t('setting.memory-sync-synced', {
                       defaultValue: 'Synced',
                     })}
@@ -842,7 +843,6 @@ export default function Memory({
                         })}
                       </span>
                       <span>
-                        {scopeState?.current_token_count ?? 0} /{' '}
                         {t('setting.memory-capacity-token-count', {
                           current: scopeState?.current_token_count ?? 0,
                           count: scopeState?.token_limit ?? 0,
@@ -884,7 +884,7 @@ export default function Memory({
                       )
                     }
                   >
-                    <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+                    <DsIcon icon={RefreshCw} aria-hidden />{' '}
                     {t('setting.memory-organise-action', {
                       defaultValue: 'Organise',
                     })}
@@ -964,7 +964,7 @@ export default function Memory({
                       );
                     }}
                   >
-                    <Plus aria-hidden />{' '}
+                    <DsIcon icon={Plus} aria-hidden />{' '}
                     {t('setting.add', { defaultValue: 'Add' })}
                   </Button>
                 </div>
@@ -1049,9 +1049,9 @@ export default function Memory({
                       onClick={() => setShowArchived((current) => !current)}
                     >
                       {showArchived ? (
-                        <ListChevronsDownUp aria-hidden />
+                        <DsIcon icon={ListChevronsDownUp} aria-hidden />
                       ) : (
-                        <ListChevronsUpDown aria-hidden />
+                        <DsIcon icon={ListChevronsUpDown} aria-hidden />
                       )}
                     </Button>
                   </TooltipSimple>
@@ -1077,7 +1077,7 @@ export default function Memory({
               ) : visibleEntries.length === 0 ? (
                 <div className="mt-4 flex flex-col items-center rounded-2xl bg-ds-neutral-subtle-default px-6 py-8 text-center">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ds-neutral-default-default text-ds-ink-muted-default">
-                    <Lightbulb className="h-5 w-5" aria-hidden />
+                    <DsIcon icon={Lightbulb} aria-hidden />
                   </div>
                   <div className="mt-3 text-ds-text-base font-semibold text-ds-ink-default-default">
                     {emptyStateCopy.title}
@@ -1101,7 +1101,7 @@ export default function Memory({
                         className="mt-2"
                         onClick={() => setShowArchived(true)}
                       >
-                        <Archive aria-hidden />{' '}
+                        <DsIcon icon={Archive} aria-hidden />{' '}
                         {t('setting.memory-view-archived', {
                           defaultValue: 'View archived',
                         })}
@@ -1176,7 +1176,7 @@ export default function Memory({
                                   )
                                 }
                               >
-                                <Save aria-hidden />{' '}
+                                <DsIcon icon={Save} aria-hidden />{' '}
                                 {t('setting.save', { defaultValue: 'Save' })}
                               </Button>
                             ) : (
@@ -1191,7 +1191,7 @@ export default function Memory({
                                   setEditingText(entry.content);
                                 }}
                               >
-                                <Pencil aria-hidden />{' '}
+                                <DsIcon icon={Pencil} aria-hidden />{' '}
                                 {t('setting.edit', { defaultValue: 'Edit' })}
                               </Button>
                             )
@@ -1209,9 +1209,10 @@ export default function Memory({
                                 })}
                                 className="box-border flex h-[28px] min-h-[28px] w-[28px] min-w-[28px] shrink-0 items-center justify-center text-ds-ink-default-default"
                               >
-                                <Star
+                                <DsIcon
+                                  icon={Star}
                                   aria-hidden
-                                  className="h-4 w-4 fill-current"
+                                  className="fill-current"
                                 />
                               </span>
                             ) : (
@@ -1228,7 +1229,11 @@ export default function Memory({
                                   void runAndReload(() => pinMemoryEntry(entry))
                                 }
                               >
-                                <Star aria-hidden className="fill-none" />
+                                <DsIcon
+                                  icon={Star}
+                                  aria-hidden
+                                  className="fill-none"
+                                />
                               </Button>
                             )
                           ) : null}
@@ -1245,7 +1250,7 @@ export default function Memory({
                                   defaultValue: 'More Memory actions',
                                 })}
                               >
-                                <Ellipsis aria-hidden />
+                                <DsIcon icon={Ellipsis} aria-hidden />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
@@ -1257,7 +1262,7 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <Check aria-hidden />{' '}
+                                  <DsIcon icon={Check} aria-hidden />{' '}
                                   {t('setting.memory-confirm', {
                                     defaultValue: 'Confirm Memory',
                                   })}
@@ -1271,7 +1276,7 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <ArchiveRestore aria-hidden />{' '}
+                                  <DsIcon icon={ArchiveRestore} aria-hidden />{' '}
                                   {t('setting.memory-restore', {
                                     defaultValue: 'Restore Memory',
                                   })}
@@ -1284,7 +1289,7 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <Archive aria-hidden />{' '}
+                                  <DsIcon icon={Archive} aria-hidden />{' '}
                                   {t('setting.memory-archive', {
                                     defaultValue: 'Archive Memory',
                                   })}

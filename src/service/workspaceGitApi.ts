@@ -23,6 +23,23 @@ export interface WorkspaceGitRepoState {
   digest: string;
 }
 
+/** An unresolved operation that pauses writes to the Space's checkout. */
+export interface WorkspaceBlockedOperation {
+  intent_id: string;
+  run_id: string;
+  project_id: string | null;
+  status: 'prepared' | 'needs_attention';
+  scope: 'exact_path' | 'broad_process';
+  relative_path: string | null;
+  trigger: string;
+  created_at: number;
+  updated_at: number;
+  /** False while the owning Task is still running. */
+  actionable: boolean;
+  can_checkpoint: boolean;
+  repo_state_digest: string | null;
+}
+
 export interface WorkspaceGitStatus {
   space_id: string;
   enabled: boolean;
@@ -41,6 +58,7 @@ export interface WorkspaceGitStatus {
     issues: string[];
     repo_state: WorkspaceGitRepoState;
   } | null;
+  blocked_operations?: WorkspaceBlockedOperation[];
 }
 
 export interface WorkspaceGitIdentity {
@@ -248,6 +266,38 @@ export const createWorkspaceSavePoint = async (
         defaultValue: 'Save progress',
       }),
   });
+
+const blockedOperationPath = (
+  spaceId: string,
+  intentId: string,
+  action: 'checkpoint' | 'dismiss'
+) =>
+  `/spaces/${encodeURIComponent(spaceId)}/git/blocked-operations/${encodeURIComponent(intentId)}:${action}`;
+
+export const checkpointBlockedWorkspaceOperation = async (
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: {
+    intentId: string;
+    operationRequestId: string;
+    expectedRepoStateDigest: string;
+  }
+): Promise<{ intent_id: string; status: string; commit_oids: string[] }> =>
+  fetchPost(blockedOperationPath(spaceId, input.intentId, 'checkpoint'), {
+    ...identityParams(identity),
+    operation_request_id: input.operationRequestId,
+    expected_repo_state_digest: input.expectedRepoStateDigest,
+  });
+
+export const dismissBlockedWorkspaceOperation = async (
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  intentId: string
+): Promise<{ intent_id: string; status: string; files_untouched: boolean }> =>
+  fetchPost(
+    blockedOperationPath(spaceId, intentId, 'dismiss'),
+    identityParams(identity)
+  );
 
 export const fetchWorkspaceGitHistory = async (
   spaceId: string,

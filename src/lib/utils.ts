@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatAppDate } from '@/lib/appDate';
 import { clsx, type ClassValue } from 'clsx';
 import { format, parseISO } from 'date-fns';
 import i18next from 'i18next';
@@ -89,13 +90,13 @@ export function formatDateTime(
       utcString.endsWith('Z') ? utcString : utcString + 'Z'
     );
     if (formatStr === 'MMM dd, yyyy HH:mm') {
-      return new Intl.DateTimeFormat(currentLocale(), {
+      return formatAppDate(date, {
         year: 'numeric',
         month: 'short',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      }).format(date);
+      });
     }
     return format(date, formatStr);
   } catch {
@@ -115,11 +116,11 @@ export function formatDate(utcString: string | null | undefined): string {
     const date = parseISO(
       utcString.endsWith('Z') ? utcString : utcString + 'Z'
     );
-    return new Intl.DateTimeFormat(currentLocale(), {
+    return formatAppDate(date, {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
-    }).format(date);
+    });
   } catch {
     return i18next.t('layout.invalid-date', {
       defaultValue: 'Invalid date',
@@ -189,9 +190,7 @@ export function localTimeToUTC(
 
   const utcHour = date.getUTCHours();
   const utcMinute = date.getUTCMinutes();
-  const localDay = date.getDate();
-  const utcDay = date.getUTCDate();
-  const dayOffset = utcDay - localDay;
+  const dayOffset = calendarDayOffset(date);
 
   return { utcHour, utcMinute, dayOffset };
 }
@@ -213,9 +212,22 @@ export function utcTimeToLocal(
 
   const localHour = date.getHours();
   const localMinute = date.getMinutes();
-  const utcDay = date.getUTCDate();
-  const localDay = date.getDate();
-  const dayOffset = localDay - utcDay;
+  const dayOffset = -calendarDayOffset(date) || 0;
 
   return { localHour, localMinute, dayOffset };
+}
+
+/** Compare complete calendar dates so month/year rollover remains a one-day shift. */
+function calendarDayOffset(date: Date): number {
+  const utcDay = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate()
+  );
+  const localDay = Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  );
+  return (utcDay - localDay) / (24 * 60 * 60 * 1000);
 }

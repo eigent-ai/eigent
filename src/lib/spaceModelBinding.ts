@@ -14,6 +14,7 @@
 
 import { fetchGet, proxyFetchGet } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
+import { createLocalError } from '@/lib/localError';
 import {
   buildAgentModelConfigFromProvider,
   type StoredModelProvider,
@@ -70,7 +71,7 @@ export async function recoverSpaceSessionModel(
 export function spaceModelError(
   reason: 'unavailable' | 'ambiguous' | 'changed' | 'unconfirmed'
 ): Error {
-  return new Error(i18next.t(`chat.space-model-${reason}`));
+  return createLocalError(i18next.t(`chat.space-model-${reason}`));
 }
 
 export async function fetchSpaceModelSelection(

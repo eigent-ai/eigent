@@ -36,6 +36,7 @@ from app.utils.workspace_paths import (
     run_output_root,
     runtime_owner_key,
     sanitize_identity,
+    space_folder_conflict,
     workspace_state_root,
 )
 
@@ -517,6 +518,29 @@ class WorkspaceStore:
         tmp_path.replace(path)
 
 
+class SpaceFolderNotUsableError(Exception):
+    """A Task cannot start because its Space folder holds Eigent's own data.
+
+    ``code`` is the stable reason a client branches on; the message is the
+    English fallback for clients that do not know the code.
+    """
+
+    _MESSAGES = {
+        "space_folder_is_home": (
+            "Eigent can't work directly in your home folder. Create a Space "
+            "from a folder inside it, such as Documents."
+        ),
+        "space_folder_holds_app_data": (
+            "Eigent can't work in a folder that holds its own app data. "
+            "Create a Space from another folder, such as Documents."
+        ),
+    }
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(self._MESSAGES.get(code, code))
+
+
 @dataclass(frozen=True)
 class FrozenTaskDirectories:
     working_directory: Path
@@ -718,6 +742,12 @@ class WorkspaceResolver:
             workdir_mode = getattr(task_lock, "workdir_mode", None)
             base_snapshot_id = None
 
+        # Refuse before anything is created, so the Task never gets as far as
+        # building agents whose runtime storage would overlap this folder.
+        conflict = space_folder_conflict(working_directory, email, user_id)
+        if conflict is not None:
+            raise SpaceFolderNotUsableError(conflict)
+
         working_directory.mkdir(parents=True, exist_ok=True)
         task_output.mkdir(parents=True, exist_ok=True)
         task_start_time = time.time()
@@ -777,6 +807,69 @@ class WorkspaceResolver:
         if workdir.exists():
             shutil.rmtree(workdir)
         return _copy_space_baseline(source_root, workdir)
+
+    def owned_project_workdir(
+        self,
+        *,
+        space_id: str,
+        project_id: str,
+        email: str,
+        user_id: str | int | None = None,
+    ) -> Path | None:
+        """Return the Project's Eigent-created workdir copy, if one exists.
+
+        The workdir is user-visible work, so callers that delete it rely on
+        every check here: owner-scoped path without symlinks, the copy marker,
+        and no overlap with any folder this owner has bound to a Space.
+        """
+
+        if (
+            sanitize_identity(space_id) != space_id
+            or sanitize_identity(project_id) != project_id
+        ):
+            raise ValueError("Invalid Project workdir identifier")
+        workdir = project_workdir_root(email, space_id, project_id, user_id)
+        if not workdir.exists() and not workdir.is_symlink():
+            return None
+        owner_root = workdir.parents[4]
+        resolved = workdir.resolve()
+        owned = owner_root.resolve() / workdir.relative_to(owner_root)
+        if workdir.is_symlink() or not resolved.is_dir() or resolved != owned:
+            raise ValueError("Project workdir is not an owned directory")
+        marker = workdir / WORKDIR_MARKER
+        marker_data = (
+            None if marker.is_symlink() else _read_workdir_marker(workdir)
+        )
+        if not marker_data or not marker_data.get("base_snapshot_id"):
+            raise ValueError("Project workdir has no Eigent workdir marker")
+        for binding in self.store.list_bindings(email, user_id):
+            root = Path(binding.workspace_root).expanduser().resolve()
+            if (
+                root == resolved
+                or root in resolved.parents
+                or resolved in root.parents
+            ):
+                raise ValueError("Project workdir overlaps a bound Space root")
+        return workdir
+
+    def delete_project_workdir(
+        self,
+        *,
+        space_id: str,
+        project_id: str,
+        email: str,
+        user_id: str | int | None = None,
+    ) -> bool:
+        workdir = self.owned_project_workdir(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+        if workdir is None:
+            return False
+        shutil.rmtree(workdir)
+        return True
 
 
 _resolver: WorkspaceResolver | None = None

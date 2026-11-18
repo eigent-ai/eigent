@@ -1519,6 +1519,14 @@ export class ProjectEventStore {
 }
 
 const projectEventStores = new Map<string, ProjectEventStore>();
+const projectEventStoreRegistryListeners = new Set<
+  (projectId: string) => void
+>();
+
+const notifyProjectEventStoreRegistry = (projectId: string) => {
+  for (const listener of projectEventStoreRegistryListeners)
+    listener(projectId);
+};
 
 export function getProjectEventStore(
   projectId: string,
@@ -1528,7 +1536,25 @@ export function getProjectEventStore(
   if (existing) return existing;
   const created = new ProjectEventStore(projectId, options);
   projectEventStores.set(projectId, created);
+  notifyProjectEventStoreRegistry(projectId);
   return created;
+}
+
+/** Read an existing store without creating one, for passive consumers. */
+export function peekProjectEventStore(
+  projectId: string
+): ProjectEventStore | null {
+  return projectEventStores.get(projectId) ?? null;
+}
+
+/** Observe stores being created or released, e.g. to bind passive readers. */
+export function subscribeProjectEventStores(
+  listener: (projectId: string) => void
+): () => void {
+  projectEventStoreRegistryListeners.add(listener);
+  return () => {
+    projectEventStoreRegistryListeners.delete(listener);
+  };
 }
 
 /** Reset an overwritten same-id Project without stranding mounted consumers. */
@@ -1541,6 +1567,7 @@ export function releaseProjectEventStore(projectId: string): void {
   if (!store) return;
   store.dispose();
   projectEventStores.delete(projectId);
+  notifyProjectEventStoreRegistry(projectId);
 }
 
 export function resetProjectEventStoresForTests(): void {

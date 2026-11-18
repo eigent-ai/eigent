@@ -285,7 +285,7 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     ).toBeLessThan(mocks.startTask.mock.invocationCallOrder[0]);
     expect(idleController.signal.aborted).toBe(true);
     expect(mocks.startTask).toHaveBeenCalledWith(
-      'new-trigger-run',
+      'queued-trigger',
       undefined,
       undefined,
       undefined,

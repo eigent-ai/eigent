@@ -35,6 +35,7 @@ import {
 import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
 import { resolveProjectStoragePath } from './utils/projectStoragePath';
+import { deleteOwnedTaskFiles } from './utils/taskFileCleanup';
 
 interface FileInfo {
   path: string;
@@ -522,20 +523,40 @@ export class FileReader {
         FILE_PREVIEW_LIMITS.textBytes
       )
     );
-    const bytesRead = Math.min(stats.size, limit);
     const handle = await fs.promises.open(localPath, 'r');
     try {
+      // The path stat only guards the file type. A writer may change or
+      // replace the file before open, so size must belong to this handle.
+      const openedStats = await handle.stat();
+      if (!openedStats.isFile())
+        throw new Error('Preview target is not a file');
+      const bytesRead = Math.min(openedStats.size, limit);
       const buffer = Buffer.alloc(bytesRead);
       const result = await handle.read(buffer, 0, bytesRead, 0);
+      const currentStats = await handle.stat();
+      // Counts from a changing file cannot prove completeness, even if a
+      // writer happened to leave it at the same size after our read. The
+      // check is best effort: coarse filesystem timestamps can hide a
+      // same-size rewrite.
+      const unchanged =
+        openedStats.size === currentStats.size &&
+        openedStats.mtimeMs === currentStats.mtimeMs &&
+        openedStats.ctimeMs === currentStats.ctimeMs;
+      // Bytes beyond the read existed both before and after it, so the
+      // preview is provably an excerpt even while a writer keeps appending.
+      const provablyTruncated =
+        Math.min(openedStats.size, currentStats.size) > result.bytesRead;
+      const totalBytes =
+        unchanged || provablyTruncated ? currentStats.size : null;
       const content = decodePreviewText(
         buffer.subarray(0, result.bytesRead),
-        result.bytesRead < stats.size
+        totalBytes === null || result.bytesRead < totalBytes
       );
       return {
         content: content ?? '',
         binary: content === null,
         bytesRead: result.bytesRead,
-        totalBytes: stats.size,
+        totalBytes,
       };
     } finally {
       await handle.close();
@@ -1114,32 +1135,18 @@ export class FileReader {
   public deleteTaskFiles(
     email: string,
     taskId: string,
-    projectId?: string
-  ): {
-    success: boolean;
-    path: { dirPath: string; logPath: string };
-  } {
-    const { dirPath, logPath } = this.resolveTaskPaths(
+    projectId?: string,
+    userId?: string | number | null,
+    spaceId?: string
+  ) {
+    return deleteOwnedTaskFiles({
+      homeDir: app.getPath('home'),
       email,
       taskId,
-      projectId
-    );
-
-    try {
-      let success = false;
-      if (fs.existsSync(dirPath)) {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        success = true;
-      }
-      if (fs.existsSync(logPath)) {
-        fs.rmSync(logPath, { recursive: true, force: true });
-        success = true;
-      }
-      return { success, path: { dirPath, logPath } };
-    } catch (err) {
-      console.error('Delete task files failed:', dirPath, err);
-      return { success: false, path: { dirPath, logPath } };
-    }
+      projectId,
+      userId,
+      spaceId,
+    });
   }
 
   public getLogFolder(email: string): string {

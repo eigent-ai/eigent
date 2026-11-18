@@ -12,8 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { loadFilePreview } from '@/lib/filePreviewLoader';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
+import fs from 'node:fs';
 import {
+  appendFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -55,6 +58,168 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
+  const line = 'weird ext\n';
+  const overBudget = line.repeat(
+    Math.ceil((FILE_PREVIEW_LIMITS.textBytes + 1) / line.length)
+  );
+  it.each([
+    {
+      name: 'small text appended before open',
+      initial: line,
+      timing: 'before-open',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: 20,
+      content: line.repeat(2),
+      completeness: 'complete',
+      totalBytes: 20,
+    },
+    {
+      name: 'small text appended after read',
+      initial: line,
+      timing: 'after-read',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: 20,
+      content: line,
+      completeness: 'unknown',
+      totalBytes: null,
+    },
+    {
+      name: 'small text truncated after read',
+      initial: line,
+      timing: 'after-read',
+      change: (filePath: string) => truncate(filePath, 0),
+      size: 0,
+      content: line,
+      completeness: 'unknown',
+      totalBytes: null,
+    },
+    {
+      name: 'over-budget text appended after read',
+      initial: overBudget,
+      timing: 'after-read',
+      change: (filePath: string) => appendFile(filePath, line),
+      size: overBudget.length + line.length,
+      content: overBudget.slice(0, FILE_PREVIEW_LIMITS.textBytes),
+      completeness: 'truncated',
+      totalBytes: overBudget.length + line.length,
+    },
+  ] as const)(
+    'uses opened-file facts for $name',
+    async ({
+      initial,
+      timing,
+      change,
+      size,
+      content,
+      completeness,
+      totalBytes,
+    }) => {
+      const filePath = await temporaryFile('unsupported.xyz', initial);
+      const reader = new FileReader(null as never);
+      const open = fs.promises.open.bind(fs.promises);
+      const openSpy = vi
+        .spyOn(fs.promises, 'open')
+        .mockImplementationOnce(async (...args) => {
+          if (timing === 'before-open') {
+            // Change the file after the path stat, before opening.
+            await change(filePath);
+          }
+          const handle = await open(...args);
+          if (timing === 'after-read') {
+            const read = handle.read.bind(handle);
+            vi.spyOn(handle, 'read').mockImplementationOnce(
+              async (...readArgs) => {
+                const result = await read(...readArgs);
+                await change(filePath);
+                return result;
+              }
+            );
+          }
+          return handle;
+        });
+      try {
+        const result = await loadFilePreview(
+          { name: 'unsupported.xyz', type: 'xyz', path: filePath },
+          {
+            ipcRenderer: {
+              invoke: async (channel, ...args) => {
+                if (channel === 'get-file-preview-metadata')
+                  return reader.getPreviewMetadata(args[0] as string);
+                if (channel === 'preview-text-file')
+                  return reader.previewTextFile(
+                    args[0] as string,
+                    args[1] as number
+                  );
+                throw new Error(`Unexpected channel: ${channel}`);
+              },
+            },
+          }
+        );
+        expect(openSpy).toHaveBeenCalledOnce();
+        expect((await fs.promises.stat(filePath)).size).toBe(size);
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness,
+          bytesRead: content.length,
+          totalBytes,
+        });
+        expect(result.content).toBe(content);
+      } finally {
+        openSpy.mockRestore();
+      }
+    }
+  );
+
+  it.each([
+    '',
+    'weird ext\n',
+    'x'.repeat(FILE_PREVIEW_LIMITS.textBytes),
+    'x'.repeat(FILE_PREVIEW_LIMITS.textBytes + 1),
+    '\u0000binary',
+  ])(
+    'loads real unknown-extension file bytes through the desktop IPC contract (%#)',
+    async (content) => {
+      const filePath = await temporaryFile('unsupported.xyz', content);
+      const reader = new FileReader(null as never);
+      const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+        if (channel === 'get-file-preview-metadata')
+          return reader.getPreviewMetadata(args[0] as string);
+        if (channel === 'preview-text-file')
+          return reader.previewTextFile(args[0] as string, args[1] as number);
+        throw new Error(`Unexpected channel: ${channel}`);
+      });
+      const result = await loadFilePreview(
+        { name: 'unsupported.xyz', type: 'xyz', path: filePath },
+        { ipcRenderer: { invoke } }
+      );
+      if (content.startsWith('\u0000')) {
+        expect(result.preview).toMatchObject({
+          kind: 'blocked',
+          reason: 'unsupported',
+        });
+        expect(result.content).toBeUndefined();
+      } else {
+        expect(result.content).toBe(
+          content.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+        );
+        expect(result.preview).toEqual({
+          kind: 'text',
+          completeness:
+            content.length > FILE_PREVIEW_LIMITS.textBytes
+              ? 'truncated'
+              : 'complete',
+          bytesRead: Math.min(content.length, FILE_PREVIEW_LIMITS.textBytes),
+          totalBytes: content.length,
+        });
+      }
+      expect(invoke).toHaveBeenLastCalledWith(
+        'preview-text-file',
+        filePath,
+        FILE_PREVIEW_LIMITS.textBytes
+      );
+    }
+  );
+
   it.each([4, 10])('fully reads a %i MiB HTML document', async (mib) => {
     const size = mib * 1024 * 1024;
     const content = `<html>${' '.repeat(size - 13)}</html>`;

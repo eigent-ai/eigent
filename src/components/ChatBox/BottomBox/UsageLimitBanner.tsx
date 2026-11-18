@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreditRecoveryActions } from '@/components/ChatBox/CreditRecoveryActions';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
@@ -29,6 +30,10 @@ export interface UsageLimitBannerProps {
   onAction: () => void;
   onRefresh?: () => void;
   onDismiss?: () => void;
+  /** Replaces the default buttons with Upgrade plan, Refresh, and own-key actions. */
+  creditRecovery?: boolean;
+  /** With creditRecovery, false leaves out Upgrade plan (the daily trial cap). */
+  upgrade?: boolean;
 }
 
 export function UsageLimitBanner({
@@ -41,6 +46,8 @@ export function UsageLimitBanner({
   onAction,
   onRefresh,
   onDismiss,
+  creditRecovery,
+  upgrade,
 }: UsageLimitBannerProps) {
   const { t } = useTranslation();
   return (
@@ -62,15 +69,23 @@ export function UsageLimitBanner({
           {refreshError && <DsText role="meta">{refreshError}</DsText>}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!onRefresh && refreshing}
-            onClick={onAction}
-          >
-            {actionLabel}
-          </Button>
-          {onRefresh && (
+          {creditRecovery ? (
+            <CreditRecoveryActions
+              refreshing={refreshing}
+              onRefresh={onRefresh ?? onAction}
+              upgrade={upgrade}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!onRefresh && refreshing}
+              onClick={onAction}
+            >
+              {actionLabel}
+            </Button>
+          )}
+          {onRefresh && !creditRecovery && (
             <Button
               size="sm"
               variant="outline"

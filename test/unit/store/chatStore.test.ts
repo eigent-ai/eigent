@@ -39,8 +39,10 @@ vi.mock('@/store/sessionExecutionStore', () => ({
   }),
 }));
 
+import { partitionLegacyMessageEvidence } from '@/components/ChatBox/EventTimeline/legacyReplyEvidence';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { v104GuiInputEvents } from '../../fixtures/v104GuiInput';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -159,13 +161,18 @@ import {
   waitForBackendReady,
 } from '@/api/http';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import { RUN_STREAM_REOPENED_EVENT } from '@/lib/events/durableRunEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
   reconcileTimelineRuns,
 } from '@/lib/projector/chat/presentation';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { getAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   getProjectEventStore,
   releaseProjectEventStore,
@@ -190,6 +197,7 @@ import {
   hasActiveSSEConnection,
   hasAnyActiveLegacySSEConnection,
   hasSSETransportForTasks,
+  injectHost,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -201,7 +209,11 @@ import {
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ExecutionStatus } from '../../../src/types';
-import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+} from '../../../src/types/constants';
 import completedRunDisplay from '../../fixtures/completed-run-display.json';
 import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
 
@@ -219,6 +231,21 @@ import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-d
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('saves plan edits to the supplied non-active Session', async () => {
+    const store = createChatStoreInstance();
+    store.getState().create('pane-run');
+    store
+      .getState()
+      .setTaskInfo('pane-run', [
+        { id: 'step', content: 'Keep the plan scoped' },
+      ] as any);
+    vi.mocked(fetchPut).mockResolvedValueOnce({});
+    await store.getState().savePlan('pane-run', 'pane-b');
+    expect(fetchPut).toHaveBeenCalledWith('/task/pane-b', {
+      task: [expect.objectContaining({ content: 'Keep the plan scoped' })],
+    });
   });
 
   describe('Confirmed user prompt resolution', () => {
@@ -1197,6 +1224,48 @@ describe('ChatStore - Core Functionality', () => {
       expect(fetchEventSource).not.toHaveBeenCalled();
     });
 
+    it('persists retired approval receipts through interruption, hydration and Resume', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('approval-run');
+      const request = {
+        id: 'old-ask',
+        role: 'agent' as const,
+        content: 'Approve write?',
+        step: AgentStep.ASK,
+        interaction: {
+          interaction_id: 'old-approval',
+          interaction_type: 'approval' as const,
+          run_id: taskId,
+          version: 0,
+          action_digest: 'old-digest',
+        },
+      };
+      result.current.getState().setMessages(taskId, [request]);
+      result.current
+        .getState()
+        .setActiveAskList(taskId, [{ ...request, id: 'queued-ask' }]);
+      result.current.getState().setDurableRunStatus(taskId, 'interrupted');
+      const saved = JSON.parse(
+        JSON.stringify(result.current.getState().tasks[taskId].messages)
+      );
+      expect(saved[0].interaction.receipt).toEqual({
+        runStatus: 'interrupted',
+      });
+      result.current.getState().setMessages(taskId, saved);
+      result.current.getState().setDurableRunStatus(taskId, 'running');
+      expect(
+        result.current.getState().tasks[taskId].messages[0].interaction
+      ).toMatchObject({
+        interaction_id: 'old-approval',
+        version: 0,
+        action_digest: 'old-digest',
+        receipt: { runStatus: 'interrupted' },
+      });
+      expect(
+        result.current.getState().tasks[taskId].askList[0].interaction?.receipt
+      ).toBeTruthy();
+    });
+
     it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
       const { result } = renderHook(() => useChatStore());
       const taskId = result.current.getState().create('failed-run');
@@ -1391,6 +1460,8 @@ describe('ChatStore - Core Functionality', () => {
 
       const beginStartup = ({
         separateOwner = false,
+        deferred = false,
+        previousHistoryId = null as string | null,
         replay = false,
         resume = false,
         triggerExecutionId = undefined as string | undefined,
@@ -1400,6 +1471,16 @@ describe('ChatStore - Core Functionality', () => {
         stores.push(caller, ...(separateOwner ? [owner] : []));
         const runId = owner.getState().create('attachment-run');
         owner.getState().setAttaches(runId, [file('submitted.txt')] as any);
+        if (deferred) {
+          owner.getState().removeTask(runId);
+          owner.getState().create('previous-run');
+          owner.getState().addMessages('previous-run', {
+            id: 'original',
+            role: 'user',
+            content: 'Original task',
+          });
+        }
+
         if (resume) {
           owner.getState().setStatus(runId, ChatTaskStatus.FINISHED);
           owner.getState().setDurableRunStatus(runId, 'interrupted');
@@ -1450,7 +1531,7 @@ describe('ChatStore - Core Functionality', () => {
             mode: 'single',
             spaceId: 'space-1',
           }),
-          getHistoryId: () => null,
+          getHistoryId: () => previousHistoryId,
           getAllChatStores: () => [{ chatId: 'primary', chatStore: owner }],
           setActiveChatStore: vi.fn(),
           getProjectModel: () => null,
@@ -1470,12 +1551,17 @@ describe('ChatStore - Core Functionality', () => {
           resume ? undefined : ([file('submitted.txt')] as any),
           undefined,
           'project-1',
-          'single' as any,
+          SessionMode.SINGLE_AGENT,
           replay
             ? undefined
             : {
                 preserveTaskId: true,
                 awaitAdmission: true,
+                ...(deferred
+                  ? {
+                      deferPresentationUntilAdmission: true,
+                    }
+                  : {}),
                 ...(resume
                   ? {
                       resumeRequestId: 'resume-existing-draft',
@@ -1599,6 +1685,560 @@ describe('ChatStore - Core Functionality', () => {
         ).toContain(executionId);
       });
 
+      it.each([false, true])(
+        'sends the local timezone for resume=%s',
+        async (resume) => {
+          const startup = beginStartup({ resume });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          expect(JSON.parse(stream.body).timezone).toBe(
+            Intl.DateTimeFormat().resolvedOptions().timeZone
+          );
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        }
+      );
+
+      it('keeps queued admission invisible and leaves the previous task selected after a busy refusal', async () => {
+        const startup = beginStartup({ deferred: true });
+        const outcome = startup.admission.catch((error) => error);
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        const rejection = new Response(
+          JSON.stringify({
+            detail: { code: 'project_run_active', message: 'Still running' },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } }
+        );
+        await expect(stream.onopen(rejection)).rejects.toMatchObject({
+          code: 'project_run_active',
+        });
+        startup.finishStream();
+        await outcome;
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(startup.owner.getState().tasks[startup.runId]).toBeUndefined();
+        expect(
+          startup.owner
+            .getState()
+            .tasks['previous-run'].messages.map((m) => m.content)
+        ).toEqual(['Original task']);
+      });
+
+      it('creates a queued cold task history after acceptance and never updates its predecessor', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(0);
+        expect(project.setHistoryId).not.toHaveBeenCalled();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { task_id: startup.runId, question: 'Submit this task' },
+          }),
+        });
+        await stream.onmessage({
+          data: JSON.stringify({
+            step: AgentStep.PROJECT_METADATA,
+            data: {
+              task_id: startup.runId,
+              project_name: 'Existing Session',
+              project_summary: 'Follow-up summary',
+            },
+          }),
+        });
+        expect(proxyFetchPost).toHaveBeenCalledWith(
+          '/api/v1/chat/history',
+          expect.objectContaining({
+            task_id: startup.runId,
+            run_id: startup.runId,
+            question: 'Submit this task',
+          }),
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
+        expect(project.setHistoryId).toHaveBeenCalledWith(
+          'project-1',
+          'mock-history-id'
+        );
+        expect(proxyFetchPut).toHaveBeenCalledWith(
+          '/api/v1/chat/history/mock-history-id',
+          expect.objectContaining({ summary: 'Follow-up summary' })
+        );
+        expect(proxyFetchPut).not.toHaveBeenCalledWith(
+          '/api/v1/chat/history/previous-history',
+          expect.anything()
+        );
+        await stream.onopen(response());
+        expect(
+          vi
+            .mocked(proxyFetchPost)
+            .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+        ).toHaveLength(1);
+        startup.finishStream();
+      });
+
+      it('acknowledges an accepted queue request while its history is delayed', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        let resolveHistory!: (value: unknown) => void;
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((resolve) => {
+                resolveHistory = resolve;
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const opening = stream.onopen(response());
+          await startup.admission;
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          resolveHistory({ id: 'queued-history' });
+          await opening;
+          expect(projectStoreState().setHistoryId).toHaveBeenCalledWith(
+            'project-1',
+            'queued-history'
+          );
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('keeps accepted queued work admitted when history fails and never falls back to the previous history', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const project = projectStoreState();
+        const getProject = project.getProjectById;
+        project.getProjectById = (id: string) => ({
+          ...getProject(id),
+          name: 'Existing Session',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockRejectedValueOnce(
+          new Error('history service unavailable')
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          await expect(stream.onopen(response())).resolves.toBeUndefined();
+          await expect(startup.admission).resolves.toBeUndefined();
+          await stream.onmessage({
+            data: JSON.stringify({
+              step: AgentStep.PROJECT_METADATA,
+              data: {
+                task_id: startup.runId,
+                project_name: 'Existing Session',
+                project_summary: 'Follow-up summary',
+              },
+            }),
+          });
+          await stream.onopen(response());
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(
+            startup.owner
+              .getState()
+              .tasks[startup.runId].messages.filter(
+                (message) => message.role === 'user'
+              )
+          ).toHaveLength(1);
+          expect(project.setHistoryId).not.toHaveBeenCalled();
+          expect(proxyFetchPut).not.toHaveBeenCalled();
+          expect(
+            vi
+              .mocked(proxyFetchPost)
+              .mock.calls.filter(([path]) => path === '/api/v1/chat/history')
+          ).toHaveLength(1);
+          startup.finishStream();
+        } finally {
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it.each([false, true])(
+        'binds delayed history independently of viewed tasks and preserves a newer history (newer=%s)',
+        async (newer) => {
+          const startup = beginStartup({
+            deferred: true,
+            previousHistoryId: 'previous-history',
+          });
+          const project = projectStoreState();
+          let resolveHistory!: (value: unknown) => void;
+          const originalPost = vi
+            .mocked(proxyFetchPost)
+            .getMockImplementation()!;
+          vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+            url === '/api/v1/chat/history'
+              ? new Promise((resolve) => {
+                  resolveHistory = resolve;
+                })
+              : originalPost(url, ...args)
+          );
+          try {
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const opening = stream.onopen(response());
+            await startup.admission;
+            startup.owner.getState().setActiveTaskId('previous-run');
+            if (newer) project.getHistoryId = () => 'newer-history';
+            resolveHistory({ id: 'queued-history' });
+            await opening;
+            if (newer) expect(project.setHistoryId).not.toHaveBeenCalled();
+            else
+              expect(project.setHistoryId).toHaveBeenCalledWith(
+                'project-1',
+                'queued-history'
+              );
+            startup.finishStream();
+          } finally {
+            vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+          }
+        }
+      );
+
+      it('bounds a stalled accepted-task history request without undoing admission', async () => {
+        const startup = beginStartup({
+          deferred: true,
+          previousHistoryId: 'previous-history',
+        });
+        const originalPost = vi.mocked(proxyFetchPost).getMockImplementation()!;
+        vi.mocked(proxyFetchPost).mockImplementation((url, ...args) =>
+          url === '/api/v1/chat/history'
+            ? new Promise((_, reject) => {
+                const options = args[2] as { signal: AbortSignal };
+                options.signal.addEventListener(
+                  'abort',
+                  () => reject(new Error('history timed out')),
+                  { once: true }
+                );
+              })
+            : originalPost(url, ...args)
+        );
+        try {
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          vi.useFakeTimers();
+          const opening = stream.onopen(response());
+          await expect(startup.admission).resolves.toBeUndefined();
+          await vi.advanceTimersByTimeAsync(5000);
+          await expect(opening).resolves.toBeUndefined();
+          expect(startup.owner.getState().activeTaskId).toBe(startup.runId);
+          expect(projectStoreState().setHistoryId).not.toHaveBeenCalled();
+          startup.finishStream();
+        } finally {
+          vi.useRealTimers();
+          vi.mocked(proxyFetchPost).mockImplementation(originalPost);
+        }
+      });
+
+      it('publishes a queued message once only after successful admission', async () => {
+        const startup = beginStartup({ deferred: true });
+        expect(startup.owner.getState().activeTaskId).toBe('previous-run');
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+        await stream.onopen(response());
+        const state = startup.owner.getState();
+        expect(state.activeTaskId).toBe(startup.runId);
+        expect(
+          state.tasks[startup.runId].messages.filter(
+            (message) => message.role === 'user'
+          )
+        ).toEqual([
+          expect.objectContaining({
+            id: startup.runId,
+            content: 'Submit this task',
+          }),
+        ]);
+        startup.finishStream();
+      });
+      it.each([
+        ['Use the browser to read the heading', false, true, false],
+        ['Read the heading', true, true, false],
+        ['Read the heading', true, false, false],
+        ['Read the heading', true, true, true],
+      ] as const)(
+        'restores Resume browser access for %s (recorded=%s, available=%s)',
+        async (prompt, usedBrowser, available, foreign) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: available,
+                targets: available
+                  ? [
+                      {
+                        url: 'about:blank#eigent-browser-toolkit=resume',
+                        webContentsId: 7,
+                      },
+                    ]
+                  : [],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          try {
+            vi.mocked(fetchGet).mockResolvedValue({
+              run_id: 'attachment-run',
+              project_id: foreign ? 'foreign-session' : 'project-1',
+              used_browser: usedBrowser,
+            });
+            const startup = beginStartup({ resume: true });
+            startup.owner.getState().addMessages(startup.runId, {
+              id: 'original',
+              role: 'user',
+              content: prompt,
+            });
+            startup.releaseReady();
+            const stream = await startup.getStream();
+            const body = JSON.parse(stream.body);
+            expect(fetchGet).toHaveBeenCalledWith(
+              '/runs/attachment-run',
+              { include_browser_evidence: true },
+              undefined,
+              expect.objectContaining({ signal: expect.any(AbortSignal) })
+            );
+            if (foreign)
+              expect(invoke).not.toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            else
+              expect(invoke).toHaveBeenCalledWith(
+                'get-embedded-browser-runtime'
+              );
+            expect(body.cdp_browsers).toEqual(
+              available && !foreign
+                ? [
+                    expect.objectContaining({
+                      managedBy: 'electron',
+                      targetUrl: 'about:blank#eigent-browser-toolkit=resume',
+                    }),
+                  ]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(
+              !available && !foreign
+            );
+            await stream.onopen(response());
+            await startup.admission;
+            startup.finishStream();
+          } finally {
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it.each([
+        ['Use the browser to read the heading', true, 'resolve'],
+        ['Read the heading', false, 'resolve'],
+        ['Read the heading', false, 'reject'],
+      ] as const)(
+        'bounds a stalled Resume browser hint for %s (browser=%s), ignores late %s',
+        async (prompt, needsBrowser, lateOutcome) => {
+          const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+          let resolveHint!: (value: unknown) => void;
+          let rejectHint!: (error: Error) => void;
+          let lookupSignal: AbortSignal | undefined;
+          let lookupOptions: Parameters<typeof fetchGet>[3];
+          let lookupStarted!: () => void;
+          const requested = new Promise<void>((resolve) => {
+            lookupStarted = resolve;
+          });
+          const hint = new Promise((resolve, reject) => {
+            resolveHint = resolve;
+            rejectHint = reject;
+          });
+          const invoke = vi.fn(async (channel: string) => {
+            if (channel === 'get-browser-port') return 9222;
+            if (channel === 'get-embedded-browser-runtime')
+              return {
+                port: 9222,
+                targetAvailable: true,
+                targets: [
+                  {
+                    url: 'about:blank#eigent-browser-toolkit=resume',
+                    webContentsId: 7,
+                  },
+                ],
+              };
+            if (channel === 'get-env-path') return '';
+            return undefined;
+          });
+          injectHost({ ipcRenderer: { invoke } } as any);
+          vi.mocked(fetchGet).mockImplementationOnce(
+            (_path, _params, _headers, options) => {
+              lookupOptions = options;
+              lookupSignal = options?.signal;
+              lookupStarted();
+              return hint;
+            }
+          );
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: prompt,
+          });
+          let stream: any;
+          try {
+            vi.useFakeTimers();
+            startup.releaseReady();
+            await requested;
+            expect(lookupOptions).toMatchObject({
+              expectedAccountKey: expect.any(String),
+              beforeRequest: expect.any(Function),
+            });
+            expect(lookupSignal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1499);
+            expect(fetchPost).not.toHaveBeenCalledWith(
+              expect.stringContaining('/resume'),
+              expect.anything(),
+              expect.anything(),
+              expect.anything()
+            );
+            await vi.advanceTimersByTimeAsync(1);
+            expect(lookupSignal?.aborted).toBe(true);
+            vi.useRealTimers();
+            stream = await startup.getStream();
+            const sentBody = stream.body;
+            const body = JSON.parse(sentBody);
+            expect(body.cdp_browsers).toEqual(
+              needsBrowser
+                ? [expect.objectContaining({ managedBy: 'electron' })]
+                : []
+            );
+            expect(body.browser_unavailable_on_resume).toBe(false);
+            await stream.onopen(response());
+            await startup.admission;
+            const callsAfterAdmission = invoke.mock.calls.length;
+            if (lateOutcome === 'resolve')
+              resolveHint({
+                run_id: startup.runId,
+                project_id: 'project-1',
+                used_browser: !needsBrowser,
+              });
+            else rejectHint(new Error('late history failure'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(stream.body).toBe(sentBody);
+            expect(invoke).toHaveBeenCalledTimes(callsAfterAdmission);
+          } finally {
+            vi.useRealTimers();
+            resolveHint({});
+            if (!stream) {
+              stream = await startup.getStream();
+              await stream.onopen(response());
+              await startup.admission;
+            }
+            startup.finishStream();
+            injectHost(null);
+            vi.mocked(fetchGet).mockReset();
+            if (originalFetch)
+              vi.mocked(fetchGet).mockImplementation(originalFetch);
+          }
+        }
+      );
+
+      it('still resumes when the earlier browser use cannot be read', async () => {
+        const originalFetch = vi.mocked(fetchGet).getMockImplementation();
+        const invoke = vi.fn(async (channel: string) => {
+          if (channel === 'get-browser-port') return 9222;
+          if (channel === 'get-embedded-browser-runtime')
+            return {
+              port: 9222,
+              targetAvailable: true,
+              targets: [
+                {
+                  url: 'about:blank#eigent-browser-toolkit=resume',
+                  webContentsId: 7,
+                },
+              ],
+            };
+          if (channel === 'get-env-path') return '';
+          return undefined;
+        });
+        injectHost({ ipcRenderer: { invoke } } as any);
+        try {
+          vi.mocked(fetchGet).mockRejectedValue(new Error('Brain busy'));
+          const startup = beginStartup({ resume: true });
+          startup.owner.getState().addMessages(startup.runId, {
+            id: 'original',
+            role: 'user',
+            content: 'Use the browser to read the heading',
+          });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+          const body = JSON.parse(stream.body);
+          expect(body.cdp_browsers).toEqual([
+            expect.objectContaining({ managedBy: 'electron' }),
+          ]);
+          expect(body.browser_unavailable_on_resume).toBe(false);
+          await stream.onopen(response());
+          await startup.admission;
+          startup.finishStream();
+        } finally {
+          injectHost(null);
+          vi.mocked(fetchGet).mockReset();
+          if (originalFetch)
+            vi.mocked(fetchGet).mockImplementation(originalFetch);
+        }
+      });
+
+      it.each([
+        ['a Trigger run as scheduled', 'memory-trigger', 'scheduled'],
+        ['a user run without a source', undefined, undefined],
+      ])(
+        'submits %s so Memory never learns trigger text',
+        async (_label, triggerExecutionId, source) => {
+          const startup = beginStartup({ triggerExecutionId });
+          startup.releaseReady();
+          const stream = await startup.getStream();
+
+          expect(JSON.parse(stream.body).source).toBe(source);
+          await stream.onopen(response());
+          await startup.admission;
+        }
+      );
+
       it('preserves draft files added after task preparation but before readiness and first open', async () => {
         const startup = beginStartup();
         const nextDraft = [file('next-turn.txt')];
@@ -1690,9 +2330,9 @@ describe('ChatStore - Core Functionality', () => {
         expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
           originalDraft
         );
-        expect(startup.owner.getState().tasks[startup.runId].messages).toEqual(
-          []
-        );
+        expect(
+          startup.owner.getState().tasks[startup.runId]?.messages ?? []
+        ).toEqual([]);
       });
 
       it('does not clear an unrelated active draft when replay opens', async () => {
@@ -1742,11 +2382,17 @@ describe('ChatStore - Core Functionality', () => {
 
       const startObservedLiveTask = async ({
         initialRunId = 'live-run',
+        projectId = 'project-1',
+        prompt = 'Create a game',
+        resetObservers = true,
         projectedStatus,
         executionId,
         resumeRequestId,
       }: {
         initialRunId?: string;
+        projectId?: string;
+        prompt?: string;
+        resetObservers?: boolean;
         projectedStatus?: 'failed' | 'completed' | 'cancelled' | 'interrupted';
         executionId?: string;
         resumeRequestId?: string;
@@ -1757,9 +2403,11 @@ describe('ChatStore - Core Functionality', () => {
           items: [],
           warning_code: null,
         });
-        runDomainEventHub.clear();
-        runEventIngressRegistry.clear();
-        runProjectionStore.clear();
+        if (resetObservers) {
+          runDomainEventHub.clear();
+          runEventIngressRegistry.clear();
+          runProjectionStore.clear();
+        }
 
         const streams = new Map<string, any>();
         vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
@@ -1785,11 +2433,11 @@ describe('ChatStore - Core Functionality', () => {
           }
         );
         projectStoreState.mockReturnValue({
-          activeProjectId: 'project-1',
+          activeProjectId: projectId,
           appendInitChatStore,
           getChatStore: () => store,
           getProjectById: () => ({
-            id: 'project-1',
+            id: projectId,
             mode: 'single',
             spaceId: 'space-1',
           }),
@@ -1820,10 +2468,10 @@ describe('ChatStore - Core Functionality', () => {
           undefined,
           undefined,
           undefined,
-          'Create a game',
+          prompt,
           [],
           executionId,
-          'project-1',
+          projectId,
           'single' as any,
           resumeRequestId
             ? {
@@ -1845,16 +2493,70 @@ describe('ChatStore - Core Functionality', () => {
         return { store, streamContaining };
       };
 
+      it.each([
+        AgentStep.PROJECT_METADATA,
+        AgentStep.TO_SUB_TASKS,
+        AgentStep.DEACTIVATE_AGENT,
+        AgentStep.END,
+      ])(
+        'preserves a renamed Session in history writes from %s',
+        async (step) => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const project = {
+            id: 'project-1',
+            name: 'My saved title',
+            metadata: { nameSource: 'manual' },
+          };
+          const current = projectStoreState();
+          projectStoreState.mockReturnValue({
+            ...current,
+            getProjectById: () => project,
+          } as any);
+          store
+            .getState()
+            .setSummaryTask('live-run', 'Generated task title|Task summary');
+          store
+            .getState()
+            .setTaskAssigning('live-run', [
+              { agent_id: 'agent-1', agent_name: 'worker', tasks: [], log: [] },
+            ] as any);
+          vi.mocked(proxyFetchPut).mockClear();
+
+          await streamContaining('/chat').onmessage({
+            data: JSON.stringify({
+              step,
+              data: {
+                task_id: 'live-run',
+                project_name: 'Generated task title',
+                summary_task: 'Generated task title|Task summary',
+                sub_tasks: [],
+                agent_id: 'agent-1',
+                agent_name: 'worker',
+                content: 'Done',
+              },
+            }),
+          });
+
+          expect(proxyFetchPut).toHaveBeenCalledWith(
+            expect.stringContaining('/api/v1/chat/history/'),
+            expect.objectContaining({ project_name: 'My saved title' })
+          );
+          expect(project.name).toBe('My saved title');
+        }
+      );
+
       const switchLegacyStreamToFollowUp = async ({
         store,
         streamContaining,
         initialRunId = 'live-run',
         followUpRunId = 'follow-up-run',
+        prompt = 'Improve the game',
       }: {
         store: ReturnType<typeof createChatStoreInstance>;
         streamContaining: (path: string) => any;
         initialRunId?: string;
         followUpRunId?: string;
+        prompt?: string;
       }) => {
         const legacyStream = streamContaining('/chat');
         const signal = legacyStream.signal as AbortSignal;
@@ -1880,7 +2582,7 @@ describe('ChatStore - Core Functionality', () => {
             step: AgentStep.NEW_TASK_STATE,
             data: {
               task_id: followUpRunId,
-              content: 'Improve the game',
+              content: prompt,
             },
           }),
         });
@@ -1912,6 +2614,540 @@ describe('ChatStore - Core Functionality', () => {
             originalProjectStoreImplementation
           );
         }
+      });
+
+      describe('browser preview event delivery', () => {
+        const url = 'http://localhost:8080/index.html';
+        const preview = () =>
+          usePageTabStore.getState().sessionPreviewByProject['project-1'];
+        // Browser Toolkit's listener emits these method/argument strings;
+        // exercise the live reducer, not the handoff helper directly.
+        const visitEvent = async (
+          stream: any,
+          step: (typeof AgentStep)[keyof typeof AgentStep],
+          message: string,
+          callId: string | null = 'visit-1',
+          runId?: string
+        ) => {
+          await stream.onmessage({
+            data: JSON.stringify({
+              step,
+              ...(runId ? { run_id: runId } : {}),
+              data: {
+                agent_name: 'single_agent',
+                process_task_id: runId || 'live-run',
+                toolkit_name: 'Browser Toolkit',
+                method_name: 'browser visit page',
+                tool_call_id: callId ?? undefined,
+                message,
+              },
+            }),
+          });
+        };
+        const activate = (
+          stream: any,
+          target = url,
+          callId?: string | null,
+          runId?: string
+        ) =>
+          visitEvent(stream, AgentStep.ACTIVATE_TOOLKIT, target, callId, runId);
+        const complete = (
+          stream: any,
+          target = url,
+          callId?: string | null,
+          runId?: string
+        ) =>
+          visitEvent(
+            stream,
+            AgentStep.DEACTIVATE_TOOLKIT,
+            JSON.stringify({ result: `Navigated to ${target}` }),
+            callId,
+            runId
+          );
+
+        beforeEach(() => {
+          injectHost({ electronAPI: null, ipcRenderer: window.ipcRenderer });
+          usePageTabStore.setState({
+            sessionPreviewProjectId: 'project-1',
+            sessionPreviewByProject: {},
+          });
+        });
+        afterEach(() => {
+          injectHost(null);
+          usePageTabStore.setState({ sessionPreviewByProject: {} });
+        });
+
+        describe('browser preview ownership probes', () => {
+          it('forward-compatible id guard: rejects explicitly old-Run activation before it can poison the fresh handoff', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            const currentUrl = 'http://localhost:8080/current.html';
+            const staleUrl = 'http://localhost:8080/stale.html';
+            const noCallId = (step: string, runId: string, message: string) =>
+              stream.onmessage({
+                data: JSON.stringify({
+                  step,
+                  run_id: runId,
+                  data: {
+                    agent_name: 'single_agent',
+                    process_task_id: runId,
+                    toolkit_name: 'Browser Toolkit',
+                    method_name: 'browser visit page',
+                    message,
+                  },
+                }),
+              });
+            await noCallId(
+              AgentStep.ACTIVATE_TOOLKIT,
+              'follow-up-run',
+              currentUrl
+            );
+            await noCallId(AgentStep.ACTIVATE_TOOLKIT, 'live-run', staleUrl);
+            await noCallId(
+              AgentStep.DEACTIVATE_TOOLKIT,
+              'follow-up-run',
+              JSON.stringify({ result: `Navigated to ${currentUrl}` })
+            );
+            const slice = preview()!;
+            expect(
+              slice.tabs.find((tab) => tab.id === slice.activeTabId)
+            ).toMatchObject({ url: currentUrl });
+          });
+
+          it('forward-compatible id guard: allows no-run-id legacy events for the fresh Run and rejects an explicitly old receipt', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call');
+            await complete(stream, url, 'new-call', 'live-run');
+            expect(preview()?.open).toBe(false);
+            await complete(stream, url, 'new-call');
+            expect(preview()?.open).toBe(true);
+          });
+
+          it('does not rearm when CONFIRMED binds the same prepared Run twice', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call', 'follow-up-run');
+            await complete(stream, url, 'new-call', 'follow-up-run');
+            usePageTabStore.getState().closeSessionPreview();
+            await stream.onmessage({
+              data: JSON.stringify({
+                step: AgentStep.CONFIRMED,
+                data: { question: 'Improve the game' },
+              }),
+            });
+            await activate(stream, url, 'another-call', 'follow-up-run');
+            await complete(stream, url, 'another-call', 'follow-up-run');
+            expect(preview()?.open).toBe(false);
+          });
+
+          it('a failed receipt leaves the fresh Run reveal available for later success', async () => {
+            const started = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp(started);
+            await activate(stream, url, 'new-call', 'follow-up-run');
+            await visitEvent(
+              stream,
+              AgentStep.DEACTIVATE_TOOLKIT,
+              '{"success":false}',
+              'new-call',
+              'follow-up-run'
+            );
+            expect(preview()?.open).toBe(false);
+            await activate(stream, url, 'retry-call', 'follow-up-run');
+            await complete(stream, url, 'retry-call', 'follow-up-run');
+            expect(preview()?.open).toBe(true);
+          });
+        });
+
+        describe('browser preview ownership boundaries', () => {
+          const unkeyed = (
+            stream: any,
+            step: (typeof AgentStep)[keyof typeof AgentStep],
+            message: string,
+            identity: {
+              run_id?: string;
+              project_id?: string;
+              data?: { run_id?: string; project_id?: string };
+            } = {}
+          ) =>
+            stream.onmessage({
+              data: JSON.stringify({
+                ...identity,
+                step,
+                data: {
+                  ...identity.data,
+                  agent_name: 'single_agent',
+                  toolkit_name: 'Browser Toolkit',
+                  method_name: 'browser visit page',
+                  message,
+                },
+              }),
+            });
+
+          it.each([
+            { run_id: 'live-run' },
+            { data: { run_id: 'live-run' } },
+            { run_id: 'follow-up-run', data: { run_id: 'live-run' } },
+            { project_id: 'project-2' },
+            { data: { project_id: 'project-2' } },
+            { project_id: 'project-1', data: { project_id: 'project-2' } },
+          ])(
+            'forward-compatible id guard: rejects foreign activation and completion identity %j',
+            async (identity) => {
+              const started = await startObservedLiveTask({
+                prompt: `Preview ${url}`,
+              });
+              await switchLegacyStreamToFollowUp(started);
+              const stream = started.streamContaining('/chat');
+              const staleUrl = 'http://localhost:8080/stale.html';
+              await activate(stream, url, null);
+              await unkeyed(
+                stream,
+                AgentStep.ACTIVATE_TOOLKIT,
+                staleUrl,
+                identity
+              );
+              await unkeyed(
+                stream,
+                AgentStep.DEACTIVATE_TOOLKIT,
+                '{"success":true}',
+                identity
+              );
+              expect(preview()).toBeUndefined();
+              await complete(stream, url, null);
+              expect(preview()).toMatchObject({ open: true, tabs: [{ url }] });
+              expect(
+                started.store.getState().tasks['follow-up-run'].webViewUrls
+              ).not.toContainEqual(expect.objectContaining({ url: staleUrl }));
+            }
+          );
+
+          it('keeps unkeyed legacy visits in parallel Sessions on their owning transports', async () => {
+            const first = await startObservedLiveTask({
+              prompt: `Open ${url}`,
+            });
+            await switchLegacyStreamToFollowUp(first);
+            const second = await startObservedLiveTask({
+              initialRunId: 'other-run',
+              projectId: 'project-2',
+              resetObservers: false,
+            });
+            usePageTabStore.getState().setSessionPreviewProject('project-2');
+            const a = first.streamContaining('/chat');
+            const b = second.streamContaining('/chat');
+            const otherUrl = 'http://localhost:8080/other.html';
+            await activate(a, url, null);
+            await activate(b, otherUrl, null);
+            await complete(a, url, null);
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState()).open
+            ).toBe(false);
+            await complete(b, otherUrl, null);
+            expect(preview()).toMatchObject({
+              tabs: [{ url, webviewId: expect.stringContaining('project-1:') }],
+            });
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState())
+            ).toMatchObject({
+              tabs: [
+                {
+                  url: otherUrl,
+                  webviewId: expect.stringContaining('project-2:'),
+                },
+              ],
+            });
+            usePageTabStore.getState().closeSessionPreview();
+            await activate(b, otherUrl, null);
+            await complete(b, otherUrl, null);
+            expect(
+              getSessionPreviewSlice(usePageTabStore.getState()).open
+            ).toBe(false);
+          });
+
+          it('rejects unkeyed activation from a superseded transport', async () => {
+            const previous = await startObservedLiveTask();
+            const oldStream = previous.streamContaining('/chat');
+            const current = await startObservedLiveTask({
+              resetObservers: false,
+            });
+            expect(oldStream.signal.aborted).toBe(true);
+            await unkeyed(
+              oldStream,
+              AgentStep.ACTIVATE_TOOLKIT,
+              'http://localhost:8080/stale.html'
+            );
+            expect(
+              previous.store.getState().tasks['live-run'].webViewUrls
+            ).toEqual([]);
+            const currentStream = current.streamContaining('/chat');
+            await activate(currentStream, url, null);
+            await complete(currentStream, url, null);
+            expect(preview()).toMatchObject({ open: true, tabs: [{ url }] });
+          });
+        });
+
+        it.each([url, 'http://localhost:8080/revised.html'])(
+          'reveals a later explicit preview request for %s on the reused Session stream',
+          async (nextUrl) => {
+            const started = await startObservedLiveTask({
+              prompt: `Open and preview ${url}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream);
+            await complete(stream);
+            expect(preview()).toMatchObject({ open: true });
+            usePageTabStore.getState().closeSessionPreview();
+            await switchLegacyStreamToFollowUp({
+              ...started,
+              prompt: `Open and preview ${nextUrl}`,
+            });
+            await activate(stream, nextUrl, 'visit-2', 'follow-up-run');
+            await complete(stream, nextUrl, 'visit-2', 'follow-up-run');
+            expect(preview()).toMatchObject({
+              open: true,
+              tabs: expect.arrayContaining([
+                expect.objectContaining({ type: 'browser', url: nextUrl }),
+              ]),
+            });
+            // Replayed receipts must not reopen a panel the user just closed.
+            usePageTabStore.getState().closeSessionPreview();
+            await activate(stream, nextUrl, 'visit-2', 'follow-up-run');
+            await complete(stream, nextUrl, 'visit-2', 'follow-up-run');
+            expect(preview()?.open).toBe(false);
+            expect(preview()?.tabs).toHaveLength(nextUrl === url ? 1 : 2);
+          }
+        );
+
+        it('discards an unfinished visit when the stream advances to another Run', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          // A receipt in another Run cannot consume the previous Run's URL.
+          await visitEvent(stream, AgentStep.ACTIVATE_TOOLKIT, url, undefined);
+          await switchLegacyStreamToFollowUp(started);
+          await complete(stream, url, 'visit-1', 'follow-up-run');
+          expect(preview()).toBeUndefined();
+        });
+
+        it('routes parallel visits to their owners while another Session is selected', async () => {
+          const first = await startObservedLiveTask({ prompt: `Open ${url}` });
+          const second = await startObservedLiveTask({
+            initialRunId: 'other-run',
+            projectId: 'project-2',
+            prompt: `Preview ${url}`,
+            resetObservers: false,
+          });
+          usePageTabStore.getState().setSessionPreviewProject('project-2');
+          const a = first.streamContaining('/chat');
+          const b = second.streamContaining('/chat');
+          await activate(a);
+          await activate(b, url, 'visit-1', 'other-run');
+          await complete(a);
+          expect(getSessionPreviewSlice(usePageTabStore.getState()).open).toBe(
+            false
+          );
+          await complete(b, url, 'visit-1', 'other-run');
+          expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+            'project-2'
+          );
+          const firstTab = preview()!.tabs[0];
+          const secondTab = getSessionPreviewSlice(usePageTabStore.getState())
+            .tabs[0];
+          expect(firstTab).toMatchObject({
+            url,
+            webviewId: expect.stringContaining('project-1:'),
+          });
+          expect(secondTab).toMatchObject({
+            url,
+            webviewId: expect.stringContaining('project-2:'),
+          });
+          usePageTabStore.getState().setSessionPreviewProject('project-1');
+          expect(
+            getSessionPreviewSlice(usePageTabStore.getState()).activeTabId
+          ).toBe(firstTab.id);
+        });
+
+        it.each([
+          ['', '{"success":true}'],
+          ['javascript:alert(1)', '{"success":true}'],
+          ['file:///tmp/index.html', '{"success":true}'],
+          ['https://example.com', '{"success":true}'],
+          [url, ''],
+          [url, '{"success":false,"result":"Navigation completed"}'],
+          [url, '{"error":"failed","result":"Navigation completed"}'],
+          [url, '{"snapshot":"Navigation completed"}'],
+        ])(
+          'does not reveal an unsupported URL or failed receipt: %s / %s',
+          async (target, receipt) => {
+            const started = await startObservedLiveTask({
+              prompt: `Preview ${target}`,
+            });
+            const stream = started.streamContaining('/chat');
+            await activate(stream, target);
+            await visitEvent(stream, AgentStep.DEACTIVATE_TOOLKIT, receipt);
+            expect(preview()).toBeUndefined();
+          }
+        );
+
+        it('ignores a stale Run receipt and waits for the matching tool call', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          await activate(stream);
+          await visitEvent(
+            stream,
+            AgentStep.DEACTIVATE_TOOLKIT,
+            '{"success":true}',
+            'visit-1',
+            'old-run'
+          );
+          await complete(stream, url, 'unrelated-call');
+          expect(preview()).toBeUndefined();
+          await complete(stream);
+          expect(preview()?.open).toBe(true);
+        });
+
+        it('restores the owning preview after a cold store hydration without stale navigation state', async () => {
+          const started = await startObservedLiveTask({
+            prompt: `Preview ${url}`,
+          });
+          const stream = started.streamContaining('/chat');
+          await activate(stream);
+          await complete(stream);
+          const tab = preview()!.tabs[0];
+          if (tab.type !== 'browser') throw new Error('Expected a browser tab');
+          usePageTabStore.getState().updateBrowserPreviewTab(tab.id, {
+            navigation: { ...tab.navigation, isLoading: true, canGoBack: true },
+          });
+          const saved = window.localStorage.getItem('eigent-page-tab')!;
+          closeSSEConnectionsForTasks(['live-run']);
+          usePageTabStore.setState({
+            sessionPreviewProjectId: null,
+            sessionPreviewByProject: {},
+          });
+          window.localStorage.setItem('eigent-page-tab', saved);
+          await usePageTabStore.persist.rehydrate();
+          usePageTabStore.getState().setSessionPreviewProject('other-session');
+          expect(getSessionPreviewSlice(usePageTabStore.getState()).open).toBe(
+            false
+          );
+          usePageTabStore.getState().setSessionPreviewProject('project-1');
+          expect(
+            getSessionPreviewSlice(usePageTabStore.getState())
+          ).toMatchObject({
+            open: true,
+            activeTabId: tab.id,
+            tabs: [
+              {
+                id: tab.id,
+                url,
+                webviewId: tab.webviewId,
+                navigation: { isLoading: false, canGoBack: false },
+              },
+            ],
+          });
+          usePageTabStore.getState().closeSessionPreview();
+          // Even a late callback retained by the old renderer cannot reopen it.
+          await complete(stream);
+          expect(preview()?.open).toBe(false);
+        });
+
+        it.each(['cloud', 'local_durable'] as const)(
+          'does not reveal historical browser events through %s replay',
+          async (replaySource) => {
+            await startObservedLiveTask({ prompt: `Open ${url}` });
+            closeSSEConnectionsForTasks(['live-run']);
+            const replay = createChatStoreInstance();
+            stores.push(replay);
+            replay.getState().create('historical-run');
+            if (replaySource === 'cloud')
+              vi.mocked(proxyFetchGet).mockResolvedValueOnce([]);
+            vi.mocked(fetchEventSource).mockImplementationOnce(
+              async (_url, options) => {
+                await options.onopen?.(
+                  new Response('', {
+                    status: 200,
+                    headers: { 'content-type': 'text/event-stream' },
+                  })
+                );
+                for (const [index, step] of [
+                  AgentStep.ACTIVATE_TOOLKIT,
+                  AgentStep.DEACTIVATE_TOOLKIT,
+                ].entries()) {
+                  const data = {
+                    agent_name: 'single_agent',
+                    process_task_id: 'historical-run',
+                    toolkit_name: 'Browser Toolkit',
+                    method_name: 'browser visit page',
+                    tool_call_id: 'old-call',
+                    message:
+                      index === 0
+                        ? url
+                        : JSON.stringify({ result: `Navigated to ${url}` }),
+                  };
+                  await options.onmessage?.({
+                    id: String(index + 1),
+                    event: 'message',
+                    data: JSON.stringify(
+                      replaySource === 'cloud'
+                        ? { step, data }
+                        : {
+                            event_id: `old-${index}`,
+                            run_id: 'historical-run',
+                            project_id: 'project-1',
+                            sequence: index + 1,
+                            event_type: `legacy.${step}`,
+                            legacy_step: step,
+                            payload: data,
+                          }
+                    ),
+                  });
+                }
+              }
+            );
+            await replay
+              .getState()
+              .startTask(
+                'historical-run',
+                'replay',
+                undefined,
+                0,
+                undefined,
+                undefined,
+                undefined,
+                'project-1',
+                undefined,
+                { replaySource }
+              );
+            expect(preview()).toBeUndefined();
+            expect(
+              replay.getState().tasks['historical-run'].webViewUrls
+            ).toHaveLength(1);
+          }
+        );
       });
 
       describe('durable Trigger delivery integration', () => {
@@ -2243,10 +3479,10 @@ describe('ChatStore - Core Functionality', () => {
               {
                 run_id: 'live-run',
                 project_id: 'project-1',
-                status: 'failed',
+                status: 'timed_out',
                 version: 87,
                 updated_at: Date.now(),
-                latest_attempt: { attempt_number: 1, status: 'failed' },
+                latest_attempt: { attempt_number: 1, status: 'timed_out' },
               },
             ]);
             expect(
@@ -2431,6 +3667,163 @@ describe('ChatStore - Core Functionality', () => {
                   (message) => message.step === AgentStep.END
                 )
             ).toHaveLength(1);
+          });
+
+          it('recovers the finalized artifact manifest and attaches it to the missing END after legacy close', async () => {
+            const previousAuth = vi
+              .mocked(getAuthStore)
+              .getMockImplementation();
+            vi.mocked(getAuthStore).mockReturnValue({
+              email: 'user@example.com',
+              user_id: 42,
+            } as any);
+            injectHost({ ipcRenderer: { invoke: vi.fn() } } as any);
+            try {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const legacy = streamContaining('/chat');
+              const fixture = structuredClone(completedRunDisplay);
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events'
+                    ? fixture
+                    : path === '/files/changes'
+                      ? {
+                          artifacts: [
+                            {
+                              artifact_id: 'artifact-iss-atlas',
+                              filename: 'ISS_Orbital_Atlas.html',
+                              path: '/workspace/ISS_Orbital_Atlas.html',
+                              relativePath: 'ISS_Orbital_Atlas.html',
+                              changeType: 'generated',
+                            },
+                          ],
+                          scan_status: 'complete',
+                          truncated: false,
+                        }
+                      : undefined
+                )
+              );
+
+              legacy.onclose();
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+
+              await vi.waitFor(() =>
+                expect(
+                  store.getState().tasks['live-run'].artifactManifestFinalized
+                ).toBe(true)
+              );
+              const completed = store.getState().tasks['live-run'];
+              expect(completed).toMatchObject({
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+                artifactManifestScanStatus: 'complete',
+                artifactManifestTruncated: false,
+              });
+              expect(completed.artifactManifestFiles).toEqual([
+                expect.objectContaining({
+                  artifactId: 'artifact-iss-atlas',
+                  name: 'ISS_Orbital_Atlas.html',
+                  path: '/workspace/ISS_Orbital_Atlas.html',
+                  relativePath: 'ISS_Orbital_Atlas.html',
+                }),
+              ]);
+              expect(
+                completed.messages.find(
+                  (message) => message.step === AgentStep.END
+                )?.fileList
+              ).toEqual(completed.artifactManifestFiles);
+              expect(fetchGet).toHaveBeenCalledWith(
+                '/files/changes',
+                {
+                  task_id: 'live-run',
+                  project_id: 'project-1',
+                  email: 'user@example.com',
+                  user_id: 42,
+                },
+                undefined,
+                { signal: expect.any(AbortSignal) }
+              );
+            } finally {
+              injectHost(null);
+              vi.mocked(getAuthStore).mockImplementation(
+                previousAuth || (() => ({}) as any)
+              );
+            }
+          });
+
+          it('does not let a stalled artifact index hold back receipt recovery after legacy close', async () => {
+            const executionId = 'stalled-artifact-index';
+            const previousAuth = vi
+              .mocked(getAuthStore)
+              .getMockImplementation();
+            vi.mocked(getAuthStore).mockReturnValue({
+              email: 'user@example.com',
+              user_id: 42,
+            } as any);
+            injectHost({ ipcRenderer: { invoke: vi.fn() } } as any);
+            try {
+              const { store, streamContaining } = await startObservedLiveTask({
+                executionId,
+              });
+              const legacy = streamContaining('/chat');
+              const fixture = structuredClone(completedRunDisplay);
+              let manifestSignal: AbortSignal | undefined;
+              vi.mocked(fetchGet).mockImplementation(
+                (path, _params, _headers, options) => {
+                  if (path === '/files/changes') {
+                    manifestSignal = options?.signal;
+                    return new Promise(() => {});
+                  }
+                  return Promise.resolve(
+                    path === '/runs/live-run/events' ? fixture : undefined
+                  );
+                }
+              );
+              const endMessage = () =>
+                store
+                  .getState()
+                  .tasks['live-run'].messages.find(
+                    (message) => message.step === AgentStep.END
+                  );
+
+              vi.useFakeTimers();
+              legacy.onclose();
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+              await vi.advanceTimersByTimeAsync(4_999);
+              expect(manifestSignal?.aborted).toBe(false);
+              expect(endMessage()).toBeUndefined();
+
+              await vi.advanceTimersByTimeAsync(1);
+              vi.useRealTimers();
+              await vi.waitFor(() =>
+                expect(endMessage()).toMatchObject({
+                  id: 'fixture:final',
+                  content: 'The report is ready.',
+                  fileList: [],
+                })
+              );
+              expect(manifestSignal?.aborted).toBe(true);
+              expect(store.getState().tasks['live-run']).toMatchObject({
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+                tokens: 123,
+              });
+              expect(
+                store.getState().tasks['live-run'].artifactManifestFinalized
+              ).not.toBe(true);
+              await vi.waitFor(() =>
+                expect(receipts(executionId).at(-1)).toMatchObject({
+                  status: ExecutionStatus.Completed,
+                  tokens_used: 123,
+                })
+              );
+            } finally {
+              vi.useRealTimers();
+              injectHost(null);
+              vi.mocked(getAuthStore).mockImplementation(
+                previousAuth || (() => ({}) as any)
+              );
+            }
           });
 
           it.each(['existing full report', 'old journal without report'])(
@@ -2860,6 +4253,7 @@ describe('ChatStore - Core Functionality', () => {
               let journalSignal!: AbortSignal;
               vi.mocked(fetchGet).mockImplementation(
                 (_path, _params, _headers, options) => {
+                  if (!_path.endsWith('/events')) return Promise.resolve({});
                   journalSignal = options!.signal!;
                   return new Promise((resolve) => {
                     resolvePage = resolve;
@@ -2947,6 +4341,14 @@ describe('ChatStore - Core Functionality', () => {
               expect(store.getState().tasks['live-run'].durableRunStatus).toBe(
                 'interrupted'
               );
+              // A completed Resume later supersedes exactly this error.
+              expect(
+                store
+                  .getState()
+                  .tasks['live-run'].messages.find(
+                    (message) => message.step === AgentStep.ERROR
+                  )?.resumable
+              ).toBe(true);
               expect(fetchDelete).not.toHaveBeenCalledWith('/chat/project-1');
             }
             runEventIngressRegistry.ingest(
@@ -3475,6 +4877,457 @@ describe('ChatStore - Core Functionality', () => {
         }
       );
 
+      describe('task timer while the Run waits for the user', () => {
+        const startedAt = Date.parse('2026-10-01T10:00:00.000Z');
+        let sequence = 0;
+
+        beforeEach(() => {
+          // The legacy chat view, as a rollback build renders it.
+          vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+          vi.useFakeTimers({ toFake: ['Date'] });
+          vi.setSystemTime(startedAt);
+          sequence = 0;
+        });
+
+        afterEach(() => {
+          vi.useRealTimers();
+          vi.unstubAllEnvs();
+        });
+
+        const advance = (ms: number) => vi.setSystemTime(Date.now() + ms);
+        const taskOf = (store: ReturnType<typeof createChatStoreInstance>) =>
+          store.getState().tasks['live-run'];
+        /** What the legacy work log shows for the task right now. */
+        const shownMs = (store: ReturnType<typeof createChatStoreInstance>) =>
+          settleTaskElapsedMs(taskOf(store), Date.now());
+        const sendLegacy = (
+          streamContaining: (path: string) => any,
+          step: string,
+          data: Record<string, unknown>
+        ) =>
+          streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({ step, data }),
+          });
+        /** Deliver a durable Run event on the Run's own event stream. */
+        const deliver = async (
+          streamContaining: (path: string) => any,
+          eventType: string,
+          payload: Record<string, unknown> = {}
+        ) => {
+          sequence += 1;
+          await streamContaining('/runs/live-run/stream').onmessage?.({
+            event: 'run_event',
+            data: JSON.stringify({
+              event_id: `live-run:${sequence}`,
+              event_type: eventType,
+              legacy_step: null,
+              payload,
+              project_id: 'project-1',
+              run_id: 'live-run',
+              sequence,
+              run_version: sequence,
+              created_at: Date.now() / 1000,
+            }),
+          });
+          // The observer checks the Run projection in a microtask.
+          await Promise.resolve();
+          await Promise.resolve();
+        };
+        const approvalRequested = (id: string) => ({
+          approval_id: id,
+          prompt: { question: 'Allow the write?' },
+        });
+        const approvalDecided = (
+          id: string,
+          continued = true,
+          remaining = 0
+        ) => ({
+          approval_id: id,
+          interaction_id: id,
+          decision: continued ? 'approved' : 'rejected',
+          continued_attempt: continued,
+          remaining_interaction_count: remaining,
+        });
+        const startWorking = async () => {
+          expect(isChatEventTimelineEnabled()).toBe(false);
+          const started = await startObservedLiveTask();
+          await deliver(started.streamContaining, 'run.attempt_started', {
+            attempt_number: 1,
+          });
+          await sendLegacy(started.streamContaining, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'sub-1', content: 'Write the file', status: 'in_progress' },
+            ],
+          });
+          expect(taskOf(started.store)).toMatchObject({
+            status: ChatTaskStatus.RUNNING,
+            taskTime: Date.now(),
+          });
+          return started;
+        };
+        const controlOf =
+          (store: ReturnType<typeof createChatStoreInstance>) =>
+          (action: 'pause' | 'resume') =>
+            takeControlOfTask({
+              chatStore: store.getState(),
+              action,
+              projectId: 'project-1',
+              taskId: 'live-run',
+              request: vi.fn().mockResolvedValue(undefined),
+            });
+
+        it.each(['terminal event', 'run read'] as const)(
+          'holds the time worked during an approval and settles on the Run total after a %s',
+          async (ending) => {
+            const { store, streamContaining } = await startWorking();
+            advance(2_000);
+            expect(shownMs(store)).toBe(2_000);
+
+            await deliver(
+              streamContaining,
+              'approval.requested',
+              approvalRequested('approval:call-1')
+            );
+            await sendLegacy(streamContaining, AgentStep.ASK, {
+              agent: 'single_agent',
+              interaction_id: 'approval:call-1',
+              interaction_type: 'approval',
+              approval_id: 'approval:call-1',
+              question: 'Allow the write?',
+            });
+            expect(taskOf(store).taskTime).toBe(0);
+            advance(30_000);
+            // A step that arrives late on the chat stream does not restart it.
+            await sendLegacy(streamContaining, AgentStep.TODO_STATE, {
+              agent_id: 'single-1',
+              todos: [
+                {
+                  id: 'sub-1',
+                  content: 'Write the file',
+                  status: 'in_progress',
+                },
+              ],
+            });
+            expect(shownMs(store)).toBe(2_000);
+            advance(30_000);
+            expect(shownMs(store)).toBe(2_000);
+
+            await deliver(
+              streamContaining,
+              'approval.decided',
+              approvalDecided('approval:call-1')
+            );
+            expect(shownMs(store)).toBe(2_000);
+            advance(3_000);
+            expect(shownMs(store)).toBe(5_000);
+
+            if (ending === 'terminal event') {
+              await deliver(streamContaining, 'run.completed');
+            } else {
+              vi.mocked(fetchGet).mockResolvedValueOnce({
+                project_id: 'project-1',
+                run_id: 'live-run',
+                status: 'completed',
+                version: sequence + 1,
+                origin: 'local',
+                updated_at: Date.now() / 1000,
+                latest_attempt: { attempt_number: 1, status: 'completed' },
+                // The backend leaves the approval wait out of the Run total.
+                total_attempt_elapsed_ms: 5_000,
+              });
+              await streamContaining('/runs/live-run/stream').onmessage?.({
+                event: 'runtime_detached',
+                data: '{}',
+              });
+            }
+            await vi.waitFor(() =>
+              expect(taskOf(store).status).toBe(ChatTaskStatus.FINISHED)
+            );
+            expect(taskOf(store)).toMatchObject({
+              taskTime: 0,
+              elapsed: 5_000,
+            });
+            advance(10_000);
+            expect(shownMs(store)).toBe(5_000);
+          }
+        );
+
+        it('stays held until the last of two overlapping approvals is answered', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(8_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(20_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1', false, 1)
+          );
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          advance(20_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('continues after the remaining approval is answered when another one was cancelled', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-2')
+          );
+          advance(10_000);
+          // The other request is still open, so the task is not interrupted.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            remaining_interaction_count: 1,
+          });
+          expect(
+            runProjectionStore.getRun('project-1', 'live-run')?.status
+          ).toBe('waiting_for_user');
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+          advance(10_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-2')
+          );
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+          expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+        });
+
+        it.each(['active', 'queued'] as const)(
+          'closes the %s card of a cancelled approval and keeps the other one',
+          async (cancelledCard) => {
+            const { store, streamContaining } = await startWorking();
+            for (const id of ['approval:call-1', 'approval:call-2']) {
+              await deliver(
+                streamContaining,
+                'approval.requested',
+                approvalRequested(id)
+              );
+              await sendLegacy(streamContaining, AgentStep.ASK, {
+                agent: 'single_agent',
+                interaction_id: id,
+                interaction_type: 'approval',
+                approval_id: id,
+                question: 'Allow the write?',
+              });
+            }
+            const lastAsk = () =>
+              taskOf(store).messages.findLast(
+                (message) => message.step === AgentStep.ASK
+              )?.interaction?.interaction_id;
+            expect(lastAsk()).toBe('approval:call-1');
+            expect(
+              taskOf(store).askList.map(
+                (message) => message.interaction?.interaction_id
+              )
+            ).toEqual(['approval:call-2']);
+
+            const cancelled =
+              cancelledCard === 'active'
+                ? 'approval:call-1'
+                : 'approval:call-2';
+            const remaining =
+              cancelledCard === 'active'
+                ? 'approval:call-2'
+                : 'approval:call-1';
+            await deliver(streamContaining, 'approval.cancelled', {
+              approval_id: cancelled,
+              interaction_id: cancelled,
+              decision: 'rejected',
+              continued_attempt: false,
+              remaining_interaction_count: 1,
+            });
+
+            expect(taskOf(store).status).toBe(ChatTaskStatus.RUNNING);
+            expect(taskOf(store).activeAsk).toBe('single_agent');
+            expect(lastAsk()).toBe(remaining);
+            expect(taskOf(store).askList).toEqual([]);
+          }
+        );
+
+        it('ends as cancelled when stopped while an approval waits', async () => {
+          const { store, streamContaining } = await startWorking();
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          await deliver(streamContaining, 'run.cancel_requested');
+          // The backend closes the open request with the Run's own end.
+          await deliver(streamContaining, 'approval.cancelled', {
+            approval_id: 'approval:call-1',
+            interaction_id: 'approval:call-1',
+            decision: 'rejected',
+            continued_attempt: false,
+            reason: 'run_terminal:cancelled',
+            source: 'system',
+          });
+          expect(taskOf(store).durableRunStatus).not.toBe('interrupted');
+          await deliver(streamContaining, 'run.cancelled');
+          await vi.waitFor(() =>
+            expect(taskOf(store).durableRunStatus).toBe('cancelled')
+          );
+        });
+
+        it('holds the time worked while a question waits for an answer', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(streamContaining, 'interaction.requested', {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            request: { question: 'Which region?' },
+          });
+          await sendLegacy(streamContaining, AgentStep.ASK, {
+            agent: 'single_agent',
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            question: 'Which region?',
+          });
+          advance(58_000);
+          expect(shownMs(store)).toBe(2_000);
+
+          await deliver(streamContaining, 'interaction.resolved', {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            decision: { reply: 'eu-west' },
+            continued_attempt: true,
+            remaining_interaction_count: 0,
+          });
+          advance(3_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it('keeps the time worked when the decision ends the Run', async () => {
+          const { store, streamContaining } = await startWorking();
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(60_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1', false)
+          );
+          await vi.waitFor(() =>
+            expect(taskOf(store).status).toBe(ChatTaskStatus.FINISHED)
+          );
+          expect(taskOf(store)).toMatchObject({
+            durableRunStatus: 'interrupted',
+            taskTime: 0,
+            elapsed: 2_000,
+          });
+        });
+
+        it('keeps a pause taken before the wait off the time shown', async () => {
+          const { store, streamContaining } = await startWorking();
+          const control = controlOf(store);
+          advance(2_000);
+          await control('pause');
+          advance(10_000);
+          await control('resume');
+          advance(2_000);
+          await deliver(
+            streamContaining,
+            'approval.requested',
+            approvalRequested('approval:call-1')
+          );
+          advance(60_000);
+          expect(shownMs(store)).toBe(4_000);
+          await deliver(
+            streamContaining,
+            'approval.decided',
+            approvalDecided('approval:call-1')
+          );
+          advance(1_000);
+          expect(shownMs(store)).toBe(5_000);
+        });
+
+        it.each(['before', 'after'] as const)(
+          'adds nothing for a pause during the wait resumed %s the answer',
+          async (resumed) => {
+            const { store, streamContaining } = await startWorking();
+            const control = controlOf(store);
+            advance(2_000);
+            await deliver(
+              streamContaining,
+              'approval.requested',
+              approvalRequested('approval:call-1')
+            );
+            advance(20_000);
+            await control('pause');
+            expect(taskOf(store)).toMatchObject({
+              status: ChatTaskStatus.PAUSE,
+              taskTime: 0,
+              elapsed: 2_000,
+            });
+            advance(10_000);
+            if (resumed === 'before') {
+              await control('resume');
+              advance(30_000);
+              expect(taskOf(store)).toMatchObject({
+                status: ChatTaskStatus.RUNNING,
+                taskTime: 0,
+              });
+              expect(shownMs(store)).toBe(2_000);
+              await deliver(
+                streamContaining,
+                'approval.decided',
+                approvalDecided('approval:call-1')
+              );
+            } else {
+              await deliver(
+                streamContaining,
+                'approval.decided',
+                approvalDecided('approval:call-1')
+              );
+              advance(30_000);
+              expect(shownMs(store)).toBe(2_000);
+              await control('resume');
+            }
+            expect(shownMs(store)).toBe(2_000);
+            advance(3_000);
+            expect(shownMs(store)).toBe(5_000);
+          }
+        );
+      });
+
       it('ignores the previous Run snapshot after rebinding to a follow-up', async () => {
         const { store, streamContaining } = await startObservedLiveTask();
         const signal = await switchLegacyStreamToFollowUp({
@@ -3536,6 +5389,26 @@ describe('ChatStore - Core Functionality', () => {
         );
         expect(signal.aborted).toBe(true);
         expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('announces a reopened legacy stream so waiting requests re-check Brain', async () => {
+        const reopened = vi.fn();
+        const listener = (event: Event) =>
+          reopened((event as CustomEvent).detail);
+        window.addEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        try {
+          const { streamContaining } = await startObservedLiveTask();
+          expect(reopened).not.toHaveBeenCalled();
+          await streamContaining('/chat').onopen?.(
+            new Response('', {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          );
+          expect(reopened).toHaveBeenCalledWith({ runId: 'live-run' });
+        } finally {
+          window.removeEventListener(RUN_STREAM_REOPENED_EVENT, listener);
+        }
       });
 
       it.each(['event', 'snapshot'] as const)(
@@ -3926,6 +5799,33 @@ describe('ChatStore - Core Functionality', () => {
         expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
         expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
         expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+      });
+
+      it('stops holding a finished Run stream once that stream errors', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'idle-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+        expect(store.getState().tasks['idle-run'].status).toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBe('idle-run');
+
+        // Sleep or a network change: a finished Run never reconnects (#1212),
+        // so follow-up admission must not treat this stream as still held.
+        expect(() =>
+          legacyStream.onerror?.(new TypeError('Failed to fetch'))
+        ).toThrow();
+
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
+        expect((legacyStream.signal as AbortSignal).aborted).toBe(true);
       });
 
       describe('successful canonical legacy tails', () => {
@@ -5900,6 +7800,424 @@ describe('ChatStore - Core Functionality', () => {
         .handleConfirmTask('proj-replay', taskId, 'replay');
 
       expect(result.current.getState().tasks[taskId].taskTime).toBe(123_456);
+    });
+
+    it.each([
+      'cold',
+      'resolved',
+      'optimistic',
+      'competing',
+      'mirror',
+      'terminal',
+    ])(
+      'retains a submitted GUI reply exactly once during %s durable replay',
+      async (mode) => {
+        const reply = 'Use report.csv\nKeep the original columns.';
+        const store = createChatStoreInstance();
+        const taskId = store.getState().create();
+        const events = [
+          {
+            event_type: 'legacy.ask',
+            legacy_step: 'ask',
+            payload: {
+              agent: 'worker',
+              question: 'Which file?',
+              interaction_id: 'gui-question',
+              interaction_type: 'question',
+              run_id: taskId,
+            },
+          },
+          {
+            event_type: 'interaction.resolved',
+            payload: {
+              interaction_id: 'gui-question',
+              interaction_type: 'question',
+              decision_request_id: 'gui-submit',
+              decision: { reply },
+              continued_attempt: true,
+            },
+          },
+          ...(mode === 'mirror'
+            ? [
+                {
+                  event_type: 'legacy.human_reply',
+                  legacy_step: 'human_reply',
+                  payload: {
+                    agent: 'worker',
+                    reply,
+                    interaction_id: 'gui-question',
+                  },
+                },
+              ]
+            : []),
+        ];
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          for (const [index, event] of events.entries()) {
+            if (index === 1) {
+              if (mode === 'resolved') {
+                // The control completion bridge may close the ASK before
+                // its canonical event reaches the conversation stream.
+                store
+                  .getState()
+                  .markHumanInteractionResolved(taskId, 'gui-question');
+                store.getState().setActiveAsk(taskId, 'next-worker');
+                store.getState().setActiveAskList(taskId, [
+                  {
+                    id: 'queued-ask',
+                    role: 'agent',
+                    step: AgentStep.ASK,
+                    content: 'A later question',
+                    agent_name: 'later-worker',
+                  },
+                ]);
+              }
+              if (mode === 'terminal') {
+                store.getState().setStatus(taskId, ChatTaskStatus.FINISHED);
+              }
+              if (mode === 'optimistic' || mode === 'competing') {
+                store.getState().addMessages(taskId, {
+                  id: 'optimistic-reply',
+                  role: 'user',
+                  content:
+                    mode === 'competing' ? 'Unaccepted local answer' : reply,
+                  interactionResponseTo: 'gui-question',
+                });
+              }
+            }
+            const frame = {
+              event: 'run_event',
+              id: String(index + 1),
+              data: JSON.stringify({
+                ...event,
+                event_id: `gui-event-${index}`,
+                sequence: index + 1,
+                project_id: 'gui-session',
+                run_id: taskId,
+                created_at: 100 + index,
+              }),
+            };
+            await opts.onmessage?.(frame as any);
+            await opts.onmessage?.(frame as any);
+          }
+        });
+        await store
+          .getState()
+          .startTask(
+            taskId,
+            'replay',
+            undefined,
+            0,
+            undefined,
+            undefined,
+            undefined,
+            'gui-session',
+            undefined,
+            { replaySource: 'local_durable' }
+          );
+        const task = store.getState().tasks[taskId];
+        expect(
+          task.messages.filter((message) => message.role === 'user')
+        ).toEqual([
+          expect.objectContaining({
+            content: reply,
+            interactionResponseTo: 'gui-question',
+          }),
+        ]);
+        expect(task.resolvedInteractionIds).toEqual(['gui-question']);
+        if (mode === 'resolved') {
+          expect(task.activeAsk).toBe('next-worker');
+          expect(task.askList).toHaveLength(1);
+        } else if (mode === 'terminal') {
+          expect(task.status).toBe(ChatTaskStatus.FINISHED);
+        } else {
+          expect(task.activeAsk).toBe('');
+        }
+      }
+    );
+
+    it.each([true, false])(
+      'retains every v1.0.4 reply across store reconstruction (canonical: %s)',
+      async (canonical) => {
+        const events = v104GuiInputEvents([
+          'report.csv',
+          'report.csv',
+          'other.csv',
+        ]).filter(
+          (event) => canonical || event.event_type === 'legacy.human_reply'
+        );
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          for (const event of events) {
+            const frame = {
+              event: 'run_event',
+              id: String(event.sequence),
+              data: JSON.stringify(event),
+            };
+            await opts.onmessage?.(frame as any);
+            await opts.onmessage?.(frame as any);
+          }
+        });
+        for (let visit = 0; visit < 2; visit++) {
+          const store = createChatStoreInstance();
+          store.getState().create('run-1');
+          await store
+            .getState()
+            .startTask(
+              'run-1',
+              'replay',
+              undefined,
+              0,
+              undefined,
+              undefined,
+              undefined,
+              'project-1',
+              undefined,
+              { replaySource: 'local_durable' }
+            );
+          const retained = store.getState().tasks['run-1'].messages;
+          const presented = partitionLegacyMessageEvidence(retained);
+          expect(
+            retained.filter((message) => message.role === 'user')
+          ).toHaveLength(canonical ? 4 : 3);
+          expect(presented.evidence.map((message) => message.content)).toEqual(
+            canonical ? ['report.csv', 'report.csv', 'other.csv'] : []
+          );
+          expect(
+            presented.messages
+              .filter((message) => message.role === 'user')
+              .map((message) => message.content)
+          ).toEqual(
+            canonical
+              ? ['report.csv']
+              : ['report.csv', 'report.csv', 'other.csv']
+          );
+          closeSSEConnectionsForTasks(['run-1']);
+        }
+      }
+    );
+
+    it('rebuilds distinct equal replies after Session switching and store recreation', async () => {
+      const other = createChatStoreInstance();
+      other.getState().create('other-run');
+      other.getState().addMessages('other-run', {
+        id: 'other-draft',
+        role: 'user',
+        content: 'Other Session',
+      });
+      const before = other.getState().tasks['other-run'];
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (let index = 1; index <= 2; index++) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index),
+            data: JSON.stringify({
+              event_id: `decision-${index}`,
+              event_type: 'interaction.resolved',
+              project_id: 'gui-session',
+              run_id: 'resumed-run',
+              sequence: index,
+              payload: {
+                interaction_id: `question-${index}`,
+                interaction_type: 'question',
+                decision: { reply: 'Yes' },
+              },
+            }),
+          } as any);
+        }
+      });
+      for (let visit = 0; visit < 2; visit++) {
+        // Session selection and renderer restart reconstruct from Run events;
+        // neither an in-memory reply nor local composer state is required.
+        const store = createChatStoreInstance();
+        store.getState().create('resumed-run');
+        await store
+          .getState()
+          .startTask(
+            'resumed-run',
+            'replay',
+            undefined,
+            0,
+            undefined,
+            undefined,
+            undefined,
+            'gui-session',
+            undefined,
+            { replaySource: 'local_durable' }
+          );
+        expect(store.getState().tasks['resumed-run'].messages).toEqual([
+          expect.objectContaining({
+            content: 'Yes',
+            interactionResponseTo: 'question-1',
+          }),
+          expect.objectContaining({
+            content: 'Yes',
+            interactionResponseTo: 'question-2',
+          }),
+        ]);
+        closeSSEConnectionsForTasks(['resumed-run']);
+      }
+      expect(other.getState().tasks['other-run']).toEqual(before);
+    });
+
+    it('does not turn approval details or form values into a GUI text reply', async () => {
+      const store = createChatStoreInstance();
+      store.getState().create('approval-run');
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, payload] of [
+          { interaction_id: 'approval-1', decision: 'approved' },
+          {
+            interaction_id: 'form-1',
+            decision: { values: { password: 'private' } },
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index + 1),
+            data: JSON.stringify({
+              event_id: `non-text-${index}`,
+              event_type:
+                index === 0 ? 'approval.decided' : 'interaction.resolved',
+              project_id: 'gui-session',
+              run_id: 'approval-run',
+              sequence: index + 1,
+              payload,
+            }),
+          } as any);
+        }
+      });
+      await store
+        .getState()
+        .startTask(
+          'approval-run',
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'gui-session',
+          undefined,
+          { replaySource: 'local_durable' }
+        );
+      expect(store.getState().tasks['approval-run'].messages).toEqual([]);
+    });
+
+    const replayHumanInteractionEvents = async (
+      events: Array<{
+        event_type: string;
+        legacy_step?: string;
+        payload: object;
+      }>
+    ) => {
+      const store = createChatStoreInstance();
+      const taskId = store.getState().create();
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of events.entries()) {
+          await opts.onmessage?.({
+            event: 'run_event',
+            id: String(index + 1),
+            data: JSON.stringify({
+              ...event,
+              event_id: `restart-event-${index}`,
+              sequence: index + 1,
+              project_id: 'restart-session',
+              run_id: taskId,
+              created_at: 100 + index,
+            }),
+          } as any);
+        }
+      });
+      await store
+        .getState()
+        .startTask(
+          taskId,
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'restart-session',
+          undefined,
+          { replaySource: 'local_durable' }
+        );
+      return store.getState().tasks[taskId];
+    };
+    const approvalAsk = (interactionId: string) => ({
+      event_type: 'legacy.ask',
+      legacy_step: 'ask',
+      payload: {
+        agent: 'worker',
+        interaction_id: interactionId,
+        interaction_type: 'approval',
+        version: 0,
+        title: 'Allow write?',
+      },
+    });
+
+    it.each([
+      [
+        'approval.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          approval_id: 'restart-approval',
+          decision: 'rejected',
+          reason: 'tool_terminal_before_dispatch',
+        },
+      ],
+      [
+        'interaction.cancelled',
+        {
+          interaction_id: 'restart-approval',
+          interaction_type: 'approval',
+          reason: 'brain_restart',
+        },
+      ],
+      [
+        'approval.expired_rejected',
+        { approval_id: 'restart-approval', reason: 'approval_expired' },
+      ],
+      [
+        'interaction.expired',
+        { interaction_id: 'restart-approval', interaction_type: 'approval' },
+      ],
+    ])(
+      'clears a replayed ASK that ended with %s',
+      async (eventType, payload) => {
+        const task = await replayHumanInteractionEvents([
+          approvalAsk('restart-approval'),
+          { event_type: eventType, payload },
+        ]);
+        expect(task.activeAsk).toBe('');
+        expect(task.askList).toEqual([]);
+        expect(task.resolvedInteractionIds).toEqual(['restart-approval']);
+        expect(
+          task.messages.some(
+            (message) =>
+              message.interaction?.interaction_id === 'restart-approval'
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('makes a request asked again after Resume the active one', async () => {
+      const task = await replayHumanInteractionEvents([
+        approvalAsk('restart-approval'),
+        {
+          event_type: 'approval.cancelled',
+          payload: {
+            interaction_id: 'restart-approval',
+            decision: 'rejected',
+            reason: 'tool_terminal_before_dispatch',
+          },
+        },
+        approvalAsk('resumed-approval'),
+      ]);
+      expect(task.activeAsk).toBe('worker');
+      expect(task.askList).toEqual([]);
+      expect(
+        task.messages.findLast((message) => message.step === AgentStep.ASK)
+          ?.interaction?.interaction_id
+      ).toBe('resumed-approval');
     });
 
     it('replays a recorded human reply without leaving an active wait', async () => {

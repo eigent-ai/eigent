@@ -14,8 +14,17 @@
 
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { FileAccessDeniedError } from '@/lib/filePreviewLoader';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+/** Why a preview did not load: a general failure, or an expired file grant
+ * (the preview was open too long, or Eigent restarted since it opened). */
+export type PreviewLoadFailure = 'failed' | 'access-expired';
+
+export function previewLoadFailure(error: unknown): PreviewLoadFailure {
+  return error instanceof FileAccessDeniedError ? 'access-expired' : 'failed';
+}
 
 export function PreviewFailure({ message }: { message?: string }) {
   const { t } = useTranslation();
@@ -25,7 +34,7 @@ export function PreviewFailure({ message }: { message?: string }) {
       className="scrollbar-always-visible flex min-h-0 min-w-0 flex-1 flex-col items-center gap-ds-stack-related overflow-y-auto p-ds-panel-inset text-center text-ds-ink-muted-default"
     >
       <div className="my-auto flex min-w-0 flex-col items-center gap-ds-stack-related">
-        <DsIcon icon={AlertTriangle} recipe="detailed" />
+        <DsIcon icon={AlertTriangle} recipe="illustration" />
         <DsText
           role="body-large"
           weight="semibold"

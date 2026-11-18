@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import {
   Popover,
@@ -184,8 +185,9 @@ export function FoldedAgentCard({
               }
             }}
           >
-            <Pencil
-              className="h-4 w-4 shrink-0 text-ds-ink-default-default"
+            <DsIcon
+              icon={Pencil}
+              className="shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
             {t('workforce.edit', { defaultValue: 'Edit' })}
@@ -200,8 +202,9 @@ export function FoldedAgentCard({
               }
             }}
           >
-            <Copy
-              className="h-4 w-4 shrink-0 text-ds-ink-default-default"
+            <DsIcon
+              icon={Copy}
+              className="shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
             {t('workforce.duplicate', { defaultValue: 'Duplicate' })}
@@ -216,8 +219,9 @@ export function FoldedAgentCard({
               }
             }}
           >
-            <Trash2
-              className="h-4 w-4 shrink-0 text-ds-icon-error-default-default"
+            <DsIcon
+              icon={Trash2}
+              className="shrink-0 text-ds-icon-error-default-default"
               aria-hidden
             />
             {t('workforce.delete', { defaultValue: 'Delete' })}
@@ -265,7 +269,7 @@ export function FoldedAgentCard({
                 defaultValue: 'More actions for {{name}}',
               })}
             >
-              <Ellipsis className="h-4 w-4" />
+              <DsIcon icon={Ellipsis} />
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -287,8 +291,8 @@ export function FoldedAgentCard({
                     onDeleteUserAgent?.(agent.agent_id);
                   }}
                 >
-                  <Trash2
-                    size={16}
+                  <DsIcon
+                    icon={Trash2}
                     className="text-ds-ink-default-default group-hover:text-ds-icon-status-error-default-default"
                   />
                   Delete

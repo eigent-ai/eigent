@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
@@ -131,7 +132,12 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
       // Use ref to get the latest inputValue (avoids stale closure issue)
       const currentInputValue = inputValueRef.current;
-      let finalValue = currentInputValue;
+      // The input displays an option's label, so text matching a label
+      // commits that option's value instead of the label text.
+      const matchedOption = options.find(
+        (opt) => opt.label === currentInputValue.trim()
+      );
+      let finalValue = matchedOption ? matchedOption.value : currentInputValue;
 
       // Run custom commit handler if provided
       if (onInputCommit) {
@@ -162,7 +168,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       }
 
       isCommittingRef.current = false;
-    }, [value, onInputCommit, validateInput, onChange]);
+    }, [value, options, onInputCommit, validateInput, onChange]);
 
     // Handle click outside to close dropdown
     React.useEffect(() => {
@@ -303,8 +309,8 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert
-                  size={16}
+                <DsIcon
+                  icon={CircleAlert}
                   className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
@@ -346,9 +352,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             disabled={disabled}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-ds-ink-muted-default"
           />
-          <ChevronDown
+          <DsIcon
+            icon={ChevronDown}
             className={cn(
-              'h-4 w-4 shrink-0 text-ds-ink-default-default transition-transform',
+              'shrink-0 text-ds-ink-default-default transition-transform',
               isOpen && 'rotate-180'
             )}
           />
@@ -378,7 +385,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   {option.label}
                   {selectedOption?.value === option.value && (
                     <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-                      <Check className="h-4 w-4" />
+                      <DsIcon icon={Check} />
                     </span>
                   )}
                 </div>

@@ -400,7 +400,8 @@ def test_thinking_effort_aliases_are_normalized_and_unsupported_is_explicit():
         _capability().resolve(ThinkingEffort.XHIGH)
 
 
-def test_dynamic_provider_remap_is_opt_in_and_reported():
+@pytest.mark.parametrize("dynamic_model", [False, True])
+def test_dynamic_provider_remap_is_the_default_and_reported(dynamic_model):
     capability = ProviderModelCapability(
         supported_efforts=(ThinkingEffort.LOW, ThinkingEffort.HIGH),
         default_effort=ThinkingEffort.LOW,
@@ -409,15 +410,17 @@ def test_dynamic_provider_remap_is_opt_in_and_reported():
             ThinkingEffort.HIGH: "deep",
         },
         capability_revision="dynamic-v1",
-        dynamic_model=True,
+        dynamic_model=dynamic_model,
     )
 
     with pytest.raises(UnsupportedThinkingEffortError):
-        capability.resolve(ThinkingEffort.MEDIUM)
-    resolved = capability.resolve(
-        ThinkingEffort.MEDIUM,
-        allow_dynamic_remap=True,
-    )
+        capability.resolve(ThinkingEffort.MEDIUM, allow_dynamic_remap=False)
+    if not dynamic_model:
+        # Registered capabilities stay strict.
+        with pytest.raises(UnsupportedThinkingEffortError):
+            capability.resolve(ThinkingEffort.MEDIUM)
+        return
+    resolved = capability.resolve(ThinkingEffort.MEDIUM)
 
     assert resolved.requested is ThinkingEffort.MEDIUM
     assert resolved.effective is ThinkingEffort.LOW

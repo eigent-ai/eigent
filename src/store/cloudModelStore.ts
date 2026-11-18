@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import { modelDisplayName } from '@/lib/modelDisplayName';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -317,7 +318,7 @@ function chooseDefaultModelId(
 
 function humanizeModelId(modelId?: string | null): string {
   if (!modelId) return '';
-  return modelId
+  return modelDisplayName(modelId)
     .replace(/[_-]/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -544,7 +545,12 @@ export const useCloudModelStore = create<CloudModelState>()(
 
       getModelDisplayName: (modelId) => {
         const resolved = get().resolveCloudModel(modelId);
-        return resolved?.model.display_name || humanizeModelId(modelId);
+        // Show the model's name alone, even if the catalog name carries the
+        // gateway's provider prefix.
+        return (
+          modelDisplayName(resolved?.model.display_name) ||
+          humanizeModelId(modelId)
+        );
       },
 
       getEffectiveModelId: (modelId) => {

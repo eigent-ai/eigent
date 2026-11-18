@@ -190,6 +190,33 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('names ModelArk from the remote hand-off result', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_name: 'run_remote_sub_agent',
+          tool_call_id: 'remote-call-2',
+          request: { remote_agent_name: 'researcher' },
+          result: {
+            value:
+              'Saved fib.txt\n\n[RemoteSubAgent: provider: modelark_agents; session_id: rsa_1]',
+          },
+          display_output: 'Returned text (80 characters)',
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        subagentInvocation: true,
+        agentProvider: 'modelark_agents',
+      },
+    });
+  });
+
   it('accepts nested camel-case tool identity', () => {
     const node = adaptChatProjectionEvent(
       event({

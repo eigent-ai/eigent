@@ -126,6 +126,7 @@ async def authorize_tool_checkpoint(
                     "interaction_type": "approval",
                     "run_id": checkpoint.run_id,
                     "version": result.approval.version,
+                    "expires_at": result.approval.expires_at,
                     "approval_id": result.approval.approval_id,
                     "question": result.approval.prompt.get("question", ""),
                     "title": result.approval.prompt.get(
@@ -191,8 +192,8 @@ async def authorize_tool_checkpoint(
                 pass
             reply = None
         if reply == TASK_LOCK_CLEANUP_SENTINEL:
-            raise ToolPermissionRejectedError(
-                "approval wait was interrupted before tool dispatch"
+            raise asyncio.CancelledError(
+                "Task cleanup interrupted approval before tool dispatch"
             )
         approval = next(
             (

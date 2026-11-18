@@ -29,6 +29,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.models import latest_environment_attempt
+from app.run_journal.transitions import RUN_TERMINAL_STATES
+
 if TYPE_CHECKING:
     from app.run_journal.models import (
         AttemptEnvironmentBinding,
@@ -270,6 +273,7 @@ class RunCoordinator:
         self._dormant_closing = False
         self._admission_gates: dict[str, _AdmissionGate] = {}
         self._lock = asyncio.Lock()
+        self._environment_releases: dict[str, asyncio.Task[None]] = {}
         self._journal = journal
 
     def _run_journal(self) -> SQLiteRunJournal:
@@ -343,6 +347,18 @@ class RunCoordinator:
                         and self._admission_gates.get(gate_key) is gate
                     ):
                         self._admission_gates.pop(gate_key, None)
+
+    def has_admission_in_progress(self) -> bool:
+        """Whether any Run is being admitted by this process right now.
+
+        A Run row is written before its first Attempt exists. Only an admission
+        still inside its scope is starting work; a row left by a refused or
+        abandoned admission is not.
+        """
+
+        return any(
+            gate_key.startswith("run:") for gate_key in self._admission_gates
+        )
 
     async def attach_if_running(
         self,
@@ -692,7 +708,7 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return False, None
-        if run.status in {"completed", "failed", "cancelled"}:
+        if run.status in RUN_TERMINAL_STATES:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
@@ -778,7 +794,55 @@ class RunCoordinator:
             else None
         )
         completed = run is not None and run.status == "completed"
+        if completed:
+            self._schedule_terminal_environment_release(run_id, self._journal)
         return completed, result_event if completed else None
+
+    def _schedule_terminal_environment_release(
+        self, run_id: str, journal: SQLiteRunJournal | None
+    ) -> None:
+        # Removing a cloned environment can take seconds. Keep it off the path
+        # that yields the terminal answer frame and notifies cloud sync.
+        # ``journal`` is the store that recorded the terminal state: a cancel
+        # right after a restart resolves it lazily, before any binding.
+        if journal is None or run_id in self._environment_releases:
+            return
+        task = asyncio.create_task(
+            self._release_terminal_environments(run_id, journal)
+        )
+        self._environment_releases[run_id] = task
+        task.add_done_callback(
+            lambda _: self._environment_releases.pop(run_id, None)
+        )
+
+    async def _release_terminal_environments(
+        self, run_id: str, journal: SQLiteRunJournal
+    ) -> None:
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        if run is None or run.status not in RUN_TERMINAL_STATES:
+            return
+        from app.service.task import get_task_lock_if_exists
+        from app.utils.runtime_environment_cleanup import (
+            release_run_environments,
+        )
+
+        owner = get_task_lock_if_exists(run.project_id)
+        toolkits = () if owner is None else tuple(owner.registered_toolkits)
+        try:
+            for toolkit in toolkits:
+                release = getattr(toolkit, "release_run_environment", None)
+                if callable(release):
+                    await asyncio.to_thread(release, run_id)
+            # A toolkit that could not stop its sessions raised above. What is
+            # left has no live owner, e.g. a copy kept across a restart.
+            await asyncio.to_thread(
+                release_run_environments, run.project_id, run_id
+            )
+        except Exception:
+            logger.exception(
+                "Run environment cleanup needs attention",
+                extra={"run_id": run_id},
+            )
 
     async def _quiesce_run_background_sessions(
         self,
@@ -866,34 +930,29 @@ class RunCoordinator:
     ) -> AttemptEnvironmentBinding | None:
         from app.run_journal.models import AttemptEnvironmentBinding
 
-        for attempt in reversed(attempts):
-            if attempt.environment_spec_id is None:
-                continue
-            values = {
-                "environment_spec_digest": attempt.environment_spec_digest,
-                "bundle_revision_id": attempt.bundle_revision_id,
-                "permission_profile_revision": (
-                    attempt.permission_profile_revision
-                ),
-                "thinking_effort_requested": (
-                    attempt.thinking_effort_requested
-                ),
-                "thinking_effort_effective": (
-                    attempt.thinking_effort_effective
-                ),
-                "provider_capability_revision": (
-                    attempt.provider_capability_revision
-                ),
-            }
-            if any(value is None for value in values.values()):
-                raise RunRuntimeError(
-                    "latest Run environment binding is incomplete"
-                )
-            return AttemptEnvironmentBinding(
-                environment_spec_id=attempt.environment_spec_id,
-                **values,
+        attempt = latest_environment_attempt(attempts)
+        if attempt is None:
+            return None
+        values = {
+            "environment_spec_digest": attempt.environment_spec_digest,
+            "bundle_revision_id": attempt.bundle_revision_id,
+            "permission_profile_revision": (
+                attempt.permission_profile_revision
+            ),
+            "thinking_effort_requested": attempt.thinking_effort_requested,
+            "thinking_effort_effective": attempt.thinking_effort_effective,
+            "provider_capability_revision": (
+                attempt.provider_capability_revision
+            ),
+        }
+        if any(value is None for value in values.values()):
+            raise RunRuntimeError(
+                "latest Run environment binding is incomplete"
             )
-        return None
+        return AttemptEnvironmentBinding(
+            environment_spec_id=attempt.environment_spec_id,
+            **values,
+        )
 
     async def fork(
         self,
@@ -949,6 +1008,7 @@ class RunCoordinator:
                     "Cancelled Run Git finalization needs attention",
                     extra={"run_id": run_id},
                 )
+            self._schedule_terminal_environment_release(run_id, journal)
             return cancelled
 
     async def complete_cancelled_turn(
@@ -963,38 +1023,43 @@ class RunCoordinator:
         Skip stops the active model/tool turn but deliberately keeps the
         Project's compatibility generator alive for follow-ups. Cancelling
         the RuntimeHandle here would cancel the pump currently executing this
-        method, so the durable cancel transition is committed directly.
+        method. Share the admission gate with canonical cancel so no durable
+        cancel intent or terminal state can overtake a preparatory worker.
         """
 
-        journal = self._run_journal()
-        await asyncio.to_thread(
-            journal.request_cancel,
-            run_id,
-            request_id=request_id,
-            reason=reason,
-        )
-        await self._settle_unsuccessful_run(run_id)
-        await self._finalize_artifacts_before_terminal(run_id)
-        cancelled = await asyncio.to_thread(
-            journal.complete_cancel,
-            run_id,
-            request_id=request_id,
-        )
-        try:
-            from app.workspace_git import get_default_workspace_git_lifecycle
-
+        async with self.admission_scope(run_id):
+            journal = self._run_journal()
             await asyncio.to_thread(
-                get_default_workspace_git_lifecycle().finalize_run, run_id
+                journal.request_cancel,
+                run_id,
+                request_id=request_id,
+                reason=reason,
             )
-        except Exception:
-            logger.exception(
-                "Cancelled turn Git finalization needs attention",
-                extra={"run_id": run_id},
+            await self._settle_unsuccessful_run(run_id)
+            await self._finalize_artifacts_before_terminal(run_id)
+            cancelled = await asyncio.to_thread(
+                journal.complete_cancel,
+                run_id,
+                request_id=request_id,
             )
-        from app.run_sync.runtime import notify_default_cloud_sync_worker
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
 
-        notify_default_cloud_sync_worker()
-        return cancelled
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run, run_id
+                )
+            except Exception:
+                logger.exception(
+                    "Cancelled turn Git finalization needs attention",
+                    extra={"run_id": run_id},
+                )
+            from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+            notify_default_cloud_sync_worker()
+            self._schedule_terminal_environment_release(run_id, journal)
+            return cancelled
 
     async def _settle_unsuccessful_run(self, run_id: str) -> None:
         """Stop writers on every terminal path without rewriting the outcome."""
@@ -1049,6 +1114,10 @@ class RunCoordinator:
             for run_id, handle in list(self._dormant_handles.items()):
                 if not handle.consumer_alive:
                     self._dormant_handles.pop(run_id, None)
+        await asyncio.gather(
+            *tuple(self._environment_releases.values()),
+            return_exceptions=True,
+        )
 
     async def _pump(
         self, handle: RuntimeHandle, stream_factory: StreamFactory
@@ -1080,11 +1149,17 @@ class RunCoordinator:
                 },
             )
         except Exception as exc:
+            from app.run_journal.context_projection import ResumeContextError
+
             await self._commit_execution_terminal(
                 handle,
                 event_type="run.failed",
                 payload={
-                    "reason": "execution_backend_failure",
+                    "reason": (
+                        exc.reason
+                        if isinstance(exc, ResumeContextError)
+                        else "execution_backend_failure"
+                    ),
                     "error_type": type(exc).__name__,
                     "message": str(exc)[:4000],
                 },
@@ -1147,7 +1222,7 @@ class RunCoordinator:
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in RUN_TERMINAL_STATES:
             return
         try:
             await self._settle_unsuccessful_run(run_id)
@@ -1156,14 +1231,29 @@ class RunCoordinator:
                 "run.failed",
                 "run.cancelled",
                 "run.deadline_reached",
+                "run.interrupted",
+                "runtime.interrupted",
             }:
                 from app.artifacts import finalize_run_artifacts
 
-                await asyncio.to_thread(
-                    finalize_run_artifacts,
-                    self._journal,
-                    run,
-                )
+                try:
+                    await asyncio.to_thread(
+                        finalize_run_artifacts,
+                        self._journal,
+                        run,
+                    )
+                except Exception:
+                    if event_type not in {
+                        "run.interrupted",
+                        "runtime.interrupted",
+                    }:
+                        raise
+                    # An interruption stays resumable only once committed.
+                    # A later Resume or Cancel finalizes its outputs.
+                    logger.exception(
+                        "Interrupted Run artifact finalization needs attention",
+                        extra={"run_id": run_id},
+                    )
                 result_event = await asyncio.to_thread(
                     self._journal.get_run_final_result_event,
                     run_id,
@@ -1213,6 +1303,7 @@ class RunCoordinator:
                     "Terminal Run Git finalization needs attention",
                     extra={"run_id": run_id},
                 )
+            self._schedule_terminal_environment_release(run_id, self._journal)
             from app.run_sync.runtime import notify_default_cloud_sync_worker
 
             notify_default_cloud_sync_worker()
@@ -1247,11 +1338,7 @@ class RunCoordinator:
                 current = await asyncio.to_thread(
                     self._journal.get_run, handle.run_id
                 )
-                if current is None or current.status in {
-                    "completed",
-                    "failed",
-                    "cancelled",
-                }:
+                if current is None or current.status in RUN_TERMINAL_STATES:
                     return
                 if current.deadline_at is None:
                     # No deadline means there is nothing to poll. Policy
@@ -1279,12 +1366,14 @@ class RunCoordinator:
                     if (
                         current is None
                         or current.deadline_at is None
-                        or current.status
-                        in {"completed", "failed", "cancelled"}
+                        or current.status in RUN_TERMINAL_STATES
                     ):
                         return
                     if time.time() < current.deadline_at:
                         continue
+                if current.cancel_request_id is not None:
+                    # A persisted cancel intent wins; cancel ends the Run.
+                    return
                 attempt = (
                     await asyncio.to_thread(
                         self._journal.get_run_attempt,

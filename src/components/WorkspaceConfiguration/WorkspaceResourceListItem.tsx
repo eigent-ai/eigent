@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { ChevronRight, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -74,8 +75,9 @@ export function WorkspaceResourceListItem({
             {meta}
           </span>
         ) : null}
-        <ChevronRight
-          className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
+        <DsIcon
+          icon={ChevronRight}
+          className="shrink-0 text-ds-ink-muted-default"
           aria-hidden
         />
       </button>
@@ -88,7 +90,7 @@ export function WorkspaceResourceListItem({
           aria-label={deleteLabel}
           onClick={onDelete}
         >
-          <Trash2 className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Trash2} aria-hidden />
         </Button>
       ) : null}
     </div>

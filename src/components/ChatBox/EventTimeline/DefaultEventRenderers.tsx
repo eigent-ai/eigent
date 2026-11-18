@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -71,7 +72,7 @@ function StatusBadge({ status }: { status: string }) {
         statusClassName(status)
       )}
     >
-      <Icon aria-hidden className="size-3 shrink-0" />
+      <DsIcon icon={Icon} recipe="main-compact" />
       {t(`chat.tool-status-${status}`, { defaultValue: displayStatus(status) })}
     </span>
   );
@@ -274,9 +275,10 @@ export function ArtifactEventRenderer({
     <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2 text-ds-text-base font-medium text-ds-ink-default-default">
-          <FileText
+          <DsIcon
+            icon={FileText}
             aria-hidden
-            className="size-4 shrink-0 text-ds-ink-subtle-default"
+            className="shrink-0 text-ds-ink-subtle-default"
           />
           <span className="min-w-0 truncate">{label}</span>
         </span>
@@ -302,7 +304,7 @@ export function RunStatusEventRenderer({
       )}
       role="status"
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <DsIcon icon={Icon} recipe="main-compact" />
       <span className="block">
         {t('chat.timeline-run-status', {
           status: t(`chat.tool-status-${node.status}`, {

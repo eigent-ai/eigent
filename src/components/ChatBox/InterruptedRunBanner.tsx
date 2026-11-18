@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { RotateCcw, X } from 'lucide-react';
 
 export type InterruptedRunBannerAction = 'resuming' | 'cancelling' | null;
@@ -30,6 +31,9 @@ interface InterruptedRunBannerProps {
   onCancel: () => void;
   compact?: boolean;
   readOnly?: boolean;
+  disabledReason?: string;
+  /** Why Resume alone is unavailable; Cancel stays available. */
+  resumeDisabledReason?: string;
 }
 
 export function InterruptedRunBanner({
@@ -45,7 +49,10 @@ export function InterruptedRunBanner({
   onCancel,
   compact = false,
   readOnly = false,
+  disabledReason,
+  resumeDisabledReason,
 }: InterruptedRunBannerProps) {
+  const resumeUnavailableReason = disabledReason ?? resumeDisabledReason;
   return (
     <div
       role="status"
@@ -67,7 +74,7 @@ export function InterruptedRunBanner({
             )}
           </div>
           <span className="mt-1 block text-ds-text-meta font-normal opacity-80">
-            {description}
+            {disabledReason ?? description}
           </span>
           {!readOnly && (
             <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
@@ -77,9 +84,10 @@ export function InterruptedRunBanner({
                 tone="warning"
                 size="sm"
                 onClick={onCancel}
-                disabled={action !== null}
+                disabled={action !== null || Boolean(disabledReason)}
+                title={disabledReason}
               >
-                <X className="size-ds-icon-md" aria-hidden="true" />
+                <DsIcon icon={X} aria-hidden="true" />
                 <span>
                   {action === 'cancelling' ? cancellingLabel : cancelLabel}
                 </span>
@@ -90,9 +98,10 @@ export function InterruptedRunBanner({
                 tone="warning"
                 size="sm"
                 onClick={onResume}
-                disabled={action !== null}
+                disabled={action !== null || Boolean(resumeUnavailableReason)}
+                title={resumeUnavailableReason}
               >
-                <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
+                <DsIcon icon={RotateCcw} aria-hidden="true" />
                 <span>
                   {action === 'resuming' ? resumingLabel : resumeLabel}
                 </span>

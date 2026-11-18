@@ -27,6 +27,7 @@ import {
   type SessionMessageConfiguration,
   type SessionMessageIntent,
 } from '@/service/executionApi';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { waitForPendingProjectConfigurationWrites } from '@/store/projectStore';
 import {
@@ -72,6 +73,8 @@ export async function submitSessionMessage(
   await prepareSessionMessage(intent, configuration);
   assertExecutionScope(intent.scope);
   selectManagedSession(intent.scope);
+  // Let the Session layout open Activity for a user-started task.
+  usePageTabStore.getState().markSessionTaskStarted(intent.scope.projectId);
   try {
     return await deliverSessionMessage(intent);
   } finally {

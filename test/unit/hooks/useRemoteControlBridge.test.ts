@@ -70,6 +70,7 @@ import {
   __remoteControlBridgeTestHooks,
   ackFromDurableExecution,
 } from '@/hooks/useRemoteControlBridge';
+import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 
@@ -138,7 +139,7 @@ describe('useRemoteControlBridge internals', () => {
               },
             ],
           }
-        : { has_lock: true, status: 'running' }
+        : { has_lock: true, status: 'processing', consumer_alive: true }
     );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
@@ -377,5 +378,115 @@ describe('remote command durable ACK replay', () => {
       status: 'acknowledged',
       result: { run_id: 'run-1' },
     });
+  });
+});
+
+describe('remote human_reply command', () => {
+  const command = {
+    id: 'rc_cmd_reply',
+    session_id: 'session-1',
+    user_id: 1,
+    source_channel: 'remote_control',
+    type: 'human_reply',
+    target_project_id: 'project-1',
+    payload: { agent: 'worker', reply: 'report.csv' },
+  };
+
+  function stubBrain(replyPayload: Record<string, unknown>) {
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () =>
+        url.endsWith('/status') ? { has_lock: true } : replyPayload,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the remote command id as the decision request identity', async () => {
+    const fetchMock = stubBrain({});
+
+    await expect(
+      __remoteControlBridgeTestHooks.executeRemoteCommand(command, 'token')
+    ).resolves.toMatchObject({ status: 'acknowledged' });
+
+    const [path, init] = fetchMock.mock.calls.at(-1) as any;
+    expect(path).toBe('/chat/project-1/human-reply');
+    expect(JSON.parse(init.body)).toEqual({
+      agent: 'worker',
+      reply: 'report.csv',
+      interaction_id: null,
+      decision_request_id: 'remote-human-reply:rc_cmd_reply',
+    });
+  });
+
+  it('does not acknowledge a reply that Brain rejected', async () => {
+    stubBrain({
+      code: 1,
+      text: 'The requested human interaction is no longer pending.',
+    });
+
+    await expect(
+      __remoteControlBridgeTestHooks.executeRemoteCommand(command, 'token')
+    ).rejects.toMatchObject({
+      code: 'BRIDGE_HUMAN_REPLY_REJECTED',
+      message: 'The requested human interaction is no longer pending.',
+    });
+  });
+});
+
+describe('remote command auth failures', () => {
+  const command = {
+    id: 'rc_cmd_auth',
+    session_id: 'session-1',
+    user_id: 1,
+    source_channel: 'remote_control',
+    type: 'human_reply',
+    target_project_id: 'project-1',
+    payload: { agent: 'worker', reply: 'yes' },
+  };
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    useAuthStore.setState({ token: 'token-current', user_id: 1 });
+  });
+
+  it.each([401, 403])(
+    'fails only the command when the local Brain answers %i',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: false,
+          status,
+          headers: { get: () => 'application/json' },
+          json: async () => ({
+            detail: { code: 'local_control_capability_required' },
+          }),
+        }))
+      );
+
+      await expect(
+        __remoteControlBridgeTestHooks.executeRemoteCommand(
+          command,
+          'token-current'
+        )
+      ).rejects.toMatchObject({ code: 'BRIDGE_AUTH', status });
+
+      expect(useAuthStore.getState().token).toBe('token-current');
+    }
+  );
+
+  it('signs out only when the rejected token is still the current one', () => {
+    __remoteControlBridgeTestHooks.signOutRejectedBridgeToken('token-old');
+    expect(useAuthStore.getState().token).toBe('token-current');
+
+    __remoteControlBridgeTestHooks.signOutRejectedBridgeToken('token-current');
+    expect(useAuthStore.getState().token).toBeNull();
   });
 });

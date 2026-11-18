@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import stat
@@ -22,7 +23,12 @@ from pathlib import Path
 
 import pytest
 
-from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
+from app.run_journal import (
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
+    OptimisticConcurrencyError,
+    SQLiteRunJournal,
+)
 from app.service import skill_config_service, skill_service
 from app.workspace_bundle import (
     WorkspaceBundleBindingsIncomplete,
@@ -1514,3 +1520,164 @@ def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):
         assert proposal.error_code == (
             "desktop_restarted_during_materialization"
         )
+        rejected = reopened.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="rejected",
+            decided_by="user-1",
+        )
+        assert rejected.error_code == proposal.error_code
+        assert (
+            reopened.reconcile_startup(now=11).reconcilable_bundle_install_ids
+            == ()
+        )
+        assert (
+            reopened.get_workspace_bundle_install_proposal(
+                proposal.proposal_id
+            )
+            == rejected
+        )
+
+
+@pytest.mark.asyncio
+async def test_failed_import_rejection_retains_error_and_partial_assets(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    cloud.lose_projection_response_once = True
+    with pytest.raises(Exception):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    path = tmp_path / "state/spaces/space-1/configuration/skills/research.py"
+    original = path.read_bytes()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as reopened:
+        recovered = WorkspaceBundleInstaller(
+            reopened, service.configuration_repository, cloud
+        )
+        failed = reopened.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        )
+        assert failed.state == "needs_attention"
+        assert failed.error_code == "bundle_materialization_failed"
+        rejected = recovered.decide(
+            failed.proposal_id,
+            expected_version=failed.version,
+            approved=False,
+            decided_by="user-1",
+        )
+        assert rejected.state == "rejected"
+        assert rejected.error_code == failed.error_code
+        assert (
+            recovered.decide(
+                failed.proposal_id,
+                expected_version=failed.version,
+                approved=False,
+                decided_by="user-1",
+            )
+            == rejected
+        )
+        with pytest.raises(IdempotencyConflictError):
+            recovered.decide(
+                failed.proposal_id,
+                expected_version=failed.version,
+                approved=False,
+                decided_by="user-2",
+            )
+        assert path.read_bytes() == original
+        assert reopened.list_workspace_bundle_local_bindings(
+            failed.proposal_id
+        )
+        next_manifest = _manifest()
+        next_manifest["metadata"]["id"] = "different-bundle"
+        fresh = reopened.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-2",
+            request_id="request-2",
+            space_id="space-2",
+            bundle_id="different-bundle",
+            revision_id="different-bundle@1",
+            config_placement="sidecar",
+            manifest=next_manifest,
+            assets=[],
+            install_plan=failed.install_plan,
+        )
+        assert fresh.state == "proposed"
+        assert (
+            reopened.get_workspace_bundle_install_proposal(failed.proposal_id)
+            == rejected
+        )
+
+
+@pytest.mark.asyncio
+async def test_materializing_import_has_one_worker_and_cannot_be_rejected(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    entered, release = asyncio.Event(), asyncio.Event()
+    get_environment = cloud.get_environment
+    calls = 0
+
+    async def paused_environment(space_id):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        return await get_environment(space_id)
+
+    cloud.get_environment = paused_environment
+    running = asyncio.create_task(
+        service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    )
+    await entered.wait()
+    try:
+        current = journal.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        )
+        with pytest.raises(InvalidRunTransitionError):
+            service.decide(
+                current.proposal_id,
+                expected_version=current.version,
+                approved=False,
+                decided_by="user-1",
+            )
+        with pytest.raises(OptimisticConcurrencyError):
+            service.decide(
+                current.proposal_id,
+                expected_version=proposal.version,
+                approved=False,
+                decided_by="user-1",
+            )
+        # A replay must not obtain the existing worker's write authority.
+        with pytest.raises(InvalidRunTransitionError):
+            journal.transition_workspace_bundle_install_proposal(
+                current.proposal_id,
+                expected_version=current.version,
+                state="materializing",
+            )
+        with pytest.raises(InvalidRunTransitionError):
+            await service.materialize(
+                current.proposal_id,
+                expected_version=current.version,
+                space_root=tmp_path,
+                actor_id="user-1",
+            )
+        assert calls == 1
+    finally:
+        release.set()
+        await running
+    assert (
+        journal.get_workspace_bundle_install_proposal(
+            proposal.proposal_id
+        ).state
+        == "materialized"
+    )

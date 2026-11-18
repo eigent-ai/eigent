@@ -13,16 +13,23 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { SpaceWaitNotice } from '@/components/ChatBox/MessageItem/SpaceWaitNotice';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import { approvalRecordedReason } from '@/lib/approvalPresentation';
 import type {
   TimelineRunView,
   TimelineToolInvocation,
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
-import { errorCopy } from '@/lib/usageErrors';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
+import { errorCopy, type ErrorReason } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { usePresentedUsageReason } from '@/store/usageNoticeStore';
 import type { TFunction } from 'i18next';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -30,11 +37,14 @@ import { useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
 
+import {
+  ModelChangeDivider,
+  previousRecordedRunModel,
+} from './ModelChangeDivider';
 import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
-  RunActivityIndicator,
   statusIcon,
   statusLabel,
   type InteractiveTimelinePlan,
@@ -94,7 +104,10 @@ interface DetailedStatusTone {
   labelClassName: string;
 }
 
-function detailedStatusTone(status: string): DetailedStatusTone {
+function detailedStatusTone(
+  status: string,
+  runOutcome: boolean
+): DetailedStatusTone {
   if (
     status === 'completed' ||
     status === 'complete' ||
@@ -111,10 +124,12 @@ function detailedStatusTone(status: string): DetailedStatusTone {
       labelClassName: 'text-ds-text-status-running-default-default',
     };
   }
+  // A Run that timed out has ended; a timed-out tool call may still retry.
   if (
     status === 'failed' ||
     status === 'error' ||
-    status === 'outcome_unknown'
+    status === 'outcome_unknown' ||
+    (runOutcome && status === 'timed_out')
   ) {
     return {
       iconClassName: '!text-ds-text-status-error-default-default',
@@ -151,12 +166,14 @@ function detailedStatusTone(status: string): DetailedStatusTone {
 function DetailedStatusInline({
   status,
   paused = false,
+  runOutcome = false,
 }: {
   status: string;
   paused?: boolean;
+  runOutcome?: boolean;
 }) {
   const Icon = statusIcon(status);
-  const tone = detailedStatusTone(status);
+  const tone = detailedStatusTone(status, runOutcome);
   // A paused Run has stopped making progress, so its spinner stops too.
   const animated = !paused && (status === 'running' || status === 'cancelling');
 
@@ -168,9 +185,10 @@ function DetailedStatusInline({
       )}
       data-detailed-status={status}
     >
-      <Icon
-        aria-hidden
-        className={cn('size-3', tone.iconClassName, animated && 'animate-spin')}
+      <DsIcon
+        icon={Icon}
+        recipe="main-compact"
+        className={cn(tone.iconClassName, animated && 'animate-spin')}
       />
       <span className={tone.labelClassName}>{statusLabel(status)}</span>
     </span>
@@ -234,7 +252,7 @@ function TraceRow({
         aria-controls={detailsId}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
+        className="group flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
       >
         <span className="flex w-28 shrink-0 justify-end" data-trace-tag-column>
           <span
@@ -260,11 +278,14 @@ function TraceRow({
           data-trace-ending
         >
           {status}
-          <ChevronRight
-            aria-hidden
+          <DsIcon
+            icon={ChevronRight}
+            recipe="main-compact"
             className={cn(
-              'size-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-150 motion-reduce:transition-none',
-              open && 'rotate-90'
+              'text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+              open
+                ? 'rotate-90 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
             )}
             data-trace-chevron
           />
@@ -352,7 +373,11 @@ function categoryForNode(row: NodeTraceRow): TraceCategory {
   return 'CONTEXT';
 }
 
-function nodeSummary(row: NodeTraceRow, t: TFunction): string {
+function nodeSummary(
+  row: NodeTraceRow,
+  t: TFunction,
+  presentReason: (reason: ErrorReason) => ErrorReason
+): string {
   const node = row.node;
   if (node.kind === 'message') return node.content;
   if (node.kind === 'interaction')
@@ -364,7 +389,7 @@ function nodeSummary(row: NodeTraceRow, t: TFunction): string {
   }
   if (node.kind === 'notice') {
     const reason = taskErrorReason(node);
-    if (reason) return errorCopy(reason);
+    if (reason) return errorCopy(presentReason(reason));
     return node.title ? `${node.title} · ${node.content}` : node.content;
   }
   if (node.kind === 'plan')
@@ -384,7 +409,13 @@ function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
     node.kind === 'activity' ||
     node.kind === 'run_status'
   ) {
-    return <DetailedStatusInline paused={paused} status={node.status} />;
+    return (
+      <DetailedStatusInline
+        paused={paused}
+        runOutcome={node.kind === 'run_status'}
+        status={node.status}
+      />
+    );
   }
   if (node.kind === 'artifact') {
     return (
@@ -396,12 +427,31 @@ function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
   return null;
 }
 
+/** The closed cause first, then recorded detail verbatim. */
+function TraceReasons({ reasons }: { reasons: string[] }) {
+  return reasons.map((reason) => (
+    <DsText
+      key={reason}
+      as="p"
+      role="meta"
+      weight="regular"
+      className="break-words whitespace-pre-wrap text-ds-ink-muted-default"
+    >
+      {reason}
+    </DsText>
+  ));
+}
+
 function InteractionTraceDetails({
   node,
 }: {
   node: NodeTraceRow['node'] & { kind: 'interaction' };
 }) {
   const { t } = useTranslation();
+  const reasons = [
+    runTerminalReasonText(node.terminalReason, t),
+    approvalRecordedReason(node.reason, t),
+  ].filter(Boolean);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {node.prompt ? (
@@ -424,6 +474,7 @@ function InteractionTraceDetails({
           </span>
         </div>
       ) : null}
+      <TraceReasons reasons={reasons} />
     </div>
   );
 }
@@ -431,14 +482,40 @@ function InteractionTraceDetails({
 function NodeTraceDetails({
   row,
   runId,
+  onEditUserMessage,
 }: {
   row: NodeTraceRow;
   runId: string;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
-  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
+  const openReviewPreview = useSessionPageTabStore(
+    (state) => state.openReviewPreview
+  );
   const node = row.node;
   if (node.kind === 'message') {
+    if (node.role === 'user') {
+      return (
+        <UserMessageCard
+          id={node.id}
+          content={node.content}
+          attaches={node.attachments}
+          createdAt={node.createdAt}
+          className="pl-0"
+          embedded
+          onEditAndResend={
+            onEditUserMessage
+              ? () =>
+                  onEditUserMessage({
+                    id: node.id,
+                    content: node.content,
+                    attaches: node.attachments,
+                  })
+              : undefined
+          }
+        />
+      );
+    }
     return (
       <MarkDown
         content={node.content}
@@ -461,6 +538,7 @@ function NodeTraceDetails({
   if (node.kind === 'notice') {
     const reason = taskErrorReason(node);
     if (reason) return <TaskErrorNotice reason={reason} />;
+    if (node.writerWait) return <SpaceWaitNotice wait={node.writerWait} />;
     return (
       <div className="flex min-w-0 flex-col gap-0.5">
         {node.title ? (
@@ -514,9 +592,10 @@ function NodeTraceDetails({
         }
         className="group flex min-w-0 items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent p-0 text-left disabled:cursor-default"
       >
-        <FileText
-          aria-hidden
-          className="size-3.5 shrink-0 text-ds-ink-subtle-default"
+        <DsIcon
+          icon={FileText}
+          recipe="main-compact"
+          className="text-ds-ink-subtle-default"
         />
         <span className="min-w-0 flex-1 !text-ds-text-meta !font-normal break-all text-ds-ink-default-default group-enabled:group-hover:underline">
           {node.relativePath || node.path}
@@ -526,9 +605,17 @@ function NodeTraceDetails({
   }
   if (node.kind === 'run_status') {
     return (
-      <span className="block !text-ds-text-meta !font-normal text-ds-ink-default-default">
-        {t('chat.run-status', { defaultValue: 'Run status' })}
-      </span>
+      <div className="flex min-w-0 flex-col gap-2">
+        <span className="block !text-ds-text-meta !font-normal text-ds-ink-default-default">
+          {t('chat.run-status', { defaultValue: 'Run status' })}
+        </span>
+        <TraceReasons
+          reasons={[
+            runTerminalReasonText(node.terminalReason, t),
+            node.terminalDetail,
+          ].filter((reason): reason is string => Boolean(reason))}
+        />
+      </div>
     );
   }
   return (
@@ -545,12 +632,15 @@ function DetailedRun({
   run,
   paused,
   interactivePlan,
+  onEditUserMessage,
 }: {
   run: TimelineRunView;
   paused: boolean;
   interactivePlan?: InteractiveTimelinePlan;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
+  const presentReason = usePresentedUsageReason();
   return (
     <section data-run-id={run.runId}>
       {run.traceRows.length > 0 ? (
@@ -600,8 +690,9 @@ function DetailedRun({
                     : undefined
                 }
                 autoExpanded={
-                  row.node.kind === 'interaction' &&
-                  row.node.status === 'requested'
+                  (row.node.kind === 'interaction' &&
+                    row.node.status === 'requested') ||
+                  (row.node.kind === 'message' && row.node.role === 'user')
                 }
                 interactionId={
                   row.node.kind === 'interaction'
@@ -623,9 +714,13 @@ function DetailedRun({
                 role={role}
                 rowId={row.id}
                 status={nodeStatus(row, paused)}
-                summary={nodeSummary(row, t)}
+                summary={nodeSummary(row, t, presentReason)}
               >
-                <NodeTraceDetails row={row} runId={run.runId} />
+                <NodeTraceDetails
+                  row={row}
+                  runId={run.runId}
+                  onEditUserMessage={onEditUserMessage}
+                />
               </TraceRow>
             );
           })}
@@ -636,29 +731,39 @@ function DetailedRun({
           <PreparingToExecuteTasks />
         </div>
       ) : null}
-      {run.status === 'running' && !paused && hasRunExecutionRows(run) ? (
-        <div className="px-3 py-2">
-          <RunActivityIndicator />
-        </div>
-      ) : null}
     </section>
   );
 }
 
 export function TrajectoryTimeline({
   runs,
+  resolvedModelsByRun = {},
   interactivePlansByRun = {},
   paused = false,
+  onEditUserMessage,
 }: TimelineModeProps) {
+  const runIds = runs.map((run) => run.runId);
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
-      {runs.map((run) => (
-        <DetailedRun
-          interactivePlan={interactivePlansByRun[run.runId]}
-          key={run.id}
-          paused={paused}
-          run={run}
-        />
+      {runs.map((run, index) => (
+        <div className="flex flex-col gap-3" key={run.id}>
+          {index > 0 ? (
+            <ModelChangeDivider
+              previous={previousRecordedRunModel(
+                runIds,
+                index,
+                resolvedModelsByRun
+              )}
+              current={resolvedModelsByRun[run.runId]}
+            />
+          ) : null}
+          <DetailedRun
+            interactivePlan={interactivePlansByRun[run.runId]}
+            paused={paused}
+            run={run}
+            onEditUserMessage={onEditUserMessage}
+          />
+        </div>
       ))}
     </div>
   );

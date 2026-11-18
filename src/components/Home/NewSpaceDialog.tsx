@@ -19,6 +19,7 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import {
   ArrowRight,
@@ -55,6 +56,10 @@ export interface NewSpaceDialogProps {
   initialPage?: NewSpaceDialogPage;
   initialWorkspaceBundleHandle?: string;
   initialWorkspaceBundleProposalId?: string;
+  onWorkspaceBundleProposalChange?: (
+    proposalId: string | null,
+    handle: string | null
+  ) => void;
   initialAgentPluginTargetSpaceId?: string | null;
   agentPluginTargetMode?: 'existing' | 'create-space';
 }
@@ -75,37 +80,42 @@ function NewSpaceOption({
   onClick: () => void;
 }) {
   return (
+    // One row per choice: icon, what it does, and where it goes, read left to
+    // right. The tile sits 8px inside a 16px corner, so its radius is 8px.
     <button
       type="button"
       aria-label={title}
+      aria-description={description}
+      data-new-space-option
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'group flex min-h-40 min-w-0 flex-col items-start rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default p-4 text-left transition-colors',
+        'group flex w-full min-w-0 items-center gap-ds-12 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default p-ds-8 pr-ds-16 text-left transition-colors',
         'hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-border-information-default-default focus-visible:outline-none',
         'disabled:opacity-60',
         busy ? 'cursor-wait' : 'disabled:cursor-not-allowed'
       )}
     >
-      <span className="flex w-full items-center justify-between gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
-          {busy ? (
-            <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
-          ) : (
-            <Icon className="h-5 w-5" aria-hidden />
-          )}
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
+        {busy ? (
+          <DsIcon icon={LoaderCircle} className="animate-spin" aria-hidden />
+        ) : (
+          <DsIcon icon={Icon} />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-ds-2">
+        <span className="block truncate !text-ds-text-base font-semibold text-ds-ink-default-default">
+          {title}
         </span>
-        <ArrowRight
-          className="h-4 w-4 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default"
-          aria-hidden
-        />
+        <span className="block !text-ds-text-meta text-ds-ink-muted-default">
+          {description}
+        </span>
       </span>
-      <span className="mt-5 block !text-ds-text-body-large font-bold text-ds-ink-default-default">
-        {title}
-      </span>
-      <span className="mt-1 block !text-ds-text-meta text-ds-ink-muted-default">
-        {description}
-      </span>
+      <DsIcon
+        icon={ArrowRight}
+        className="shrink-0 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default"
+        aria-hidden
+      />
     </button>
   );
 }
@@ -118,6 +128,7 @@ export default function NewSpaceDialog({
   initialPage = 'options',
   initialWorkspaceBundleHandle,
   initialWorkspaceBundleProposalId,
+  onWorkspaceBundleProposalChange,
   initialAgentPluginTargetSpaceId,
   agentPluginTargetMode = 'create-space',
 }: NewSpaceDialogProps) {
@@ -153,7 +164,13 @@ export default function NewSpaceDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="lg" overlayVariant="dimmed" className="max-h-[80vh]">
+      <DialogContent
+        // The choice pages are short lists; the Bundle and Plugin forms need
+        // room for their fields.
+        size={page === 'options' || page === 'import-options' ? 'md' : 'lg'}
+        overlayVariant="dimmed"
+        className="max-h-[80vh]"
+      >
         {page === 'options' ? (
           <>
             <DialogHeader
@@ -170,7 +187,7 @@ export default function NewSpaceDialog({
                 aria-label={t('layout.new-space-options', {
                   defaultValue: 'New Space options',
                 })}
-                className="grid grid-cols-3 gap-3"
+                className="flex flex-col gap-ds-8"
               >
                 <NewSpaceOption
                   icon={Plus}
@@ -241,10 +258,7 @@ export default function NewSpaceDialog({
                 aria-label={t('layout.workspace-bundle-import-options', {
                   defaultValue: 'Bundle import options',
                 })}
-                className={cn(
-                  'grid gap-3',
-                  canImportAgentPlugin ? 'grid-cols-2' : 'grid-cols-1'
-                )}
+                className="flex flex-col gap-ds-8"
               >
                 <NewSpaceOption
                   icon={PackagePlus}
@@ -302,8 +316,9 @@ export default function NewSpaceDialog({
                     role="status"
                     className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
-                    <LoaderCircle
-                      className="h-5 w-5 animate-spin"
+                    <DsIcon
+                      icon={LoaderCircle}
+                      className="animate-spin"
                       aria-hidden
                     />
                     <span className="sr-only">
@@ -317,6 +332,7 @@ export default function NewSpaceDialog({
                 <WorkspaceBundleInstallWizard
                   initialHandle={initialWorkspaceBundleHandle}
                   initialProposalId={initialWorkspaceBundleProposalId}
+                  onProposalChange={onWorkspaceBundleProposalChange}
                   showHeader={false}
                   onWorkspaceOpen={() => handleOpenChange(false)}
                 />
@@ -343,8 +359,9 @@ export default function NewSpaceDialog({
                     role="status"
                     className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
-                    <LoaderCircle
-                      className="h-5 w-5 animate-spin"
+                    <DsIcon
+                      icon={LoaderCircle}
+                      className="animate-spin"
                       aria-hidden
                     />
                     <span className="sr-only">

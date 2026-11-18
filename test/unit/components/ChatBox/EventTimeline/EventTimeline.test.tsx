@@ -855,7 +855,7 @@ describe('EventTimeline', () => {
     );
   });
 
-  it('fails closed when a legacy mirror disagrees with the canonical answer', () => {
+  it('retains a conflicting linked mirror as evidence beside the canonical receipt', () => {
     render(
       <EventTimeline
         nodes={[
@@ -872,11 +872,17 @@ describe('EventTimeline', () => {
       />
     );
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getAllByLabelText('Agent request')).toHaveLength(2);
-    expect(screen.getByLabelText('Your message')).toHaveTextContent(
-      'Use dataset B'
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByLabelText('Agent request')).toHaveTextContent(
+      'Use dataset A'
     );
+    expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Earlier reply records (1)' })
+    );
+    expect(
+      screen.getByRole('region', { name: 'Earlier reply records (1)' })
+    ).toHaveTextContent('Use dataset B');
   });
 
   it('fails closed when canonical terminal receipts are duplicated', () => {

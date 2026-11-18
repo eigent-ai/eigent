@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import SettingsSection from '../SettingsSection';
@@ -27,7 +28,12 @@ export default function Channels() {
         boxClassName="items-center justify-between"
       >
         <div className="flex h-16 w-16 items-center justify-center">
-          <MessageSquare className="h-8 w-8 text-ds-ink-muted-default" />
+          <DsIcon
+            icon={MessageSquare}
+            recipe="illustration"
+            illustrationSize={32}
+            className="text-ds-ink-muted-default"
+          />
         </div>
         <span className="mb-2 block text-ds-text-body-large font-bold text-ds-ink-default-default">
           {t('layout.coming-soon')}

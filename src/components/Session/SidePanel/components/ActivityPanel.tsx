@@ -59,8 +59,9 @@ import {
   isProjectSessionRunActive,
   useProjectSessionOverview,
 } from '@/hooks/useProjectSessionOverview';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { selectProjectWorkspaceRoot } from '@/lib/projectWorkspaceRoot';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -419,9 +420,9 @@ function ContextItemIcon({ item }: { item: SessionContextItem }) {
   }
   if (item.icon) return item.icon;
   return item.category === 'skill' ? (
-    <WandSparkles size={16} aria-hidden />
+    <DsIcon icon={WandSparkles} />
   ) : (
-    <Hammer size={16} aria-hidden />
+    <DsIcon icon={Hammer} />
   );
 }
 
@@ -444,13 +445,15 @@ function ResourcesSection({
           key={item.id}
           leading={
             item.kind === 'url' ? (
-              <Globe size={16} aria-hidden />
+              <DsIcon icon={Globe} />
             ) : (
-              <FileText size={16} aria-hidden />
+              <DsIcon icon={FileText} />
             )
           }
           trailing={
-            item.kind === 'url' ? <ExternalLink size={14} aria-hidden /> : null
+            item.kind === 'url' ? (
+              <DsIcon icon={ExternalLink} recipe="main-compact" />
+            ) : null
           }
           onClick={() => onSelect(item)}
         >
@@ -551,7 +554,7 @@ function FilesSection({
       render={(item) => (
         <SidePanelListRow
           key={item.id}
-          leading={<FileText size={16} aria-hidden />}
+          leading={<DsIcon icon={FileText} />}
           trailing={
             !item.previewable ? (
               <span className="text-ds-text-meta text-ds-ink-muted-default">
@@ -591,20 +594,22 @@ function FilesSection({
 
 export function SessionActivityPanel({
   agentHeaderAction,
+  header,
   scope,
 }: {
   agentHeaderAction?: ReactNode;
+  header?: ReactNode;
   scope: SessionPanelScope;
 }) {
   const managedPreview = useSessionArtifactPreview();
   const { t } = useTranslation();
   const host = useHost();
-  const { chatStore } = useChatStoreAdapter();
+  const { chatStore, projectId: chatProjectId } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
   const { projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
   const scopedChatStore =
-    !managedPreview && projectId && projectStore.activeProjectId === projectId
+    !managedPreview && projectId && chatProjectId === projectId
       ? chatStore
       : null;
   const activeTaskId = scopedChatStore?.activeTaskId ?? null;
@@ -616,21 +621,24 @@ export function SessionActivityPanel({
   const activeTask = activeTaskId
     ? scopedChatStore?.tasks[activeTaskId]
     : undefined;
-  const workspaceRoot = useSpaceStore((state) => {
-    if (!projectId) return null;
-    const spaceId = state.projectIdIndex[projectId];
-    return spaceId ? state.spaces[spaceId]?.rootPath || null : null;
-  });
+  const runtimeSpaceId = projectId
+    ? projectStore.projects[projectId]?.spaceId
+    : undefined;
+  const workspaceRoot = useSpaceStore((state) =>
+    selectProjectWorkspaceRoot(state, projectId, runtimeSpaceId)
+  );
   const skills = useSkillsStore((state) => state.skills);
   const [connectors, setConnectors] = useState<ConnectorProvider[]>([]);
-  const requestTaskBoxFocus = usePageTabStore(
+  const requestTaskBoxFocus = useSessionPageTabStore(
     (state) => state.requestTaskBoxFocus
   );
-  const setScrollToTurnRequest = usePageTabStore(
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (state) => state.setScrollToTurnRequest
   );
-  const openFilePreview = usePageTabStore((state) => state.openFilePreview);
-  const openBrowserPreview = usePageTabStore(
+  const openFilePreview = useSessionPageTabStore(
+    (state) => state.openFilePreview
+  );
+  const openBrowserPreview = useSessionPageTabStore(
     (state) => state.openBrowserPreview
   );
   const [selectedAgent, setSelectedAgent] = useState<SessionAgentItem | null>(
@@ -861,6 +869,7 @@ export function SessionActivityPanel({
           the sections outgrow the column. */}
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto">
+          {header}
           <SectionList>
             {agents.length > 0 ? (
               <AgentCategorySection
@@ -968,7 +977,7 @@ export function SessionActivityPanel({
                         aria-label={addFilesLabel}
                         onClick={() => void addFiles()}
                       >
-                        <Plus className="size-4" aria-hidden />
+                        <DsIcon icon={Plus} />
                       </Button>
                     </span>
                   </TooltipSimple>

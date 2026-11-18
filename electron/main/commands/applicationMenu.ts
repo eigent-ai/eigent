@@ -14,6 +14,7 @@
 
 import {
   APP_COMMAND,
+  PINNED_SPACE_COMMANDS,
   type AppCommandId,
 } from '../../../src/shared/appCommands';
 import { getKeyboardShortcutsAccelerator } from '../../../src/shared/keyboardShortcuts';
@@ -38,6 +39,11 @@ export interface ApplicationMenuOptions {
   platform: DesktopMenuPlatform;
   /** Guarded application quit request; intentionally not Electron's quit role. */
   requestQuit: () => void;
+  /**
+   * Close Window in a secondary (Session) window closes only that window.
+   * Returns false when the focused window is the main window.
+   */
+  closeSecondaryWindow?: () => boolean;
 }
 
 export interface ApplicationMenuApi<TMenu = Electron.Menu> {
@@ -202,6 +208,18 @@ function buildViewMenu(
         accelerator: platformAccelerator(platform, 'Command+5', 'Control+5'),
         command: APP_COMMAND.navigateConfiguration,
       },
+      // ⌥⌘ on macOS, where ⇧⌘3–5 take screenshots; Ctrl+Shift elsewhere,
+      // because Windows reports AltGr as Ctrl+Alt.
+      ...PINNED_SPACE_COMMANDS.map((command, index) => ({
+        id: `view.navigate-pinned-space-${index + 1}`,
+        accelerator: platformAccelerator(
+          platform,
+          `Command+Alt+${index + 1}`,
+          `Control+Shift+${index + 1}`
+        ),
+        command,
+        terminalKey: undefined as string | undefined,
+      })),
       {
         id: 'view.toggle-workspace-sidebar',
         accelerator: platformAccelerator(platform, 'Command+B', 'Control+B'),
@@ -432,7 +450,13 @@ function buildMacAppMenu(
 function buildFileMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const { dispatchRendererCommand, messages, platform, requestQuit } = options;
+  const {
+    closeSecondaryWindow,
+    dispatchRendererCommand,
+    messages,
+    platform,
+    requestQuit,
+  } = options;
   const submenu: Electron.MenuItemConstructorOptions[] = [
     terminalSafe(platform, 'N', {
       id: 'file.new-project',
@@ -457,9 +481,11 @@ function buildFileMenu(
       id: 'file.close-window',
       label: messages.closeWindow,
       accelerator: platformAccelerator(platform, 'Command+W', 'Control+W'),
-      // Eigent owns a single application window. Closing it must tear down
-      // the local Brain and exit the app on every platform.
-      click: requestQuit,
+      // Closing the main window must tear down the local Brain and exit the
+      // app on every platform; a Session window just closes.
+      click: () => {
+        if (!closeSecondaryWindow?.()) requestQuit();
+      },
     })
   );
 

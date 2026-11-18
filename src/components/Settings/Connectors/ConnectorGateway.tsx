@@ -47,6 +47,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Select,
   SelectContent,
@@ -105,7 +106,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import SettingsContentShell from '../SettingsContentShell';
 import SettingsSectionPage from '../SettingsSectionPage';
@@ -404,7 +405,6 @@ async function resolveOpenProviderByName(
 
 export default function ConnectorGateway() {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const publishItems = usePublishConnectorsNavigation();
@@ -492,7 +492,6 @@ export default function ConnectorGateway() {
       replace?: boolean;
     }) => {
       const next = new URLSearchParams(searchParams);
-      next.set('section', 'settings');
       next.set('tab', 'connectors');
       if (connectorId) next.set('connectorId', connectorId);
       else next.delete('connectorId');
@@ -996,9 +995,6 @@ export default function ConnectorGateway() {
     setBrowseTarget(null);
     updateConnectorLocation({ view: 'add', tab: 'browse', targetId: null });
   }, [updateConnectorLocation]);
-  const navigateHome = useCallback(() => {
-    navigate('/home?section=spaces');
-  }, [navigate]);
 
   const openRecommendedConnector = (provider: ConnectorProvider) => {
     const existing = connectorItems.find(
@@ -1252,13 +1248,13 @@ export default function ConnectorGateway() {
       return iconUrl ? (
         <img src={iconUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
       ) : (
-        <Server className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
+        <DsIcon icon={Server} className="shrink-0 text-ds-ink-muted-default" />
       );
     }
     return item.subtype === 'remote' ? (
-      <Server className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
+      <DsIcon icon={Server} className="shrink-0 text-ds-ink-muted-default" />
     ) : (
-      <Wrench className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
+      <DsIcon icon={Wrench} className="shrink-0 text-ds-ink-muted-default" />
     );
   };
 
@@ -1296,7 +1292,7 @@ export default function ConnectorGateway() {
             )
           }
         >
-          <ExternalLink className="h-4 w-4" />
+          <DsIcon icon={ExternalLink} />
           {t('connectors.open')}
         </Button>
       )}
@@ -1311,13 +1307,13 @@ export default function ConnectorGateway() {
               disabled={actionLoading}
               aria-label={t('connectors.more-actions')}
             >
-              <Ellipsis className="h-4 w-4" />
+              <DsIcon icon={Ellipsis} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {item.source === 'custom' ? (
               <DropdownMenuItem onClick={() => setShowConfig(item.item)}>
-                <Pencil className="h-4 w-4" />
+                <DsIcon icon={Pencil} />
                 {t('connectors.edit')}
               </DropdownMenuItem>
             ) : null}
@@ -1336,7 +1332,7 @@ export default function ConnectorGateway() {
                 setDeleteTarget(item.item);
               }}
             >
-              <Trash2 className="h-4 w-4" />
+              <DsIcon icon={Trash2} />
               {item.source === 'custom'
                 ? t('connectors.delete')
                 : t('connectors.disconnect')}
@@ -1429,10 +1425,9 @@ export default function ConnectorGateway() {
                   {actionsExpanded
                     ? t('connectors.show-less')
                     : t('connectors.show-more')}
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      actionsExpanded ? 'rotate-180' : ''
-                    }`}
+                  <DsIcon
+                    icon={ChevronDown}
+                    className={`transition-transform ${actionsExpanded ? 'rotate-180' : ''}`}
                   />
                 </button>
               ) : null}
@@ -1448,7 +1443,7 @@ export default function ConnectorGateway() {
             className="inline-flex items-center gap-1 text-ds-text-base text-ds-ink-muted-default underline-offset-2 hover:underline"
           >
             {t('connectors.provider-website')}
-            <ExternalLink className="h-3.5 w-3.5" />
+            <DsIcon icon={ExternalLink} recipe="main-compact" />
           </a>
         ) : null}
       </>
@@ -1548,10 +1543,7 @@ export default function ConnectorGateway() {
             headingRef={setDetailHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
-              {
-                label: t('layout.home', { defaultValue: 'Home' }),
-                onClick: navigateHome,
-              },
+              { label: t('layout.settings', { defaultValue: 'Settings' }) },
               {
                 label: t('layout.connectors'),
                 onClick: closeConnectorSubpage,
@@ -1620,7 +1612,7 @@ export default function ConnectorGateway() {
               <span className="max-w-32 truncate">
                 {providerLabel(liveProvider)}
               </span>
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
             </Button>
           );
         })}
@@ -1754,7 +1746,7 @@ export default function ConnectorGateway() {
                               name: item.name,
                             })}
                           >
-                            <Ellipsis />
+                            <DsIcon icon={Ellipsis} />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -1763,14 +1755,14 @@ export default function ConnectorGateway() {
                               updateConnectorLocation({ connectorId: item.id })
                             }
                           >
-                            <ExternalLink />
+                            <DsIcon icon={ExternalLink} />
                             {t('connectors.open')}
                           </DropdownMenuItem>
                           {item.source === 'custom' ? (
                             <DropdownMenuItem
                               onClick={() => setShowConfig(item.item)}
                             >
-                              <Pencil />
+                              <DsIcon icon={Pencil} />
                               {t('connectors.edit')}
                             </DropdownMenuItem>
                           ) : null}
@@ -1787,7 +1779,7 @@ export default function ConnectorGateway() {
                               }
                             }}
                           >
-                            <Trash2 />
+                            <DsIcon icon={Trash2} />
                             {item.source === 'custom'
                               ? t('connectors.delete')
                               : t('connectors.disconnect')}
@@ -1854,10 +1846,7 @@ export default function ConnectorGateway() {
                   defaultValue: 'Breadcrumb',
                 })}
                 segments={[
-                  {
-                    label: t('layout.home', { defaultValue: 'Home' }),
-                    onClick: navigateHome,
-                  },
+                  { label: t('layout.settings', { defaultValue: 'Settings' }) },
                   {
                     label: t('layout.connectors'),
                     onClick: closeConnectorSubpage,
@@ -1919,10 +1908,7 @@ export default function ConnectorGateway() {
             <ContentBreadcrumb
               ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
               segments={[
-                {
-                  label: t('layout.home', { defaultValue: 'Home' }),
-                  onClick: navigateHome,
-                },
+                { label: t('layout.settings', { defaultValue: 'Settings' }) },
                 {
                   label: t('layout.connectors'),
                   onClick: closeConnectorSubpage,
@@ -2130,7 +2116,7 @@ export default function ConnectorGateway() {
           onClick={() => void refreshAll()}
           aria-label={t('connectors.refresh')}
         >
-          <RefreshCw aria-hidden />
+          <DsIcon icon={RefreshCw} aria-hidden />
         </Button>
         <Button
           type="button"
@@ -2153,7 +2139,7 @@ export default function ConnectorGateway() {
                 disabled={pageLoading}
                 onClick={() => void refreshAll()}
               >
-                <RefreshCw aria-hidden />
+                <DsIcon icon={RefreshCw} aria-hidden />
                 {t('connectors.retry')}
               </Button>
             </div>
@@ -2191,7 +2177,7 @@ export default function ConnectorGateway() {
                   }}
                   aria-label={t('connectors.dismiss-recommendations')}
                 >
-                  <X aria-hidden />
+                  <DsIcon icon={X} aria-hidden />
                 </Button>
               </div>
               {renderRecommendedConnectors()}

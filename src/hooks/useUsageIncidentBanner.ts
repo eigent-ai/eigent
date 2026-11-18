@@ -13,31 +13,38 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { UsageLimitBannerProps } from '@/components/ChatBox/BottomBox/UsageLimitBanner';
-import { errorCopy } from '@/lib/usageErrors';
+import {
+  isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
+} from '@/lib/creditRecovery';
 import {
   activeUsageIncident,
   contactSupport,
+  isUsageToastOpen,
+  liveUsageNoticeCopy,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
 import { useTranslation } from 'react-i18next';
 
-/** The same recovery actions remain available in existing and new Sessions. */
+/**
+ * The same recovery actions remain available in existing and new Sessions.
+ * While the toast announces the incident, the composer stays quiet so the
+ * user sees one notice; dismissing the toast leaves this one in place.
+ */
 export function useUsageIncidentBanner(
   modelType: string
 ): UsageLimitBannerProps | null {
   const { t } = useTranslation();
   const usage = useUsageNoticeStore();
   const incident = activeUsageIncident(usage);
-  if (modelType !== 'cloud' || !incident) return null;
+  if (modelType !== 'cloud' || !incident || isUsageToastOpen(usage))
+    return null;
   const serviceUnavailable = incident.reason === 'service';
+  const { message, description } = liveUsageNoticeCopy(incident.reason, usage);
   return {
-    message: errorCopy(incident.reason),
-    description: t(
-      serviceUnavailable
-        ? 'chat.notice-contact-description'
-        : 'chat.notice-refresh-description'
-    ),
+    message,
+    description,
     actionLabel: t(
       serviceUnavailable
         ? 'chat.notice-contact-support'
@@ -50,5 +57,7 @@ export function useUsageIncidentBanner(
     refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
     onAction: serviceUnavailable ? contactSupport : () => void refreshUsage(),
     onRefresh: serviceUnavailable ? () => void refreshUsage() : undefined,
+    creditRecovery: isOwnKeyRecoveryReason(incident.reason),
+    upgrade: isCreditRecoveryReason(incident.reason),
   };
 }

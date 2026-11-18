@@ -15,6 +15,7 @@
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useAppVersion from '@/hooks/use-app-version';
 import {
   installDesktopUpdate,
@@ -61,8 +62,9 @@ export function AboutSettings() {
           aria-label={t('setting.version', { defaultValue: 'Version' })}
           title={version}
         >
-          <TagIcon
-            className="h-4 w-4 text-ds-text-success-default-default"
+          <DsIcon
+            icon={TagIcon}
+            className="text-ds-text-success-default-default"
             aria-hidden
           />
           {version || t('setting.version', { defaultValue: 'Version' })}
@@ -129,9 +131,9 @@ export function AboutSettings() {
         title={failed ? (errorMessage ?? label) : (packageNewVersion ?? label)}
       >
         {failed ? (
-          <RefreshCw className="h-4 w-4" aria-hidden />
+          <DsIcon icon={RefreshCw} aria-hidden />
         ) : (
-          <Download className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Download} aria-hidden />
         )}
         {failed
           ? t('layout.retry', { defaultValue: 'Retry' })
@@ -157,7 +159,7 @@ export function AboutSettings() {
               className="flex cursor-pointer items-center gap-3 bg-transparent transition-opacity duration-200 hover:opacity-60"
             >
               <img src={logoSrc} alt="Eigent" className="h-7 w-auto" />
-              <ExternalLink className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ExternalLink} aria-hidden />
             </button>
           }
         />

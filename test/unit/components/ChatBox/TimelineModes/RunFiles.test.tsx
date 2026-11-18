@@ -25,6 +25,7 @@ import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
 import { useAuthStore } from '@/store/authStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import {
   act,
@@ -150,6 +151,7 @@ describe('RunFiles capability boundary', () => {
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {},
     });
+    useProjectRuntimeStore.setState({ activeProjectId: null, projects: {} });
     useSpaceStore.setState({
       activeSpaceId: 'space-active-other',
       spaces: {
@@ -235,6 +237,51 @@ describe('RunFiles capability boundary', () => {
     expect(preview.open).toBe(true);
     expect(preview.tabs).toHaveLength(1);
     expect(preview.tabs[0]).toMatchObject({
+      type: 'file',
+      file: {
+        path: '/workspace/space-1/reports/report.csv',
+        relativePath: 'reports/report.csv',
+        localPathAvailable: true,
+      },
+    });
+  });
+
+  it('uses the runtime Project owner while persisted metadata is hydrating', () => {
+    useSpaceStore.setState({
+      activeSpaceId: 'space-active-other',
+      projectIdIndex: {},
+      projectsBySpaceId: { 'space-1': {} },
+    });
+    useProjectRuntimeStore.setState({
+      projects: {
+        'project-new': {
+          id: 'project-new',
+          spaceId: 'space-1',
+          name: 'New Project',
+          createdAt: 1,
+          updatedAt: 1,
+          chatStores: {},
+          chatStoreTimestamps: {},
+          activeChatId: null,
+          queuedMessages: [],
+        },
+      },
+    });
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="project-new"
+        runId="run-1"
+      />
+    );
+
+    const row = screen.getByTitle('reports/report.csv');
+    expect(row).toHaveAttribute('data-artifact-preview', 'available');
+    fireEvent.click(row);
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
+    ).toMatchObject({
       type: 'file',
       file: {
         path: '/workspace/space-1/reports/report.csv',

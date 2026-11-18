@@ -92,14 +92,26 @@ describe('reconcileHumanInteractionEvents', () => {
     });
 
     expect(terminal.eventType).toBe('interaction.resolved');
-    expect(fetchGetMock).toHaveBeenNthCalledWith(1, '/runs/run-1/events', {
-      after_sequence: 1,
-      limit: 500,
-    });
-    expect(fetchGetMock).toHaveBeenNthCalledWith(2, '/runs/run-1/events', {
-      after_sequence: 2,
-      limit: 500,
-    });
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      1,
+      '/runs/run-1/events',
+      {
+        after_sequence: 1,
+        limit: 500,
+      },
+      undefined,
+      {}
+    );
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      2,
+      '/runs/run-1/events',
+      {
+        after_sequence: 2,
+        limit: 500,
+      },
+      undefined,
+      {}
+    );
     expect(store.getControlSnapshot().interactionById['choice-1'].status).toBe(
       'resolved'
     );

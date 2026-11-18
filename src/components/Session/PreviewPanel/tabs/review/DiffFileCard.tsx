@@ -762,7 +762,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                         defaultValue: 'Source diff',
                       })}
                     >
-                      <CodeXml aria-hidden />
+                      <DsIcon icon={CodeXml} aria-hidden />
                     </ToggleGroupItem>
                   ) : null}
                   <ToggleGroupItem
@@ -771,7 +771,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                       defaultValue: 'Rendered diff',
                     })}
                   >
-                    <Eye aria-hidden />
+                    <DsIcon icon={Eye} aria-hidden />
                   </ToggleGroupItem>
                 </ToggleGroup>
               ) : null}

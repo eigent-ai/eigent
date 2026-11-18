@@ -85,7 +85,27 @@ describe('project cache projection version', () => {
     await vi.waitFor(() => expect(entries.has(cacheKey)).toBe(false));
   });
 
-  it('writes and reads version 10 with the reconstructed historical duration', async () => {
+  it('rejects a pre-fix schema-10 snapshot even when both freshness anchors match', async () => {
+    entries.set(cacheKey, {
+      ...historicalProjection,
+      localCanonicalUpdatedAt: 300,
+      schemaVersion: 10,
+      cachedAt: 400,
+      tasks: {
+        'legacy-failed-run': {
+          taskState: {
+            messages: [
+              { id: 'old-reply', role: 'user', content: 'report.csv' },
+            ],
+          },
+        },
+      },
+    });
+    expect(await getCachedProject(scope)).toBeNull();
+    await vi.waitFor(() => expect(entries.has(cacheKey)).toBe(false));
+  });
+
+  it('writes and reads version 11 with the reconstructed historical duration', async () => {
     const restoredProjection = {
       ...historicalProjection,
       tasks: {
@@ -101,7 +121,7 @@ describe('project cache projection version', () => {
 
     expect(await getCachedProject(scope)).toEqual({
       ...restoredProjection,
-      schemaVersion: 10,
+      schemaVersion: 11,
       cachedAt: expect.any(Number),
     });
     expect(entries.has(cacheKey)).toBe(true);

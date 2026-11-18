@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { OnboardingSteps } from '@/components/InstallStep/OnboardingSteps';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ProgressInstall } from '@/components/ui/progress-install';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -115,7 +116,7 @@ export const InstallDependencies: React.FC = () => {
                   style={{ transformOrigin: 'left center' }}
                   className="flex items-center gap-2 text-ds-text-base font-medium text-ds-ink-muted-default"
                 >
-                  <CheckCircle2 size={15} className="text-green-500" />
+                  <DsIcon icon={CheckCircle2} className="text-green-500" />
                   {t('layout.install-complete')}
                 </motion.div>
               ) : null}

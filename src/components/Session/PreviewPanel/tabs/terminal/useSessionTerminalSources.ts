@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { usePageTabStore } from '@/store/pageTabStore';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { collectTerminalSources, type TerminalSource } from './terminalSources';
@@ -52,7 +52,9 @@ export function useSessionTerminalSources(
   options: SessionTerminalSourceOptions = {}
 ): TerminalSource[] {
   const { trackOutput = true } = options;
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const projectChatStores = useProjectRuntimeStore((state) =>
     projectId ? state.projects[projectId]?.chatStores : undefined
   );

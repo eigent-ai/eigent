@@ -12,22 +12,24 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   recordMessageFeedback,
   type MessageFeedbackRating,
 } from '@/lib/events/appEvents';
 import { fileInfoFromPath } from '@/lib/fileInfo';
 import {
-  classifyError,
+  errorPresentationReason,
   isLegacyTaskError,
+  isRefinableReason,
   type ErrorReason,
 } from '@/lib/usageErrors';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { MarkDown } from './MarkDown';
 
@@ -89,7 +91,7 @@ export function AgentMessageCard({
   messageStep,
   deferredFooter,
 }: AgentMessageCardProps) {
-  const openFilePreview = usePageTabStore((s) => s.openFilePreview);
+  const openFilePreview = useSessionPageTabStore((s) => s.openFilePreview);
   const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
     () => completedTypewriterByMessageId.has(id)
   );
@@ -202,7 +204,19 @@ export function AgentMessageCard({
   );
 
   if (errorReason || isLegacyTaskError(content)) {
-    return <TaskErrorNotice reason={errorReason ?? classifyError(content)} />;
+    // Keep request-time ownership (cloud vs custom) when it was known. Only
+    // refine generic historical classifications from the retained message.
+    const parsedReason =
+      errorReason && !isRefinableReason(errorReason)
+        ? errorReason
+        : errorPresentationReason(content);
+    return (
+      <TaskErrorNotice
+        reason={
+          parsedReason === 'task' ? (errorReason ?? 'task') : parsedReason
+        }
+      />
+    );
   }
 
   const showDeferredFileUi =
@@ -214,14 +228,16 @@ export function AgentMessageCard({
       key={id}
       className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
-      <MarkDown
-        content={content}
-        onTyping={handleTypingComplete}
-        onMarkdownRenderComplete={handleMarkdownRenderComplete}
-        enableTypewriter={enableTypewriter && typewriter}
-      />
+      <div className="px-ds-panel-inset" data-agent-message-content>
+        <MarkDown
+          content={content}
+          onTyping={handleTypingComplete}
+          onMarkdownRenderComplete={handleMarkdownRenderComplete}
+          enableTypewriter={enableTypewriter && typewriter}
+        />
+      </div>
       {showDeferredFileUi && attaches && attaches.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2 px-ds-panel-inset">
           {attaches?.map((file) => {
             return (
               <div
@@ -234,7 +250,7 @@ export function AgentMessageCard({
                 key={'attache-' + file.fileName}
                 className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-1 pl-2"
               >
-                <FileText size={24} className="shrink-0" />
+                <DsIcon icon={FileText} recipe="illustration" />
                 <div className="flex flex-col">
                   <span className="block max-w-48 overflow-hidden text-ds-text-base font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                     {file?.fileName?.split('.')[0]}
@@ -249,10 +265,10 @@ export function AgentMessageCard({
         </div>
       )}
       {showDeferredFileUi && deferredFooter != null && (
-        <div className="mt-2.5 w-full">{deferredFooter}</div>
+        <div className="mt-2.5 w-full px-ds-panel-inset">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
-        <div className="mt-3 flex shrink-0 justify-start gap-1">
+        <div className="mt-ds-12 flex shrink-0 justify-start gap-ds-4 px-ds-panel-inset">
           <Button
             onClick={handleCopy}
             variant="ghost"
@@ -261,9 +277,12 @@ export function AgentMessageCard({
             aria-label={t('setting.copy')}
           >
             {copied ? (
-              <Check className="h-4 w-4 text-ds-text-success-default-default" />
+              <DsIcon
+                icon={Check}
+                className="text-ds-text-success-default-default"
+              />
             ) : (
-              <Copy className="h-4 w-4" />
+              <DsIcon icon={Copy} />
             )}
           </Button>
           <Button
@@ -275,8 +294,9 @@ export function AgentMessageCard({
             aria-pressed={feedback === 'up'}
             disabled={feedback === 'down'}
           >
-            <ThumbsUp
-              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
+            <DsIcon
+              icon={ThumbsUp}
+              className={`${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
           <Button
@@ -288,8 +308,9 @@ export function AgentMessageCard({
             aria-pressed={feedback === 'down'}
             disabled={feedback === 'up'}
           >
-            <ThumbsDown
-              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
+            <DsIcon
+              icon={ThumbsDown}
+              className={`${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
         </div>

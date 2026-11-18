@@ -132,10 +132,21 @@ def notify_default_cloud_sync_worker() -> None:
         loop.call_soon_threadsafe(_default_command_worker.notify)
 
 
-def is_default_cloud_history_bootstrap_pending() -> bool:
-    """Report whether Cloud history is still restoring in the background."""
+def is_default_cloud_history_bootstrap_pending(
+    project_id: str | None = None,
+) -> bool:
+    """Report whether Cloud history is still restoring in the background.
 
-    return bool(_default_worker and _default_worker.bootstrap_pending)
+    With a project, report only whether that project's history may still be
+    on its way, so a new Session need not wait for the whole account.
+    """
+
+    worker = _default_worker
+    if worker is None:
+        return False
+    if project_id is None:
+        return worker.bootstrap_pending
+    return worker.bootstrap_pending_for(project_id)
 
 
 async def bootstrap_default_cloud_history() -> None:
