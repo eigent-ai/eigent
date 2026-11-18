@@ -379,6 +379,14 @@ export class CloseCoordinator {
     this.pendingAcknowledged = false;
   }
 
+  /**
+   * Undo markAppQuitInProgress() when the quit it announced never happens,
+   * for example when the update installer fails to start.
+   */
+  cancelAppQuit(): void {
+    this.appQuitInProgress = false;
+  }
+
   isAppQuitInProgress(): boolean {
     return this.appQuitInProgress;
   }

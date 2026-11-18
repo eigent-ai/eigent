@@ -149,6 +149,55 @@ describe('desktop auto-updater main process', () => {
     );
   });
 
+  it('undoes the quit when the installer fails to start', async () => {
+    const { update, registerUpdateIpcHandlers, autoUpdater } =
+      await loadUpdateModule();
+    const sender = createSender();
+    const beforeQuit = vi.fn();
+    const afterInstallFailed = vi.fn();
+    update(createWindow(sender) as any);
+    registerUpdateIpcHandlers(beforeQuit, afterInstallFailed);
+    autoUpdater.quitAndInstall.mockImplementation(() => {
+      autoUpdater.emit('error', new Error('Cannot run installer'));
+    });
+
+    mocks.handles.get('quit-and-install')!({ sender });
+
+    expect(beforeQuit).toHaveBeenCalledOnce();
+    expect(afterInstallFailed).toHaveBeenCalledOnce();
+  });
+
+  it('undoes the quit when starting the install throws', async () => {
+    const { update, registerUpdateIpcHandlers, autoUpdater } =
+      await loadUpdateModule();
+    const sender = createSender();
+    const afterInstallFailed = vi.fn();
+    update(createWindow(sender) as any);
+    registerUpdateIpcHandlers(vi.fn(), afterInstallFailed);
+    autoUpdater.quitAndInstall.mockImplementation(() => {
+      throw new Error('spawn failed');
+    });
+
+    expect(() => mocks.handles.get('quit-and-install')!({ sender })).toThrow(
+      'spawn failed'
+    );
+    expect(afterInstallFailed).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the quit when a download error arrives instead', async () => {
+    const { update, registerUpdateIpcHandlers, autoUpdater } =
+      await loadUpdateModule();
+    const sender = createSender();
+    const afterInstallFailed = vi.fn();
+    update(createWindow(sender) as any);
+    registerUpdateIpcHandlers(vi.fn(), afterInstallFailed);
+
+    mocks.handles.get('start-download')!({ sender });
+    autoUpdater.emit('error', new Error('sha512 checksum mismatch'));
+
+    expect(afterInstallFailed).not.toHaveBeenCalled();
+  });
+
   it('keeps background check errors out of the update UI', async () => {
     const { update, registerUpdateIpcHandlers, autoUpdater } =
       await loadUpdateModule();

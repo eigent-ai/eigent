@@ -36,6 +36,9 @@ const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 let updateWindow: Electron.BrowserWindow | null = null;
 const updateClients = new Set<Electron.WebContents>();
 let updateOperation: 'download' | 'install' | null = null;
+// Undoes beforeQuitAndInstall when the installer never starts, so the app
+// is no longer treated as quitting and close confirmations work again.
+let onInstallFailed: (() => void) | undefined;
 let checkListenersRegistered = false;
 let operationListenersRegistered = false;
 
@@ -82,7 +85,9 @@ function registerCheckListeners() {
       typeof message === 'string' &&
       message.startsWith('Cannot check for updates');
     if (!updateOperation || fromUpdateCheck) return;
+    const failedOperation = updateOperation;
     updateOperation = null;
+    if (failedOperation === 'install') onInstallFailed?.();
     sendToUpdateClients('update-error', {
       message: error?.message,
       error,
@@ -185,7 +190,11 @@ export function update(win: Electron.BrowserWindow) {
  * Registers update-related IPC handlers
  * Should be called once when the app starts
  */
-export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
+export function registerUpdateIpcHandlers(
+  beforeQuitAndInstall?: () => void,
+  afterInstallFailed?: () => void
+) {
+  onInstallFailed = afterInstallFailed;
   // Checking for updates - errors are silent since users can't act on them
   ipcMain.handle('check-update', async () => {
     try {
@@ -221,6 +230,7 @@ export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
       autoUpdater.quitAndInstall(false, true);
     } catch (error) {
       updateOperation = null;
+      onInstallFailed?.();
       log.error('[AutoUpdater] Quit and install failed:', error);
       throw error;
     }
