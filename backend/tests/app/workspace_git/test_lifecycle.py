@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -531,8 +530,8 @@ def test_a_run_whose_space_folder_is_gone_is_skipped_not_failed(
     )
     assert lifecycle.finalize_run("run-1").outcome == "committed_primary"
 
-    # the user deletes the Space's folder; every later startup replays it
-    shutil.rmtree(space)
+    # the user moves the Space's folder away; every later startup replays it
+    space.rename(tmp_path / "space-moved")
     reconciliation = lifecycle.finalize_terminal_runs()
 
     assert reconciliation.failed_run_ids == ()
