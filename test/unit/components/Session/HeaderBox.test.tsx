@@ -18,6 +18,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   act,
   fireEvent,
@@ -537,17 +538,8 @@ describe('HeaderBox chat timeline mode', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('hides Back and Session actions on the New session header', () => {
-    render(
-      <HeaderBox
-        projectName="New session"
-        showBack={false}
-        showTimelineStyle={false}
-      />
-    );
-    expect(
-      screen.queryByRole('button', { name: 'Back' })
-    ).not.toBeInTheDocument();
+  it('hides Session actions on the New session header', () => {
+    render(<HeaderBox projectName="New session" showTimelineStyle={false} />);
     expect(
       screen.queryByRole('button', { name: /Session settings/ })
     ).not.toBeInTheDocument();
@@ -557,9 +549,93 @@ describe('HeaderBox chat timeline mode', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows Back on a Session header', () => {
+  it("leads with the Session's Space, naming it in full", () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research and development',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { emoji: '🚀' },
+        },
+      },
+    });
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    const icon = document.querySelector(
+      '[data-session-space-icon]'
+    ) as HTMLElement;
+    expect(icon).toHaveAttribute('aria-label', 'Research and development');
+    expect(icon).toHaveTextContent('🚀');
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+  });
+
+  it('lines up with the top bar: Space icon under Search, last button under Support', () => {
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { rerender } = render(
+      <HeaderBox projectName="Timeline project" projectId="project-1" />
+    );
+
+    const header = document.querySelector('[data-session-header]');
+    // The Space icon leads, 18px in, under the search icon.
+    expect(header).toHaveClass(
+      'pl-[calc(var(--ds-ref-space-8)_+_var(--ds-ref-space-10))]',
+      'pr-ds-10'
+    );
+
+    // Beside an open preview the header does not reach the window edge, so
+    // the Session keeps its own right inset.
+    rerender(
+      <HeaderBox
+        projectName="Timeline project"
+        projectId="project-1"
+        atWindowEdge={false}
+        className="pr-ds-4"
+      />
+    );
+    expect(header).toHaveClass('pr-ds-4');
+    expect(header).not.toHaveClass('pr-ds-10');
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+  });
+
+  it('starts the New session title under the search icon without a Space icon', () => {
+    render(<HeaderBox projectName="New session" projectId={null} />);
+
+    // The title's own 10px text inset from the base 8px puts it 18px in.
+    const header = document.querySelector('[data-session-header]');
+    expect(document.querySelector('[data-session-space-icon]')).toBeNull();
+    expect(header).toHaveClass('px-ds-8', 'pr-ds-10');
+    expect(header).not.toHaveClass(
+      'pl-[calc(var(--ds-ref-space-8)_+_var(--ds-ref-space-10))]'
+    );
+    expect(screen.getByText('New session')).toHaveClass(
+      'px-[var(--ds-button-sm-padding-inline)]'
+    );
+  });
+
+  it('has no Back button: the top bar owns Back and Forward', () => {
     render(<HeaderBox projectName="Timeline project" />);
-    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Back' })
+    ).not.toBeInTheDocument();
   });
 
   it('puts the Summary toggle next to Preview with keyboard focus and pressed state', async () => {

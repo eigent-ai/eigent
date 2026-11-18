@@ -63,6 +63,10 @@ import {
 } from '../../src/shared/windowClose';
 import { AppShellReadinessGate } from './appShellReadinessGate';
 import {
+  backendFileDownloadUrl,
+  DOWNLOAD_BACKEND_FILE_CHANNEL,
+} from './backendFileDownload';
+import {
   isBrainStreamRelayDisabled,
   registerBrainStreamRelay,
   type BrainStreamRelay,
@@ -2454,6 +2458,19 @@ function registerIpcHandlers() {
   ipcMain.handle('open-local-file', async (event, targetPath: string) => {
     assertAppRendererSender(event);
     return openWorkspaceLocalFile(targetPath, activeLocalFileRoots(), shell);
+  });
+
+  // Save a backend file through the download manager, so a file too large to
+  // preview is never read into renderer memory. The system save dialog picks
+  // the destination.
+  ipcMain.handle(DOWNLOAD_BACKEND_FILE_CHANNEL, (event, url: unknown) => {
+    assertAppRendererSender(event);
+    const downloadUrl = backendFileDownloadUrl(url, backendPort);
+    if (!downloadUrl) {
+      return { success: false, error: 'Not a file on the local backend' };
+    }
+    event.sender.downloadURL(downloadUrl);
+    return { success: true };
   });
 
   // Skills: all operations via Brain REST API (backend). No IPC.

@@ -56,6 +56,25 @@ describe('ModelChangeDivider', () => {
     );
   });
 
+  it.each([
+    [
+      'an Eigent Cloud model',
+      { platform: 'openai-compatible-model', type: 'openai/gemini-4-carbon' },
+      'gemini-4-carbon',
+    ],
+    [
+      'a model through a BYOK gateway',
+      { platform: 'openrouter', type: 'anthropic/claude-sonnet-4.5' },
+      'claude-sonnet-4.5',
+    ],
+  ])('names %s without its provider prefix', (_case, current, name) => {
+    render(<ModelChangeDivider previous={gpt} current={current} />);
+    expect(screen.getByRole('note')).toHaveTextContent(
+      `Model changed to ${name}`
+    );
+    expect(screen.getByRole('note')).not.toHaveTextContent('/');
+  });
+
   it('treats the same type on another platform as a change', () => {
     render(
       <ModelChangeDivider

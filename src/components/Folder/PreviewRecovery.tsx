@@ -14,8 +14,17 @@
 
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
+import { FileAccessDeniedError } from '@/lib/filePreviewLoader';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+/** Why a preview did not load: a general failure, or an expired file grant
+ * (the preview was open too long, or Eigent restarted since it opened). */
+export type PreviewLoadFailure = 'failed' | 'access-expired';
+
+export function previewLoadFailure(error: unknown): PreviewLoadFailure {
+  return error instanceof FileAccessDeniedError ? 'access-expired' : 'failed';
+}
 
 export function PreviewFailure({ message }: { message?: string }) {
   const { t } = useTranslation();

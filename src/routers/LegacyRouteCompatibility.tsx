@@ -15,11 +15,13 @@
 import { isDesktop } from '@/client/platform';
 import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { useNewSpaceCreation } from '@/components/Home/hooks/useNewSpaceCreation';
+import { isSettingsSection, settingsPageSearch } from '@/lib/shellRoutes';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useCallback } from 'react';
 import {
   Navigate,
   useLocation,
+  useParams,
   useSearchParams,
   type Location,
 } from 'react-router-dom';
@@ -117,7 +119,7 @@ export function legacyRouteDestination(
   kind: LegacyRouteKind,
   location: Pick<Location, 'search' | 'state'>,
   activeSpaceId: string | null
-): { pathname: '/home'; search: string } {
+): { pathname: '/home' | '/settings'; search: string } {
   const searchParams = new URLSearchParams(location.search);
 
   switch (kind) {
@@ -157,13 +159,20 @@ export function legacyRouteDestination(
     }
   }
 
+  if (searchParams.get('section') === 'settings') {
+    return {
+      pathname: '/settings',
+      search: settingsPageSearch(searchParams),
+    };
+  }
+
   return {
     pathname: '/home',
     search: searchParams.toString(),
   };
 }
 
-/** Redirect a removed frontend route into its current Home management surface. */
+/** Redirect a removed frontend route into its current Home or Settings page. */
 export function LegacyRouteRedirect({ kind }: { kind: LegacyRouteKind }) {
   const location = useLocation();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
@@ -175,6 +184,25 @@ export function LegacyRouteRedirect({ kind }: { kind: LegacyRouteKind }) {
   const destination = legacyRouteDestination(kind, location, activeSpaceId);
 
   return <Navigate to={destination} replace state={location.state} />;
+}
+
+/** `/setting` and `/setting/<section>` predate the Settings page's `?tab=`. */
+export function LegacySettingRedirect() {
+  const location = useLocation();
+  const params = useParams();
+  const search = new URLSearchParams(location.search);
+  const sectionFromPath = params['*']?.split('/')[0] ?? null;
+  if (isSettingsSection(sectionFromPath) && !search.has('tab')) {
+    search.set('tab', sectionFromPath);
+  }
+
+  return (
+    <Navigate
+      to={{ pathname: '/settings', search: settingsPageSearch(search) }}
+      replace
+      state={location.state}
+    />
+  );
 }
 
 function workflowFromSearch(

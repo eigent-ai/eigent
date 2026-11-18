@@ -138,6 +138,10 @@ class Chat(BaseModel):
     # id makes a lost HTTP/SSE response safe to retry without creating another
     # Attempt.
     resume_request_id: str | None = Field(default=None, min_length=1)
+    # Trigger tasks (schedules, webhooks, Slack) send text the user did not
+    # write. ``scheduled`` keeps Memory from treating it as the user's words.
+    # It can only lower trust: Brain's persisted request for the Run decides.
+    source: Literal["local", "scheduled"] = "local"
 
     @field_validator("thinking_effort", mode="before")
     @classmethod

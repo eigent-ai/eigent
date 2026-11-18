@@ -16,6 +16,7 @@ import { DsIcon } from '@/components/ui/ds-icon';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useSessionProjectId } from '@/hooks/useSessionProjectId';
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import { useProjectedRunStatus, useRunWriterWait } from '@/lib/runEvents';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { isSupersededRunError } from '@/lib/taskLifecycleUi';
@@ -24,7 +25,12 @@ import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
 import type { TaskFailureFacts } from '@/service/runUsageReconciliation';
 import { RUN_RECEIPT_STATUSES, type VanillaChatStore } from '@/store/chatStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { motion } from 'framer-motion';
 import { ChevronDown, InfoIcon } from 'lucide-react';
 import React, {
@@ -54,6 +60,11 @@ import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
 import { TaskCard } from './TaskBox/TaskCard';
 import { RunArtifactChangeList } from './TimelineModes/RunFiles';
+import {
+  useHistoryEntrance,
+  useHistoryLoading,
+  useLoadedFromHistory,
+} from './useHistoryEntrance';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{
@@ -163,6 +174,11 @@ interface UserQueryGroupProps {
    * make every historic group repaint with the newest summary).
    */
   taskId?: string;
+  /**
+   * The Session's mode. A reloaded task records no mode of its own, so a
+   * task with no other evidence uses this instead of guessing Workforce.
+   */
+  sessionMode?: SessionModeType;
 }
 
 export { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
@@ -176,9 +192,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   index,
   taskId: scopedTaskId,
   onEditUserMessage,
+  sessionMode,
 }) => {
   const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
+  // Reloaded history appears where it ended instead of animating in again.
+  const entrance = useHistoryEntrance();
+  const loadedFromHistory = useLoadedFromHistory();
+  const historyLoading = useHistoryLoading();
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
@@ -292,8 +313,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     activeTask?.status !== ChatTaskStatus.FINISHED;
 
   const isSingleAgentTask =
-    inferSessionModeFromTask(activeTask, SessionMode.WORKFORCE) ===
-    SessionMode.SINGLE_AGENT;
+    inferSessionModeFromTask(
+      activeTask,
+      sessionMode ?? SessionMode.WORKFORCE
+    ) === SessionMode.SINGLE_AGENT;
   const hasUnconfirmedPlan = Boolean(
     activeTask?.messages.some(
       (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
@@ -394,9 +417,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // its own "Subtasks Planning" spinner. Only the current/latest turn should
   // show the live splitting UI; abandoned turns fall through to taskCardVisible
   // and the conditional below renders nothing instead of a stale spinner.
+  // Reloaded history shows the message and its task log only: no splitting
+  // box while it loads, and none afterwards for a task that already ended. A
+  // task still running after the reload keeps its live planning state.
+  const hidesPlanningForHistory =
+    historyLoading ||
+    (loadedFromHistory &&
+      (activeTask?.status === ChatTaskStatus.FINISHED ||
+        isStoppedRunStatus(activeTask?.durableRunStatus ?? '')));
   const isSkeletonPhase =
     task &&
     !isSingleAgentTask &&
+    !hidesPlanningForHistory &&
     isPlanSplittingPhase(task) &&
     isLastUserQuery &&
     !isInitialTaskPreparation;
@@ -422,7 +454,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       // Single agent: from submit until the first `todo_state` arrives.
       (shouldShowRunWorkLog && isSingleAgentTask));
   const shouldShowPlanTaskBox = Boolean(
-    !hasConfirmedSubTasks && (isLastUserQuery || queryGroup.taskMessage)
+    !hasConfirmedSubTasks &&
+    !hidesPlanningForHistory &&
+    (isLastUserQuery || queryGroup.taskMessage)
   );
 
   return (
@@ -430,7 +464,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       ref={groupRef}
       data-query-id={queryGroup.queryId}
       data-task-card={taskCardVisible ? 'true' : undefined}
-      initial={{ opacity: 0, y: 10 }}
+      initial={entrance({ opacity: 0, y: 10 })}
       animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: 0.3,
@@ -441,7 +475,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {/* User query: always rendered as a regular component in the chat flow. */}
       {queryGroup.userMessage && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={entrance({ opacity: 0, y: 10 })}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="px-2 py-2"
@@ -467,7 +501,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {showTaskPlanCard && activeTaskId && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={entrance({ opacity: 0, y: 20 })}
           animate={{
             opacity: 1,
             y: 0,
@@ -525,7 +559,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {taskCardVisible && activeTaskId && queryGroup.ownsRunWorkLog && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={entrance({ opacity: 0, y: 8 })}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
           className="px-2"
@@ -606,7 +640,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`end-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={entrance({ opacity: 0, y: 10 })}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="flex flex-col"
@@ -644,7 +678,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`skip-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={entrance({ opacity: 0, y: 10 })}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="flex flex-col"
@@ -666,7 +700,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`agent-end-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={entrance({ opacity: 0, y: 10 })}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="px-2"
@@ -687,7 +721,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`message-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={entrance({ opacity: 0, y: 10 })}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="flex flex-col"
@@ -711,7 +745,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           return (
             <motion.div
               key={`end-empty-${message.id}`}
-              initial={{ opacity: 0 }}
+              initial={entrance({ opacity: 0 })}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
               className="flex flex-col"
@@ -751,7 +785,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {showMissingFinalResponse ? (
         <motion.div
-          initial={{ opacity: 0, y: 6 }}
+          initial={entrance({ opacity: 0, y: 6 })}
           animate={{ opacity: 1, y: 0 }}
           className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-neutral-default-default px-4 py-3 text-ds-text-base text-ds-ink-muted-default"
         >
@@ -763,7 +797,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={entrance({ opacity: 0, y: 10 })}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
           className="px-2"

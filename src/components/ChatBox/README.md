@@ -37,7 +37,7 @@ ChatBox
 ├── PlanTaskBox overlay portal (legacy only)
 └── BottomBox overlay (width: 100%; maximum width: 600px)
     ├── QueuedBox
-    ├── floating UsageLimitBanner or PickerPanel
+    ├── floating UsageLimitBanner or ContextPanel (files, skills, connectors)
     └── BoxMain
         ├── BoxHeader
         ├── ControlInputRouter
@@ -75,7 +75,7 @@ ChatBox/
     ├── BoxHeader.tsx
     ├── BoxFooter.tsx
     ├── QueuedBox.tsx
-    ├── PickerPanel.tsx
+    ├── ContextPanel.tsx
     ├── UsageLimitBanner.tsx
     ├── ApprovalModeSelect.tsx
     └── ModelAndThinkingEffortSelect.tsx

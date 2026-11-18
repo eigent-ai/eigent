@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Separator } from '@/components/ui/separator';
+import { modelDisplayName } from '@/lib/modelDisplayName';
 import { cn } from '@/lib/utils';
 import type { ResolvedRunModel } from '@/service/projectRunsApi';
 import { useTranslation } from 'react-i18next';
@@ -50,7 +51,10 @@ export function ModelChangeDivider({
     return null;
   }
 
-  const label = t('chat.timeline-model-changed', { model: current.type });
+  // Compare full identities above; show only the model's name.
+  const label = t('chat.timeline-model-changed', {
+    model: modelDisplayName(current.type),
+  });
   return (
     <div
       className={cn('flex w-full items-center gap-3 py-1', className)}

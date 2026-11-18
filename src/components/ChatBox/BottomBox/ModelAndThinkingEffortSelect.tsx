@@ -35,6 +35,8 @@ import {
   providerDefinition,
   selectableConfiguredModels,
 } from '@/lib/configuredModels';
+import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
+import { getProviderValid } from '@/lib/providerStatus';
 import {
   parseSpaceModelChoice,
   setSpaceModelChoice,
@@ -62,6 +64,11 @@ export interface ModelAndThinkingEffortSelectProps {
   onThinkingEffortChange?: (effort: ThinkingEffortType | undefined) => void;
   disabled?: boolean;
   projectId?: string | null;
+  /**
+   * The Space whose default model a projectless composer reads and writes.
+   * Defaults to the active Space; a Space's page passes its own.
+   */
+  spaceId?: string | null;
   readOnly?: boolean;
   className?: string;
 }
@@ -234,6 +241,7 @@ export function ModelAndThinkingEffortSelect({
   onThinkingEffortChange,
   disabled,
   projectId,
+  spaceId: spaceIdOverride,
   readOnly = false,
   className,
 }: ModelAndThinkingEffortSelectProps) {
@@ -278,7 +286,7 @@ export function ModelAndThinkingEffortSelect({
   const spaceId = useSpaceStore((state) =>
     projectId
       ? (runtimeSpaceId ?? state.projectIdIndex[projectId])
-      : state.activeSpaceId
+      : (spaceIdOverride ?? state.activeSpaceId)
   );
   const rawSpaceChoice = useSpaceStore((state) =>
     spaceId
@@ -335,15 +343,18 @@ export function ModelAndThinkingEffortSelect({
     selection.modelType === 'cloud'
       ? getCloudName(selection.cloud_model_type ?? '')
       : selection.modelType === 'codex_subscription'
-        ? selection.codex_model_type
+        ? modelDisplayName(selection.codex_model_type)
         : selectedRecord
           ? [
-              selectedRecord.model_type,
+              configuredModelName(
+                selectedRecord,
+                inventory.records.filter(getProviderValid)
+              ),
               configurationHint(selectedRecord, inventory.records),
             ]
               .filter(Boolean)
               .join(' · ')
-          : selection.model_type;
+          : modelDisplayName(selection.model_type);
   const effortLabel = t(
     thinkingEffort === undefined
       ? 'setting.default'
