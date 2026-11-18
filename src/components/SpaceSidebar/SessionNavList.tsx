@@ -12,11 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { NavTab, SidebarScrollArea } from '@/components/Layout/AppSidebar';
-import { DsIcon } from '@/components/ui/ds-icon';
-import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
+import { SidebarScrollArea } from '@/components/Layout/AppSidebar';
 import { cn } from '@/lib/utils';
-import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   SessionNavListRows,
@@ -39,14 +36,11 @@ export interface SessionNavListProps {
   onDeleteSession?: (sessionId: string) => void;
   onEndSession?: (sessionId: string) => void;
   onPinSession?: (sessionId: string) => void;
-  onNewSession: () => void;
-  /** Selected state for the New Session row. */
-  newSessionActive?: boolean;
   openIn?: SessionOpenInActions;
   className?: string;
 }
 
-/** New Session row, optional Pinned section, and Sessions section. */
+/** Optional Pinned section, and Sessions section. */
 export function SessionNavList({
   sessions,
   activeSessionId,
@@ -54,14 +48,11 @@ export function SessionNavList({
   onDeleteSession,
   onEndSession,
   onPinSession,
-  onNewSession,
-  newSessionActive = false,
   openIn,
   className,
 }: SessionNavListProps) {
   const { t } = useTranslation();
 
-  const newSessionLabel = t('layout.new');
   const pinnedLabel = t('layout.pinned', { defaultValue: 'Pinned' });
   const sessionsLabel = t('layout.projects', { defaultValue: 'Sessions' });
 
@@ -87,35 +78,18 @@ export function SessionNavList({
         className
       )}
     >
-      {/* + New Session */}
-      <div className="flex w-full min-w-0 flex-col">
-        <NavTab
-          active={newSessionActive}
-          onClick={onNewSession}
-          leading={<DsIcon icon={Plus} className="shrink-0" aria-hidden />}
-          label={newSessionLabel}
-          tooltip={
-            <ShortcutTooltipContent
-              label={newSessionLabel}
-              shortcutId="new-project"
-            />
-          }
-          tooltipCompact
-          tooltipVariant="delayed"
-          ariaLabel={newSessionLabel}
-          ariaCurrentPage={newSessionActive}
-        />
-      </div>
-
       {/* Scrollable section list */}
-      <SidebarScrollArea className="mt-1 pb-1">
+      <SidebarScrollArea className="pb-1">
         {hasPinned && (
-          <SidebarAccordionSection label={pinnedLabel}>
+          <SidebarAccordionSection label={pinnedLabel} className="mt-0">
             <SessionNavListRows {...sharedRowProps} sessions={pinnedSessions} />
           </SidebarAccordionSection>
         )}
         {hasUnpinned && (
-          <SidebarAccordionSection label={sessionsLabel}>
+          <SidebarAccordionSection
+            label={sessionsLabel}
+            className={hasPinned ? undefined : 'mt-0'}
+          >
             <SessionNavListRows
               {...sharedRowProps}
               sessions={unpinnedSessions}

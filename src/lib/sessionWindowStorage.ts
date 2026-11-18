@@ -20,7 +20,6 @@ import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSessionSplitViewStore } from '@/store/sessionSplitViewStore';
 import { useSkillsStore } from '@/store/skillsStore';
-import { useSpaceOverviewStore } from '@/store/spaceOverviewStore';
 import { useSpaceStore } from '@/store/spaceStore';
 
 interface PersistedStore {
@@ -46,7 +45,6 @@ const PERSISTED_STORES = [
   usePageTabStore,
   useSessionSplitViewStore,
   useSkillsStore,
-  useSpaceOverviewStore,
   useSpaceStore,
 ] as unknown as PersistedStore[];
 

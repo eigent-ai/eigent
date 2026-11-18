@@ -14,6 +14,7 @@
 
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+import { SidebarTooltipProvider } from './SidebarTooltip';
 
 export interface SidebarShellProps {
   children: ReactNode;
@@ -45,9 +46,12 @@ export function SidebarShell({
         className
       )}
     >
-      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-y-clip">
-        {children}
-      </div>
+      {/* Every row tooltip in this sidebar shares one moving shell. */}
+      <SidebarTooltipProvider>
+        <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-y-clip">
+          {children}
+        </div>
+      </SidebarTooltipProvider>
     </aside>
   );
 }
@@ -81,6 +85,21 @@ export function SidebarSection({
   );
 }
 
+/**
+ * An invisible copy of the app rail's divider under Home. Placed between a
+ * sidebar's one-tab-tall top row and New session, with the rail's 4px gap on
+ * each side, it puts New session level with the rail's first Space tile.
+ */
+export function SidebarRailSpacer() {
+  return (
+    <span
+      aria-hidden
+      data-sidebar-rail-spacer
+      className="my-ds-2 w-full shrink-0 border-x-0 border-y-0 border-t-ds-hairline border-solid border-transparent"
+    />
+  );
+}
+
 /** Hairline divider between sidebar sections. */
 export function SidebarSeparator({ className }: { className?: string }) {
   return (
@@ -110,7 +129,8 @@ export function SidebarNavGroup({
           {label}
         </div>
       ) : null}
-      <div className="flex w-full min-w-0 flex-col gap-1">{children}</div>
+      {/* Rows sit 2px apart, the same as every sidebar list. */}
+      <div className="flex w-full min-w-0 flex-col gap-0.5">{children}</div>
     </div>
   );
 }

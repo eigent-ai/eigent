@@ -27,6 +27,16 @@ it('retains authorization and gives the native viewer a filename and width fit',
   expect(url.searchParams.get('path')).toBe('a/b.pdf');
   expect(url.hash).toBe('#view=FitH');
 });
+it('keeps the file access grant on the named Brain PDF URL', () => {
+  const url = new URL(
+    pdfPreviewUrl(
+      'http://localhost:5001/files/stream?path=a.pdf&project_id=p&email=e&access=grant.sig',
+      'a.pdf'
+    )
+  );
+  expect(url.pathname).toBe('/files/stream/a.pdf');
+  expect(url.searchParams.get('access')).toBe('grant.sig');
+});
 it('keeps signed remote URLs and explicit zoom intact', () => {
   expect(
     pdfPreviewUrl(

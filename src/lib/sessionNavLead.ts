@@ -127,6 +127,14 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
 };
 
+/**
+ * Whether a lead is a settled result, which a person reads once. Live work and
+ * open questions stay on show until they change.
+ */
+export function isSessionOutcomeKind(kind: SessionNavLeadKind): boolean {
+  return kind === 'finished' || kind === 'error' || kind === 'warning';
+}
+
 /** Presentation of a lead kind, for example one reported by another window. */
 export function presentationForKind(
   kind: SessionNavLeadKind,
