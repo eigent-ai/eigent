@@ -15,8 +15,24 @@
 import type { BrowserWindowConstructorOptions } from 'electron';
 import {
   getWindowsTitleBarOverlay,
+  type WindowAppMenuAnchor,
   type WindowChromeTheme,
 } from '../../src/shared/windowChrome';
+
+/**
+ * Menu.popup() takes window coordinates in DIPs, while the renderer measures
+ * the button in CSS pixels, which differ when the page is zoomed.
+ */
+export function getAppMenuPopupPosition(
+  anchor: WindowAppMenuAnchor,
+  zoomFactor: number
+): { x: number; y: number } {
+  const zoom = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+  return {
+    x: Math.round(anchor.x * zoom),
+    y: Math.round(anchor.y * zoom),
+  };
+}
 
 // `window-controls` exception: BrowserWindow requires concrete native colors;
 // renderer CSS variables are unavailable in the Electron main process.

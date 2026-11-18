@@ -14,6 +14,8 @@
 
 import {
   getWindowsTitleBarOverlay,
+  hasWindowAppMenuButton,
+  isWindowAppMenuAnchor,
   isWindowChromeTheme,
 } from '@/shared/windowChrome';
 import { describe, expect, it } from 'vitest';
@@ -37,5 +39,27 @@ describe('Windows title bar overlay', () => {
     expect(isWindowChromeTheme('dark')).toBe(true);
     expect(isWindowChromeTheme('system')).toBe(false);
     expect(isWindowChromeTheme(null)).toBe(false);
+  });
+});
+
+describe('Windows application menu button', () => {
+  it('is offered only on Windows, where the overlay hides the menu bar', () => {
+    expect(hasWindowAppMenuButton('win32')).toBe(true);
+    expect(hasWindowAppMenuButton('darwin')).toBe(false);
+    expect(hasWindowAppMenuButton('linux')).toBe(false);
+    expect(hasWindowAppMenuButton('')).toBe(false);
+  });
+
+  it('accepts only finite, on-window anchor positions', () => {
+    expect(isWindowAppMenuAnchor({ x: 8, y: 40 })).toBe(true);
+    expect(isWindowAppMenuAnchor({ x: 0, y: 0 })).toBe(true);
+    expect(isWindowAppMenuAnchor({ x: -1, y: 40 })).toBe(false);
+    expect(isWindowAppMenuAnchor({ x: Number.NaN, y: 40 })).toBe(false);
+    expect(isWindowAppMenuAnchor({ x: 8, y: Infinity })).toBe(false);
+    expect(isWindowAppMenuAnchor({ x: 8, y: 1_000_000 })).toBe(false);
+    expect(isWindowAppMenuAnchor({ x: '8', y: 40 })).toBe(false);
+    expect(isWindowAppMenuAnchor({ x: 8 })).toBe(false);
+    expect(isWindowAppMenuAnchor(null)).toBe(false);
+    expect(isWindowAppMenuAnchor('8,40')).toBe(false);
   });
 });

@@ -90,6 +90,18 @@ describe('Session window wiring', () => {
     );
   });
 
+  it('opens the Windows application menu only from a valid anchor, on the sender window', () => {
+    const menu = source.slice(
+      source.indexOf('ipcMain.on(WINDOW_APP_MENU_CHANNEL'),
+      source.indexOf("ipcMain.on('window-minimize'")
+    );
+    expect(menu).toContain("process.platform !== 'win32'");
+    expect(menu).toContain('isWindowAppMenuAnchor(anchor)');
+    expect(menu).toContain('appWindowForSender(event.sender)');
+    expect(menu).toContain('Menu.getApplicationMenu()');
+    expect(menu).toContain('getAppMenuPopupPosition(anchor');
+  });
+
   it('keeps the saved Session window list when the app quits', () => {
     expect(source).toMatch(
       /markAppQuitInProgress\(\);[\s\S]{0,200}sessionWindows\?\.markQuitting\(\);/u

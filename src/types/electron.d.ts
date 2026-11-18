@@ -36,6 +36,9 @@ interface ElectronAPI {
   setWindowChromeTheme: (
     theme: import('@/shared/windowChrome').WindowChromeTheme
   ) => void;
+  openWindowAppMenu: (
+    anchor: import('@/shared/windowChrome').WindowAppMenuAnchor
+  ) => void;
   isFullScreen: () => Promise<boolean>;
   selectFile: (options?: any) => Promise<{
     success: boolean;

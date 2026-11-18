@@ -24,6 +24,40 @@ export function isWindowChromeTheme(
   return value === 'light' || value === 'dark';
 }
 
+/**
+ * The caption-button overlay leaves Windows without its native menu bar, so
+ * the header offers the same application menu (File, Edit, View, ...) from a
+ * button instead.
+ */
+export const WINDOW_APP_MENU_CHANNEL = 'window-chrome:open-app-menu';
+
+/** Where the menu opens, in CSS pixels from the window's top-left corner. */
+export interface WindowAppMenuAnchor {
+  x: number;
+  y: number;
+}
+
+const MAX_APP_MENU_ANCHOR_PX = 100_000;
+
+export function isWindowAppMenuAnchor(
+  value: unknown
+): value is WindowAppMenuAnchor {
+  if (typeof value !== 'object' || value === null) return false;
+  const { x, y } = value as Record<string, unknown>;
+  return [x, y].every(
+    (n) =>
+      typeof n === 'number' &&
+      Number.isFinite(n) &&
+      n >= 0 &&
+      n <= MAX_APP_MENU_ANCHOR_PX
+  );
+}
+
+/** Only Windows hides its menu bar under the overlay; macOS keeps the global menu. */
+export function hasWindowAppMenuButton(platform: string): boolean {
+  return platform === 'win32';
+}
+
 export function getWindowsTitleBarOverlay(theme: WindowChromeTheme) {
   return {
     // This exception is registered as `window-controls`: Windows owns the

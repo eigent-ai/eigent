@@ -40,7 +40,9 @@ import {
   type SubframeLoadFailure,
 } from '../../src/shared/subframeLoadFailure';
 import {
+  WINDOW_APP_MENU_CHANNEL,
   WINDOW_CHROME_THEME_CHANNEL,
+  type WindowAppMenuAnchor,
   type WindowChromeTheme,
 } from '../../src/shared/windowChrome';
 import {
@@ -124,6 +126,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   setWindowChromeTheme: (theme: WindowChromeTheme) =>
     ipcRenderer.send(WINDOW_CHROME_THEME_CHANNEL, theme),
+  openWindowAppMenu: (anchor: WindowAppMenuAnchor) =>
+    ipcRenderer.send(WINDOW_APP_MENU_CHANNEL, anchor),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   selectAgentPluginSource: () =>

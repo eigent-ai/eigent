@@ -59,7 +59,9 @@ import {
 } from '../../src/shared/subframeLoadFailure';
 import {
   getWindowsTitleBarOverlay,
+  isWindowAppMenuAnchor,
   isWindowChromeTheme,
+  WINDOW_APP_MENU_CHANNEL,
   WINDOW_CHROME_THEME_CHANNEL,
 } from '../../src/shared/windowChrome';
 import {
@@ -151,7 +153,10 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
-import { getMainWindowChromeOptions } from './windowChrome';
+import {
+  getAppMenuPopupPosition,
+  getMainWindowChromeOptions,
+} from './windowChrome';
 import {
   loadWindowStartupState,
   persistWindowState,
@@ -2263,6 +2268,18 @@ function registerIpcHandlers() {
     appWindowForSender(event.sender)?.setTitleBarOverlay(
       getWindowsTitleBarOverlay(theme)
     );
+  });
+  ipcMain.on(WINDOW_APP_MENU_CHANNEL, (event, anchor: unknown) => {
+    if (process.platform !== 'win32' || !isWindowAppMenuAnchor(anchor)) return;
+    // The overlay hides the native menu bar, so the header button opens the
+    // same application menu as a dropdown under itself.
+    const window = appWindowForSender(event.sender);
+    const menu = Menu.getApplicationMenu();
+    if (!window || !menu) return;
+    menu.popup({
+      window,
+      ...getAppMenuPopupPosition(anchor, event.sender.getZoomFactor()),
+    });
   });
   ipcMain.on('window-minimize', (event) =>
     appWindowForSender(event.sender)?.minimize()

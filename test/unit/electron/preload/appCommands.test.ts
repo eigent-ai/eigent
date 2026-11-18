@@ -21,7 +21,10 @@ import {
   APP_SHELL_READY_PROBE_CHANNEL,
 } from '@/shared/appCommands';
 import { NATIVE_MENU_LOCALE_CHANNEL } from '@/shared/nativeMenu';
-import { WINDOW_CHROME_THEME_CHANNEL } from '@/shared/windowChrome';
+import {
+  WINDOW_APP_MENU_CHANNEL,
+  WINDOW_CHROME_THEME_CHANNEL,
+} from '@/shared/windowChrome';
 import {
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -60,6 +63,7 @@ type ExposedElectronAPI = {
   }) => void;
   setNativeMenuLocale: (locale: 'en-US' | 'zh-Hans') => void;
   setWindowChromeTheme: (theme: 'light' | 'dark') => void;
+  openWindowAppMenu: (anchor: { x: number; y: number }) => void;
 };
 
 let electronAPI: ExposedElectronAPI;
@@ -82,6 +86,17 @@ describe('preload app shell bridge', () => {
       WINDOW_CHROME_THEME_CHANNEL,
       'dark'
     );
+  });
+
+  it('asks the main process to open the application menu at the anchor', () => {
+    mocks.send.mockClear();
+
+    electronAPI.openWindowAppMenu({ x: 8, y: 36 });
+
+    expect(mocks.send).toHaveBeenCalledWith(WINDOW_APP_MENU_CHANNEL, {
+      x: 8,
+      y: 36,
+    });
   });
 
   it('re-announces READY when the first announcement preceded did-finish-load', async () => {

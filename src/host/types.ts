@@ -17,7 +17,10 @@
 import type { AppCommandId } from '@/shared/appCommands';
 import type { NativeMenuLocale } from '@/shared/nativeMenu';
 import type { SubframeLoadFailure } from '@/shared/subframeLoadFailure';
-import type { WindowChromeTheme } from '@/shared/windowChrome';
+import type {
+  WindowAppMenuAnchor,
+  WindowChromeTheme,
+} from '@/shared/windowChrome';
 import type {
   WindowCloseRequest,
   WindowCloseResponse,
@@ -37,6 +40,7 @@ export interface AppShellElectronAPI {
     callback: (failure: SubframeLoadFailure) => void
   ) => () => void;
   setWindowChromeTheme?: (theme: WindowChromeTheme) => void;
+  openWindowAppMenu?: (anchor: WindowAppMenuAnchor) => void;
 }
 
 export interface AppHost {
