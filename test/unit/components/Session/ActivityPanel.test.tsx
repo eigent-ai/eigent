@@ -32,7 +32,12 @@ const mocks = vi.hoisted(() => ({
   projectFiles: [] as any[],
   processRows: [] as any[],
   projectOutputResolver: vi.fn(),
+  runtimeProjects: {
+    'project-1': { spaceId: 'space-1' },
+    'project-2': { spaceId: 'space-2' },
+  } as Record<string, { spaceId?: string }>,
   spaceState: {
+    activeSpaceId: 'space-1' as string | null,
     projectIdIndex: {
       'project-1': 'space-1',
       'project-2': 'space-2',
@@ -57,7 +62,10 @@ vi.mock('@/api/connectors', () => ({
 vi.mock('@/client/platform', () => ({ isWeb: () => false }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
-  default: () => ({ chatStore: mocks.chatStore }),
+  default: () => ({
+    chatStore: mocks.chatStore,
+    projectId: mocks.activeProjectId,
+  }),
 }));
 
 vi.mock('@/hooks/useProjectEventRuntime', () => ({
@@ -86,6 +94,7 @@ vi.mock('@/host', () => ({
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: () => ({
     activeProjectId: mocks.activeProjectId,
+    projects: mocks.runtimeProjects,
   }),
 }));
 
@@ -257,6 +266,15 @@ describe('SessionActivityPanel project scope', () => {
       'project-1': { currentRun: null, historicalRuns: [], runs: [] },
       'project-2': { currentRun: null, historicalRuns: [], runs: [] },
     };
+    mocks.spaceState.activeSpaceId = 'space-1';
+    mocks.spaceState.projectIdIndex = {
+      'project-1': 'space-1',
+      'project-2': 'space-2',
+    };
+    mocks.runtimeProjects = {
+      'project-1': { spaceId: 'space-1' },
+      'project-2': { spaceId: 'space-2' },
+    };
   });
 
   it('counts and displays every task file in All summary', async () => {
@@ -329,6 +347,23 @@ describe('SessionActivityPanel project scope', () => {
   });
 
   it('resolves SidePanel files against the Space that owns the Project', async () => {
+    render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+
+    expect(mocks.projectOutputResolver).toHaveBeenCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      []
+    );
+  });
+
+  it('resolves SidePanel files from the runtime Project while persisted metadata is hydrating', async () => {
+    delete mocks.spaceState.projectIdIndex['project-1'];
+
     render(<SessionActivityPanel scope="latest" />);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 40));

@@ -12,8 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 
@@ -22,6 +23,13 @@ export interface SidebarAccordionSectionProps {
   children: ReactNode;
   defaultExpanded?: boolean;
   className?: string;
+  /**
+   * Controls at the header's right end. Like the chevron they show on hover
+   * or keyboard focus, and stay while one of their menus is open.
+   */
+  actions?: ReactNode;
+  /** Controls after `actions` that stay visible, such as a section's add button. */
+  persistentActions?: ReactNode;
 }
 
 /**
@@ -33,34 +41,68 @@ export function SidebarAccordionSection({
   children,
   defaultExpanded = true,
   className,
+  actions,
+  persistentActions,
 }: SidebarAccordionSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const reduceMotion = useReducedMotion();
 
   return (
     <div className={cn('mt-3 flex flex-col', className)}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="group/section-header flex w-full items-center gap-1 rounded-lg px-3 py-0.5 text-left"
-        aria-expanded={expanded}
-      >
-        <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
-          {label}
-        </span>
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
-            !expanded && '-rotate-90',
-            expanded && 'opacity-0 group-hover/section-header:opacity-100'
-          )}
-          aria-hidden
-        />
-      </button>
+      <div className="group/section-header flex w-full min-w-0 items-center">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-lg px-3 py-0.5 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
+            {label}
+          </span>
+          <DsIcon
+            icon={ChevronDown}
+            className={cn(
+              'shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
+              !expanded && '-rotate-90',
+              expanded &&
+                'opacity-0 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100'
+            )}
+            aria-hidden
+          />
+        </button>
+        {actions || persistentActions ? (
+          <div className="flex shrink-0 items-center gap-ds-2 pr-ds-6">
+            {actions ? (
+              <div
+                data-section-header-actions
+                className="flex items-center gap-ds-2 opacity-0 transition-opacity duration-150 group-focus-within/section-header:opacity-100 group-hover/section-header:opacity-100 has-[[data-state=open]]:opacity-100"
+              >
+                {actions}
+              </div>
+            ) : null}
+            {persistentActions ? (
+              <div
+                data-section-header-persistent-actions
+                className="flex items-center gap-ds-2"
+              >
+                {persistentActions}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <motion.div
         initial={false}
-        animate={{ height: expanded ? 'auto' : 0 }}
-        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+        animate={{
+          height: expanded ? 'auto' : 0,
+          opacity: expanded ? 1 : 0,
+        }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.18, ease: [0.4, 0, 0.2, 1] }
+        }
         style={{ overflow: 'hidden' }}
       >
         <div className="flex flex-col gap-0.5 pt-0.5">{children}</div>

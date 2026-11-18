@@ -26,6 +26,7 @@ import { recordFeatureUsed } from '@/lib/events/appEvents';
 import { buildSkillMd, parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { AlertCircle, File, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -599,12 +600,9 @@ export default function SkillUploadDialog({
                               : 'bg-ds-neutral-strong-default'
                           }`}
                         >
-                          <File
-                            className={`h-4 w-4 ${
-                              uploadError
-                                ? 'text-ds-icon-status-error-default-default'
-                                : 'text-ds-ink-default-default'
-                            }`}
+                          <DsIcon
+                            icon={File}
+                            className={`${uploadError ? 'text-ds-icon-status-error-default-default' : 'text-ds-ink-default-default'}`}
                           />
                         </div>
                         <div className="flex w-full min-w-0 flex-col">
@@ -626,7 +624,7 @@ export default function SkillUploadDialog({
                             handleRemoveFile();
                           }}
                         >
-                          <X className="h-4 w-4" />
+                          <DsIcon icon={X} />
                         </Button>
                       </div>
 
@@ -645,7 +643,10 @@ export default function SkillUploadDialog({
                   ) : (
                     <div className="flex flex-col items-center gap-2">
                       <div className="flex h-12 w-12 items-center justify-center">
-                        <Upload className="h-6 w-6 text-ds-ink-muted-default" />
+                        <DsIcon
+                          icon={Upload}
+                          className="text-ds-ink-muted-default"
+                        />
                       </div>
                       <div className="flex flex-col items-center gap-1 text-center">
                         <span className="text-ds-text-base font-medium text-ds-ink-default-default">
@@ -666,7 +667,10 @@ export default function SkillUploadDialog({
                   className="flex items-center gap-4 rounded-xl border border-x border-y border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default px-4 py-3"
                   role="alert"
                 >
-                  <AlertCircle className="h-4 w-4 shrink-0 text-ds-icon-status-error-default-default" />
+                  <DsIcon
+                    icon={AlertCircle}
+                    className="shrink-0 text-ds-icon-status-error-default-default"
+                  />
                   <span className="text-ds-text-base text-ds-text-status-error-strong-default">
                     {errorMessage}
                   </span>

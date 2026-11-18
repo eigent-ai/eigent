@@ -12,7 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { motion, useReducedMotion } from 'framer-motion';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -211,36 +212,38 @@ export function ProviderModelCombobox({
           className="shrink-0 text-ds-text-base"
         >
           {loading ? (
-            <Loader2
+            <DsIcon
+              icon={Loader2}
               className="animate-spin motion-reduce:animate-none"
               aria-hidden
             />
           ) : (
-            <RotateCcw aria-hidden />
+            <DsIcon icon={RotateCcw} aria-hidden />
           )}
           {t('setting.refresh')}
         </Button>
       </div>
       <div id={feedbackId} aria-live="polite" aria-atomic="true">
-        {feedback ? (
-          <motion.div
-            key={feedback}
-            className="mt-ds-4"
-            {...itemFadeMotion(!!shouldReduceMotion)}
-          >
-            <DsText
-              as="p"
-              role="meta"
-              className={
-                feedbackError
-                  ? 'text-ds-text-error-default-default'
-                  : 'text-ds-ink-muted-default'
-              }
+        <AnimatePresence initial={false}>
+          {feedback ? (
+            <motion.div
+              className="mt-ds-4"
+              {...itemFadeMotion(!!shouldReduceMotion)}
             >
-              {feedback}
-            </DsText>
-          </motion.div>
-        ) : null}
+              <DsText
+                as="p"
+                role="meta"
+                className={
+                  feedbackError
+                    ? 'text-ds-text-error-default-default'
+                    : 'text-ds-ink-muted-default'
+                }
+              >
+                {feedback}
+              </DsText>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     </div>
   );

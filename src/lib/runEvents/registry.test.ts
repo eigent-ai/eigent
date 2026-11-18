@@ -324,4 +324,251 @@ describe('RunEventIngressRegistry', () => {
     );
     registry.clear();
   });
+
+  describe('stopped Run streams', () => {
+    type CapturedStream = {
+      url: string;
+      signal: AbortSignal;
+      onopen: (response: Response) => Promise<void>;
+      onmessage: (message: { event: string; data: string }) => Promise<void>;
+    };
+
+    const captureStreams = () => {
+      const streams: CapturedStream[] = [];
+      sseTransportMock.mockImplementation((options: CapturedStream) => {
+        streams.push(options);
+        return new Promise<void>((resolve) => {
+          options.signal.addEventListener('abort', () => resolve(), {
+            once: true,
+          });
+        });
+      });
+      return streams;
+    };
+    const deferred = <T>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    };
+    const opened = () =>
+      new Response(null, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    const caughtUp = (afterSequence: number) => ({
+      event: 'replay_caught_up',
+      data: JSON.stringify({ run_id: 'run-1', after_sequence: afterSequence }),
+    });
+    const runEvent = (
+      sequence: number,
+      eventType: string,
+      payload: Record<string, unknown> = {}
+    ) => ({
+      event: 'run_event',
+      data: JSON.stringify({
+        schema_version: 1,
+        event_id: `stopped-run-event-${sequence}`,
+        project_id: 'project-1',
+        run_id: 'run-1',
+        run_sequence: sequence,
+        run_version: sequence,
+        event_type: eventType,
+        payload,
+        created_at: sequence,
+      }),
+    });
+    const summary = (status: string, version: number, attempt = 1) => ({
+      project_id: 'project-1',
+      run_id: 'run-1',
+      status,
+      version,
+      origin: 'local',
+      updated_at: version,
+      latest_attempt: { attempt_number: attempt, status },
+    });
+    const settle = async () => {
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    };
+    const interruptRun = async (
+      registry: RunEventIngressRegistry,
+      streams: CapturedStream[]
+    ) => {
+      registry.ensureLocal('project-1', 'run-1');
+      const stream = streams.at(-1)!;
+      await stream.onopen(opened());
+      await stream.onmessage(caughtUp(0));
+      await stream.onmessage(runEvent(1, 'run.attempt_started'));
+      await stream.onmessage(runEvent(2, 'run.interrupted'));
+      return stream;
+    };
+
+    it('closes the stream once the terminal event reached its subscribers', async () => {
+      const streams = captureStreams();
+      const finalRead = deferred<unknown>();
+      fetchGetMock.mockReturnValue(finalRead.promise);
+      const delivered: string[] = [];
+      runDomainEventHub.subscribe({ runId: 'run-1' }, (event) =>
+        delivered.push(event.eventType)
+      );
+      const registry = new RunEventIngressRegistry();
+      registry.ensureLocal('project-1', 'run-1');
+      const [stream] = streams;
+      await stream.onopen(opened());
+      await stream.onmessage(caughtUp(0));
+      await stream.onmessage(runEvent(1, 'run.attempt_started'));
+      await stream.onmessage(
+        runEvent(2, 'approval.requested', {
+          interaction_id: 'approval-1',
+          interaction_type: 'approval',
+        })
+      );
+      await settle();
+      // Waiting for the user is not a stopped Run.
+      expect(stream.signal.aborted).toBe(false);
+
+      await stream.onmessage(runEvent(3, 'run.completed'));
+
+      expect(delivered).toEqual([
+        'run.attempt_started',
+        'approval.requested',
+        'run.completed',
+      ]);
+      expect(
+        getProjectEventStore('project-1').getSnapshot().view.runs['run-1']
+          ?.status
+      ).toBe('completed');
+      // The final read still owns the stream until elapsed facts arrive.
+      expect(stream.signal.aborted).toBe(false);
+      expect(registry.has('run-1')).toBe(true);
+      expect(fetchGetMock).toHaveBeenCalledWith(
+        '/runs/run-1',
+        undefined,
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+
+      finalRead.resolve(summary('completed', 3));
+      await vi.waitFor(() => expect(stream.signal.aborted).toBe(true));
+      expect(registry.has('run-1')).toBe(false);
+      expect(registry.activeCount()).toBe(0);
+      registry.clear();
+    });
+
+    it('closes a stream opened after its Run had already finished', async () => {
+      const streams = captureStreams();
+      fetchGetMock.mockResolvedValue(summary('completed', 2));
+      runProjectionStore.upsertRunSummaries('project-1', [
+        summary('completed', 2),
+      ]);
+      const registry = new RunEventIngressRegistry();
+      registry.ensureLocal('project-1', 'run-1');
+      const [stream] = streams;
+      await stream.onopen(opened());
+      await stream.onmessage(runEvent(1, 'run.attempt_started'));
+      await stream.onmessage(runEvent(2, 'run.completed'));
+      expect(stream.signal.aborted).toBe(false);
+
+      await stream.onmessage(caughtUp(2));
+
+      await vi.waitFor(() => expect(stream.signal.aborted).toBe(true));
+      expect(registry.has('run-1')).toBe(false);
+      registry.clear();
+    });
+
+    it('reopens the stream when an interrupted Run is resumed', async () => {
+      const streams = captureStreams();
+      fetchGetMock.mockResolvedValueOnce(summary('interrupted', 2));
+      const registry = new RunEventIngressRegistry();
+      const interrupted = await interruptRun(registry, streams);
+      await vi.waitFor(() => expect(interrupted.signal.aborted).toBe(true));
+      expect(registry.has('run-1')).toBe(false);
+
+      // Resume admits a new Attempt and its observer asks for the Run again.
+      fetchGetMock.mockResolvedValue(summary('running', 4, 2));
+      registry.ensureLocal('project-1', 'run-1');
+
+      expect(streams).toHaveLength(2);
+      const resumed = streams[1];
+      expect(resumed.url).toBe('/runs/run-1/stream?after_sequence=2');
+      await resumed.onopen(opened());
+      await resumed.onmessage(
+        runEvent(3, 'run.attempt_created', { attempt_number: 2 })
+      );
+      await resumed.onmessage(caughtUp(3));
+      await resumed.onmessage(
+        runEvent(4, 'run.attempt_started', { attempt_number: 2 })
+      );
+      await settle();
+
+      expect(resumed.signal.aborted).toBe(false);
+      expect(registry.has('run-1')).toBe(true);
+      expect(runProjectionStore.getRun('project-1', 'run-1')?.status).toBe(
+        'running'
+      );
+      registry.clear();
+    });
+
+    it('gives a Resume during the final read a fresh stream', async () => {
+      const streams = captureStreams();
+      const finalRead = deferred<unknown>();
+      fetchGetMock.mockReturnValueOnce(finalRead.promise);
+      const registry = new RunEventIngressRegistry();
+      const interrupted = await interruptRun(registry, streams);
+      expect(interrupted.signal.aborted).toBe(false);
+
+      const resumed = registry.ensureLocal('project-1', 'run-1');
+
+      expect(interrupted.signal.aborted).toBe(true);
+      expect(streams).toHaveLength(2);
+      finalRead.resolve(summary('interrupted', 2));
+      await settle();
+      expect(streams[1].signal.aborted).toBe(false);
+      expect(registry.has('run-1')).toBe(true);
+      expect(registry.ensureLocal('project-1', 'run-1')).toBe(resumed);
+      registry.clear();
+    });
+
+    it('keeps the stream when a new Attempt starts during the final read', async () => {
+      const streams = captureStreams();
+      const finalRead = deferred<unknown>();
+      fetchGetMock.mockReturnValueOnce(finalRead.promise);
+      const registry = new RunEventIngressRegistry();
+      const stream = await interruptRun(registry, streams);
+
+      await stream.onmessage(
+        runEvent(3, 'run.attempt_created', { attempt_number: 2 })
+      );
+      finalRead.resolve(summary('pending', 3, 2));
+      await settle();
+
+      expect(stream.signal.aborted).toBe(false);
+      expect(registry.has('run-1')).toBe(true);
+      registry.clear();
+    });
+
+    it('keeps a reconnecting stream whose replay resumed the Run', async () => {
+      const streams = captureStreams();
+      fetchGetMock.mockResolvedValue(summary('running', 4, 2));
+      const registry = new RunEventIngressRegistry();
+      registry.ensureLocal('project-1', 'run-1', { reconnect: true });
+      const [stream] = streams;
+      await stream.onopen(opened());
+      await stream.onmessage(runEvent(1, 'run.attempt_started'));
+      await stream.onmessage(runEvent(2, 'run.interrupted'));
+      await stream.onmessage(
+        runEvent(3, 'run.attempt_created', { attempt_number: 2 })
+      );
+      await stream.onmessage(
+        runEvent(4, 'run.attempt_started', { attempt_number: 2 })
+      );
+      await stream.onmessage(caughtUp(4));
+      await settle();
+
+      expect(stream.signal.aborted).toBe(false);
+      expect(registry.has('run-1')).toBe(true);
+      registry.clear();
+    });
+  });
 });

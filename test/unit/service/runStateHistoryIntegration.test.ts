@@ -293,25 +293,42 @@ describe('Run checkpoints with semantic history refresh', () => {
     }
   );
 
-  it.each(['pending', 'running', 'waiting_for_user', 'cancelling'])(
-    'invalidates an active %s elapsed checkpoint on newer terminal execution',
-    async (status) => {
-      const value = store();
-      seed(value);
-      await reconcile(value, status, 3);
-      value.enqueue(
-        normalizeLocalRunEvent(
-          { ...receipt(3, runId, 'run.failed'), run_version: 4 },
-          projectId
-        )
-      );
-      value.flushAll();
-      expect(value.getSnapshot().view.runs[runId]).toMatchObject({
-        status: 'failed',
-        runVersion: 4,
-        totalAttemptElapsedMs: null,
-        totalAttemptElapsedAt: null,
-      });
+  it.each([
+    ['pending', 8_000],
+    ['running', 8_000],
+    // Waiting for the user is not task time, so the wait adds nothing.
+    ['waiting_for_user', 5_000],
+    ['cancelling', 8_000],
+  ])(
+    'settles an active %s elapsed checkpoint on the next terminal execution',
+    async (status, settledMs) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.parse(at));
+      try {
+        const value = store();
+        seed(value);
+        await reconcile(value, status, 3);
+        const failedAt = '2026-01-01T00:00:03.000Z';
+        value.enqueue(
+          normalizeLocalRunEvent(
+            {
+              ...receipt(3, runId, 'run.failed'),
+              run_version: 4,
+              created_at: failedAt,
+            },
+            projectId
+          )
+        );
+        value.flushAll();
+        expect(value.getSnapshot().view.runs[runId]).toMatchObject({
+          status: 'failed',
+          runVersion: 4,
+          totalAttemptElapsedMs: settledMs,
+          totalAttemptElapsedAt: failedAt,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     }
   );
 

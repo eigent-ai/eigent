@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.workload import WorkloadProfileRecord
+from app.workspace_config.models import bound_model_identity
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class RunRecord:
     cancel_requested_at: float | None = None
     origin: str = "local"
     resume_blocked_reason: str | None = None
+    terminal_reason: str | None = None
+    terminal_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class WorkspaceWriterLeaseRecord:
     target_ref: str
     acquired_at: float
     version: int
+    holder_attempt_id: str | None
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,25 @@ class WorkspaceWriterRequestRecord:
 class WorkspaceWriterReleaseResult:
     finished: WorkspaceWriterRequestRecord
     next_acquired: WorkspaceWriterRequestRecord | None
+
+
+@dataclass
+class WarmAdmissionReceipt:
+    """Process-local proof for one never-published legacy admission.
+
+    The token is fenced by the pending Attempt's outcome, not by a Run id
+    alone. An aborted retry keeps its Run, request and Attempt identities.
+    """
+
+    run_id: str
+    project_id: str
+    task_id: str
+    request_id: str
+    token: str
+    attempt_id: str | None = None
+    owned: bool = False
+    writer: WorkspaceWriterRequestRecord | None = None
+    published: bool = False
 
 
 @dataclass(frozen=True)
@@ -231,6 +254,8 @@ class MemoryExtractionEventRecord:
     created_at: float
     payload_bytes: int
     last_error: str | None = None
+    # ``payload.source`` of a user.message; None for other event types.
+    message_source: object = None
 
 
 @dataclass(frozen=True)
@@ -382,6 +407,22 @@ class RunAttemptRecord:
     provider_capability_revision: str | None = None
     workload_profile: WorkloadProfileRecord | None = None
     workload_profile_digest: str | None = None
+    terminal_reason: str | None = None
+    terminal_detail: str | None = None
+
+
+def latest_environment_attempt(
+    attempts: Sequence[RunAttemptRecord],
+) -> RunAttemptRecord | None:
+    """Select the most recent bound Attempt from journal-ordered history."""
+    return next(
+        (
+            attempt
+            for attempt in reversed(attempts)
+            if attempt.environment_spec_id is not None
+        ),
+        None,
+    )
 
 
 @dataclass(frozen=True)
@@ -527,6 +568,9 @@ class EffectiveEnvironmentSpecRecord:
     permission_profile_revision: str
     provider_capability_revision: str
     created_at: float
+
+    def bound_model(self) -> dict[str, str] | None:
+        return bound_model_identity(self.spec.get("semantic_spec"))
 
 
 @dataclass(frozen=True)

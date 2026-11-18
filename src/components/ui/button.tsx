@@ -32,7 +32,11 @@ import { buttonTokenAliases, mergeAliasStyles } from './tokenAliases';
 export type ButtonContent = 'text' | 'icon-only';
 export type ButtonTextWeight = 'normal' | 'medium' | 'semibold' | 'bold';
 /** Corner style; uses Tailwind important so it wins over variant/size radii. */
-export type ButtonRadius = 'lg' | 'full';
+/**
+ * `shell`: the window shell's navigation controls (app rail, top bar), a
+ * rounded square concentric with the rail's 24px Space tiles.
+ */
+export type ButtonRadius = 'lg' | 'full' | 'shell';
 
 /** Semantic tone; use `neutral` (preferred) instead of the legacy `default`. */
 export type ButtonTone = UiTone;
@@ -167,6 +171,7 @@ const TEXT_WEIGHT_CLASSES: Record<ButtonTextWeight, string> = {
 const RADIUS_CLASSES: Record<ButtonRadius, string> = {
   lg: '!rounded-lg',
   full: '!rounded-full',
+  shell: '!rounded-ds-shell-control',
 };
 
 type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -337,6 +342,87 @@ const TONE_TEXT: Record<ButtonToneForStyles, string> = {
   ].join(' '),
 };
 
+/**
+ * Open state for a button that triggers a menu or popover. The selected fill
+ * stays while the popup is open, including on hover, so the trigger keeps one
+ * visible state. Applied before `className`, so a call site that sets its own
+ * open treatment still wins.
+ */
+const OPEN_NEUTRAL_SUBTLE =
+  'bg-ds-neutral-subtle-selected hover:bg-ds-neutral-subtle-selected';
+
+const TONE_OPEN: Record<
+  ButtonStyleVariant,
+  Record<ButtonToneForStyles, string>
+> = {
+  primary: {
+    default:
+      'bg-ds-accent-strong-selected hover:bg-ds-accent-strong-selected shadow-ds-elevation-control-pressed hover:shadow-ds-elevation-control-pressed',
+    success:
+      'bg-ds-bg-success-strong-selected hover:bg-ds-bg-success-strong-selected shadow-ds-elevation-control-pressed hover:shadow-ds-elevation-control-pressed',
+    error:
+      'bg-ds-bg-error-strong-selected hover:bg-ds-bg-error-strong-selected shadow-ds-elevation-control-pressed hover:shadow-ds-elevation-control-pressed',
+    information:
+      'bg-ds-bg-information-strong-selected hover:bg-ds-bg-information-strong-selected shadow-ds-elevation-control-pressed hover:shadow-ds-elevation-control-pressed',
+    warning:
+      'bg-ds-bg-warning-strong-selected hover:bg-ds-bg-warning-strong-selected shadow-ds-elevation-control-pressed hover:shadow-ds-elevation-control-pressed',
+  },
+  secondary: {
+    default: 'bg-ds-neutral-muted-selected hover:bg-ds-neutral-muted-selected',
+    success:
+      'bg-ds-bg-success-subtle-selected hover:bg-ds-bg-success-subtle-selected',
+    error:
+      'bg-ds-bg-error-subtle-selected hover:bg-ds-bg-error-subtle-selected',
+    information:
+      'bg-ds-bg-information-subtle-selected hover:bg-ds-bg-information-subtle-selected',
+    warning:
+      'bg-ds-bg-warning-subtle-selected hover:bg-ds-bg-warning-subtle-selected',
+  },
+  outline: {
+    default: `${OPEN_NEUTRAL_SUBTLE} border-ds-hairline-default-hover hover:border-ds-hairline-default-hover`,
+    success:
+      'bg-ds-bg-success-subtle-selected hover:bg-ds-bg-success-subtle-selected',
+    error:
+      'bg-ds-bg-error-subtle-selected hover:bg-ds-bg-error-subtle-selected',
+    information:
+      'bg-ds-bg-information-subtle-selected hover:bg-ds-bg-information-subtle-selected',
+    warning:
+      'bg-ds-bg-warning-subtle-selected hover:bg-ds-bg-warning-subtle-selected',
+  },
+  ghost: {
+    default: OPEN_NEUTRAL_SUBTLE,
+    success:
+      'bg-ds-bg-success-subtle-selected hover:bg-ds-bg-success-subtle-selected',
+    error:
+      'bg-ds-bg-error-subtle-selected hover:bg-ds-bg-error-subtle-selected',
+    information:
+      'bg-ds-bg-information-subtle-selected hover:bg-ds-bg-information-subtle-selected',
+    warning:
+      'bg-ds-bg-warning-subtle-selected hover:bg-ds-bg-warning-subtle-selected',
+  },
+  text: {
+    default: 'underline',
+    success: 'underline',
+    error: 'underline',
+    information: 'underline',
+    warning: 'underline',
+  },
+};
+
+/**
+ * True when this button controls a menu, listbox, or popover that is open.
+ * Radix triggers (`asChild`) pass `aria-haspopup` and `aria-expanded` through.
+ */
+function isPopupOpen(
+  hasPopup: React.AriaAttributes['aria-haspopup'],
+  expanded: React.AriaAttributes['aria-expanded']
+): boolean {
+  if (hasPopup === undefined || hasPopup === false || hasPopup === 'false') {
+    return false;
+  }
+  return expanded === true || expanded === 'true';
+}
+
 const SIZE_TEXT: Record<Exclude<ButtonSize, 'xxs'>, string> = {
   xs: 'box-border !h-[var(--ds-button-xs-height)] !min-h-[var(--ds-button-xs-height)] !px-[var(--ds-button-xs-padding-inline)] !py-0 !gap-[var(--ds-button-xs-gap)] rounded-[var(--ds-button-xs-radius)] font-[number:var(--ds-button-xs-weight)] !text-ds-text-meta leading-[var(--ds-button-xs-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-xs-icon)]',
   sm: 'box-border !h-[var(--ds-button-sm-height)] !min-h-[var(--ds-button-sm-height)] !px-[var(--ds-button-sm-padding-inline)] !py-0 !gap-[var(--ds-button-sm-gap)] rounded-[var(--ds-button-sm-radius)] font-[number:var(--ds-button-sm-weight)] !text-ds-text-base leading-[var(--ds-button-sm-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-sm-icon)]',
@@ -354,7 +440,7 @@ const SIZE_ICON: Record<Exclude<ButtonSize, 'xxs'>, string> = {
 };
 
 const buttonVariants = cva(
-  'inline-flex items-center whitespace-nowrap !border !border-solid !border-x !border-y transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
+  'inline-flex items-center whitespace-nowrap !border !border-solid !border-x !border-y transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:transition-[background-color,border-color,color,box-shadow,opacity] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
   {
     variants: {
       variant: {
@@ -513,6 +599,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       emphasis: resolvedEmphasis,
     } = resolveVariantToneAndEmphasis(variantProp, toneProp, emphasisProp);
 
+    const popupOpen = isPopupOpen(
+      props['aria-haspopup'],
+      props['aria-expanded']
+    );
+
     return (
       <Comp
         data-slot="button"
@@ -526,6 +617,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             size: resolvedSize,
             layout: resolvedLayout,
           }),
+          popupOpen ? TONE_OPEN[styleVariant][styleTone] : null,
           textWeight ? TEXT_WEIGHT_CLASSES[textWeight] : null,
           buttonRadius ? RADIUS_CLASSES[buttonRadius] : null,
           className

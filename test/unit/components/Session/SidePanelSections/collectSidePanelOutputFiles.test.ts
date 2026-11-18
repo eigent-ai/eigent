@@ -35,4 +35,19 @@ describe('side-panel output file projection', () => {
       getSidePanelOutputFilesRevision(firstWrite)
     );
   });
+
+  it('prefers the durable manifest for duplicate output paths', () => {
+    const output = collectSidePanelOutputFiles({
+      artifactManifestFiles: [reportFile()],
+      fileList: [
+        {
+          ...reportFile(),
+          path: 'https://files.example.test/report.md',
+          isRemote: true,
+        },
+      ],
+    });
+
+    expect(output).toEqual([reportFile()]);
+  });
 });

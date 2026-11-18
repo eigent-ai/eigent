@@ -14,6 +14,7 @@
 
 import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { MenuToggleGroup, MenuToggleItem } from '@/components/ui/menu-button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -333,7 +334,7 @@ export default function WorkforceMenu({
                 buttonContent="icon-only"
                 onClick={moveLeft || undefined}
               >
-                <ChevronLeft />
+                <DsIcon icon={ChevronLeft} />
               </Button>
               <Button
                 variant="ghost"
@@ -341,7 +342,7 @@ export default function WorkforceMenu({
                 buttonContent="icon-only"
                 onClick={moveRight || undefined}
               >
-                <ChevronRight />
+                <DsIcon icon={ChevronRight} />
               </Button>
             </div>
           )}

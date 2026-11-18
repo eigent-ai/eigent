@@ -21,10 +21,13 @@ export function openTerminalProcessPreview(
   outputOnly = false
 ) {
   const store = usePageTabStore.getState();
-  // Callers resolve references in their visible Session. Never retarget a tab
-  // in another Session because an old asynchronous callback completed late.
-  if (store.sessionPreviewProjectId !== process.project_id) return;
   if (process.url && !outputOnly && process.status === 'running')
-    store.openBrowserPreview(process.url);
-  else store.openAgentTerminalPreview(`process:${process.id}`, process.label);
+    store.openBrowserPreview(process.url, process.project_id);
+  else
+    store.openAgentTerminalPreview(
+      `process:${process.id}`,
+      process.label,
+      undefined,
+      process.project_id
+    );
 }

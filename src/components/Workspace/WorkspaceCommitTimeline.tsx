@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
+import { formatAppDate } from '@/lib/appDate';
 import type {
   WorkspaceGitCommit,
   WorkspaceGitOperation,
@@ -36,7 +38,12 @@ export const classifyWorkspaceCommit = (
 };
 
 const formatDate = (seconds: number) =>
-  seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '—';
+  seconds > 0
+    ? formatAppDate(new Date(seconds * 1000), {
+        dateStyle: 'short',
+        timeStyle: 'medium',
+      })
+    : '—';
 
 export type WorkspaceTimelineEvent =
   | {
@@ -163,9 +170,13 @@ export function WorkspaceCommitTimeline({
                   }
                 >
                   {userInitiated ? (
-                    <UserRound className="size-3" aria-hidden />
+                    <DsIcon
+                      icon={UserRound}
+                      recipe="main-compact"
+                      aria-hidden
+                    />
                   ) : (
-                    <Bot className="size-3" aria-hidden />
+                    <DsIcon icon={Bot} recipe="main-compact" aria-hidden />
                   )}
                   {userInitiated
                     ? t('layout.workspace-user-initiated', {
@@ -195,7 +206,7 @@ export function WorkspaceCommitTimeline({
                   commit.subject
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
-                    <Upload className="size-4" aria-hidden />
+                    <DsIcon icon={Upload} aria-hidden />
                     {operation?.remote_name
                       ? t('layout.workspace-pushed-to-remote', {
                           remote: operation.remote_name,

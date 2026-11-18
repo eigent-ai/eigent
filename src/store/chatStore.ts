@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isRelayedEventStreamResponse } from '@/api/brainStreamRelay';
 import {
   fetchDelete,
   fetchGet,
@@ -31,6 +32,7 @@ import { generateUniqueId, uploadLog } from '@/lib';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
+import { fetchConfiguredProviders } from '@/lib/configuredModels';
 import {
   classifyError,
   classifyTaskCategory,
@@ -42,25 +44,33 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
-import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import {
+  notifyDurableRunStatusChanged,
+  notifyRunStreamReopened,
+} from '@/lib/events/durableRunEvents';
+import { createLocalError } from '@/lib/localError';
 import {
   resolveSourceEventId,
   resolveSourceMessageId,
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
+import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import {
-  normalizeRemoteSubAgentProvider,
-  REMOTE_SUB_AGENT_PROVIDER_ID,
-  toRemoteSubAgentRuntimeConfig,
+  enabledRemoteSubAgentRuntimeConfig,
+  rememberSentRemoteSubAgentProvider,
 } from '@/lib/remoteSubAgent';
+import { createSSEAdmissionError } from '@/lib/responseError';
 import {
   runDomainEventHub,
   runEventIngressRegistry,
   runProjectionStore,
   type RunDomainEvent,
 } from '@/lib/runEvents';
+import { runTerminalReasonText } from '@/lib/runTerminalReason';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
+import { hasSessionPane } from '@/lib/sessionPaneLifetime';
 import {
   isLocalWorkspaceSpace,
   isPlaceholderProjectName,
@@ -73,7 +83,17 @@ import {
   type ResolvedSpaceModel,
   type SpaceModelSelection,
 } from '@/lib/spaceModelBinding';
-import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import {
+  getSpaceModelChoice,
+  resolveSpaceModelChoice,
+  sameSpaceModelChoice,
+  setSpaceModelChoice,
+  type SpaceModelChoice,
+} from '@/lib/spaceModelChoice';
+import {
+  createPlaybackUserWaitTracker,
+  settleTaskElapsedMs,
+} from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
   errorCopy,
@@ -81,9 +101,18 @@ import {
 import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
 import { executionScope } from '@/service/executionApi';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import { completeHumanInteraction } from '@/service/humanInteractionCompletion';
+import {
+  createTaskTimerWaitSync,
+  isRunWaitingForUser,
+} from '@/service/legacyTaskTimer';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { readTerminalRunResult } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  unverifiedTaskFailureFacts,
+  type TaskFailureFacts,
+} from '@/service/runUsageReconciliation';
 import {
   forgetRejectedTriggerRun,
   proxyUpdateTriggerExecution,
@@ -109,7 +138,7 @@ import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, useAuthStore } from './authStore';
 import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import {
   cloudModelRequestExtraParams,
@@ -131,15 +160,37 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
+/** Resume admission refuses to replay a write whose outcome is unknown. */
+function isUnsafeResumeBlocked(error: unknown): boolean {
+  const failure = error as {
+    status?: unknown;
+    response?: { data?: { detail?: { code?: unknown } } };
+  } | null;
+  return (
+    failure?.status === 409 &&
+    failure.response?.data?.detail?.code === 'unsafe_resume_blocked'
+  );
+}
+
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
   post: typeof fetchPost = fetchPost
 ): Promise<number> {
-  const response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
-    request_id: requestId,
-    reason: 'explicit_resume',
-  });
+  let response;
+  try {
+    response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+      request_id: requestId,
+      reason: 'explicit_resume',
+    });
+  } catch (error) {
+    // Retrying cannot help; explain the refusal instead of a generic failure.
+    throw isUnsafeResumeBlocked(error)
+      ? createLocalError(i18next.t('chat.run-resume-unsafe-blocked'), {
+          cause: error,
+        })
+      : error;
+  }
   const attemptNumber = response?.attempt?.attempt_number;
   if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
     throw new Error(
@@ -165,27 +216,58 @@ export const canonicalRunEventToLegacyMessage = (
   if (!value || typeof value !== 'object') return null;
   const event = value as {
     event_id?: unknown;
+    run_id?: unknown;
     event_type?: unknown;
     legacy_step?: unknown;
     payload?: unknown;
     created_at?: unknown;
   };
-  // Approval decisions are canonical-only events. Project their durable
+  if (event.event_type === 'interaction.requested') {
+    const payload = event.payload as Record<string, unknown> | undefined;
+    const request = payload?.request;
+    // Only a question is fully described by its request. Other types keep
+    // options, schema or display arguments outside it, so their legacy ASK
+    // frame stays the source.
+    if (
+      typeof payload?.interaction_id !== 'string' ||
+      payload.interaction_type !== 'question' ||
+      !request ||
+      typeof request !== 'object'
+    )
+      return null;
+    return {
+      step: AgentStep.ASK,
+      data: {
+        ...request,
+        interaction_id: payload.interaction_id,
+        interaction_type: payload.interaction_type,
+        run_id: event.run_id,
+      },
+      timestamp:
+        typeof event.created_at === 'number' ? event.created_at : undefined,
+    } as AgentMessage;
+  }
+  // Interaction outcomes are canonical-only events: a decision, a system
+  // cancellation (for example at restart) or an expiry. Project the durable
   // interaction id into the legacy reducer so reconnect/replay closes the
-  // corresponding ASK card instead of resurrecting an already-decided card.
+  // corresponding ASK card instead of resurrecting it or queueing the next
+  // request (such as the one asked again after Resume) behind it.
   if (
-    event.event_type === 'approval.decided' ||
-    event.event_type === 'interaction.resolved'
+    typeof event.event_type === 'string' &&
+    isTerminalHumanControlEvent(event.event_type)
   ) {
     const payload =
       event.payload && typeof event.payload === 'object'
         ? (event.payload as Record<string, unknown>)
         : null;
-    if (typeof payload?.interaction_id !== 'string') return null;
+    // An approval expiry identifies its request by approval id only.
+    const interactionId = payload?.interaction_id ?? payload?.approval_id;
+    if (typeof interactionId !== 'string' || !interactionId) return null;
     return {
       step: AgentStep.HUMAN_REPLY,
       data: {
         ...payload,
+        interaction_id: interactionId,
         __durable_interaction_resolution: true,
       },
       timestamp:
@@ -274,10 +356,15 @@ export const canonicalRunEventToLegacyMessage = (
 /** Remove only the card resolved by a durable interaction decision. */
 export function removeResolvedInteractionMessages(
   messages: Message[],
-  interactionId: string
+  interactionId: string,
+  preserveQuestions = false
 ): Message[] {
   return messages.filter(
-    (message) => message.interaction?.interaction_id !== interactionId
+    (message) =>
+      message.interaction?.interaction_id !== interactionId ||
+      (preserveQuestions &&
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_type === 'question')
   );
 }
 
@@ -685,6 +772,8 @@ function getHostIpcRenderer() {
   return _host?.ipcRenderer ?? null;
 }
 
+const RESUME_BROWSER_HINT_TIMEOUT_MS = 1500;
+
 function includesBrowserAgent(workerList: Agent[]): boolean {
   return workerList.some((worker) => {
     if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
@@ -694,7 +783,7 @@ function includesBrowserAgent(workerList: Agent[]): boolean {
   });
 }
 
-function shouldEnsureBrowserForRequest(
+export function shouldEnsureBrowserForRequest(
   workerList: Agent[],
   sessionMode: SessionModeType,
   messageContent?: string
@@ -777,14 +866,27 @@ export type DurableRunDisplayStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'timed_out'
   | 'interrupted'
   | 'stopped';
+
+/** Ended without a result: failure evidence and error presentation apply. */
+export const UNSUCCESSFUL_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
+  'failed',
+  'timed_out',
+]);
+
+export const RUN_RECEIPT_STATUSES = new Set<DurableRunDisplayStatus>([
+  ...UNSUCCESSFUL_RUN_STATUSES,
+  'interrupted',
+]);
 
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
-  type: string;
+  /** Playback kind such as `replay` or `share`; absent for a live task. */
+  type?: string;
   summaryTask: string;
   taskInfo: TaskInfo[];
   attaches: File[];
@@ -915,18 +1017,19 @@ export function syncProjectDisplayName(
   name?: string
 ) {
   const displayName = (name ?? '').trim();
-  if (!projectId || !displayName) return;
+  if (!projectId) return;
   const project = useProjectStore.getState().getProjectById(projectId);
   const meta = useSpaceStore.getState().getProjectMeta(projectId);
-  if (
-    [meta, project].some(
-      (value) =>
-        value &&
-        (value.metadata?.nameSource ||
-          !isPlaceholderProjectName(value.name, projectId))
-    )
-  )
-    return;
+  const assignedName = [meta, project].find(
+    (value) =>
+      value &&
+      (value.metadata?.nameSource ||
+        !isPlaceholderProjectName(value.name, projectId))
+  );
+  // History writes must use the same Session name as the visible caches.
+  // A Task summary must not rename the Session through a later history sync.
+  if (assignedName) return assignedName.name;
+  if (!displayName) return;
   useSpaceStore.getState().updateProjectMeta(projectId, {
     name: displayName,
     metadata: { ...meta?.metadata, nameSource: 'initial' },
@@ -935,6 +1038,7 @@ export function syncProjectDisplayName(
     name: displayName,
     metadata: { ...project?.metadata, nameSource: 'initial' },
   });
+  return displayName;
 }
 
 const compactContextText = (value?: unknown) =>
@@ -1243,6 +1347,8 @@ export interface StartTaskOptions {
   replaySource?: 'cloud' | 'local_durable';
   /** Resolve only after Brain has accepted the initial SSE request. */
   awaitAdmission?: boolean;
+  /** Queued sends publish their message and selection only after acceptance. */
+  deferPresentationUntilAdmission?: boolean;
   /** Stable review handoffs durably admitted with this user message. */
   reviewHandoffIds?: string[];
   /**
@@ -1262,7 +1368,7 @@ export interface ChatStore {
   activeTaskId: string | null;
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
-  create: (id?: string, type?: any) => string;
+  create: (id?: string, type?: any, activate?: boolean) => string;
   /**
    * Replace a task's full state in one commit — used by the IDB-backed
    * project cache to skip the SSE replay path when we already have a
@@ -1273,10 +1379,21 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  observeTaskFailureFacts: (
+    taskId: string,
+    onFacts: (facts: TaskFailureFacts | undefined) => void,
+    projectId?: string | null
+  ) => () => void;
   setDurableRunStatus: (
     taskId: string,
     status: DurableRunDisplayStatus | undefined
   ) => void;
+  /**
+   * Resume admitted a new Attempt for this task's Run. Drop the playback
+   * identity, interrupted outcome and waiters restored from history so the
+   * new Attempt's requests are live. Retired receipts stay read-only.
+   */
+  markRunResumed: (taskId: string) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
@@ -1315,6 +1432,15 @@ export interface ChatStore {
   setTaskAssigning: (taskId: string, taskAssigning: Agent[]) => void;
   setTaskInfo: (taskId: string, taskInfo: TaskInfo[]) => void;
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
+  setArtifactManifest: (
+    taskId: string,
+    manifest: {
+      files: FileInfo[];
+      finalized: boolean;
+      scanStatus: string;
+      truncated: boolean;
+    }
+  ) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
   addWebViewUrl: (
@@ -1350,7 +1476,7 @@ export interface ChatStore {
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
   updateTaskInfo: (index: number, content: string) => void;
-  saveTaskInfo: () => void;
+  saveTaskInfo: (projectId?: string | null) => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -1369,7 +1495,7 @@ export interface ChatStore {
   setSnapshotsTemp: (taskId: string, snapshot: any) => void;
   setPlanDirty: (taskId: string, dirty: boolean) => void;
   setAutoConfirmDeadline: (taskId: string, deadline: number | null) => void;
-  savePlan: (taskId: string) => Promise<void>;
+  savePlan: (taskId: string, projectId?: string | null) => Promise<void>;
   clearTasks: () => void;
   setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
   setNextTaskId: (taskId: string | null) => void;
@@ -1416,6 +1542,8 @@ type ActiveSSEConnection = {
   taskId: string;
   recoverClosedUsage?: () => void;
   displayTail?: { taskId: string; promise: Promise<void>; release: () => void };
+  /** Opened through the main-process relay: it holds no renderer connection. */
+  relayed?: boolean;
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
@@ -1568,6 +1696,20 @@ function markSSEConnectionIdleForTask(
   }
 }
 
+/**
+ * A Run that finishes while its Session is in the background has nothing more
+ * to render on its idle stream. Release it now instead of at the next Session
+ * switch, so finished background Runs do not hold the renderer's connections.
+ */
+function reclaimIdleStreamInBackground(projectId: string): void {
+  const projectState = useProjectStore.getState();
+  if (projectState.activeProjectId === projectId) return;
+  // Partial Project store doubles may omit this action.
+  projectState.reclaimIdleStreams?.(projectState.activeProjectId ?? null, [
+    projectId,
+  ]);
+}
+
 function cleanupTaskSSEResources(
   taskId: string,
   { abort = true }: { abort?: boolean } = {}
@@ -1584,7 +1726,7 @@ const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
 > = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.deadline_reached': 'failed',
+  'run.deadline_reached': 'timed_out',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
   'runtime.interrupted': 'interrupted',
@@ -1595,6 +1737,7 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
     completed: 'run.completed',
     failed: 'run.failed',
     cancelled: 'run.cancelled',
+    timed_out: 'run.deadline_reached',
     interrupted: 'run.interrupted',
   };
 
@@ -1627,7 +1770,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setIsPending(taskId, false);
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
-  if (durableRunStatus === 'failed') {
+  if (UNSUCCESSFUL_RUN_STATUSES.has(durableRunStatus)) {
     state.setTaskRunning(
       taskId,
       task.taskRunning.map((item) =>
@@ -1653,10 +1796,12 @@ export function settleLegacyTaskFromCanonicalTerminal(
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
         ? rawMessage.trim()
-        : i18next.t('chat.run-no-final-response', {
-            defaultValue:
-              'This task failed before it produced a final response.',
-          });
+        : durableRunStatus === 'timed_out'
+          ? runTerminalReasonText('deadline_exceeded', i18next.t)
+          : i18next.t('chat.run-no-final-response', {
+              defaultValue:
+                'This task failed before it produced a final response.',
+            });
     const content = i18next.t('chat.error-message', {
       defaultValue: '❌ **Error**: {{message}}',
       message,
@@ -1918,6 +2063,9 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
   return files;
 }
 
+/** Matches the terminal receipt read deadline in runUsageReconciliation. */
+const TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS = 5_000;
+
 type TaskArtifactFileListResult = {
   canonical: boolean;
   files: FileInfo[];
@@ -1930,11 +2078,13 @@ async function loadTaskArtifactFileList({
   projectId,
   email,
   userId,
+  signal,
 }: {
   taskId: string;
   projectId?: string;
   email?: string;
   userId?: string | number | null;
+  signal?: AbortSignal;
 }): Promise<TaskArtifactFileListResult> {
   // The index contains absolute local paths and is intentionally Desktop-only.
   if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
@@ -1947,12 +2097,15 @@ async function loadTaskArtifactFileList({
   }
 
   try {
-    const response = await fetchGet('/files/changes', {
+    const params = {
       task_id: taskId,
       project_id: projectId,
       email,
       ...(userId ? { user_id: userId } : {}),
-    });
+    };
+    const response = signal
+      ? await fetchGet('/files/changes', params, undefined, { signal })
+      : await fetchGet('/files/changes', params);
     const envelope =
       response && !Array.isArray(response) && typeof response === 'object'
         ? (response as Record<string, unknown>)
@@ -1978,6 +2131,42 @@ async function loadTaskArtifactFileList({
       truncated: false,
     };
   }
+}
+
+/**
+ * Read the artifact index for receipt recovery without letting it hold the
+ * receipts back. A failed, slow or abandoned read resolves as non-canonical,
+ * so tokens, the END display and trigger status still recover on time.
+ */
+function loadRecoveredTaskArtifactFileList(
+  input: Omit<Parameters<typeof loadTaskArtifactFileList>[0], 'signal'>,
+  signal: AbortSignal
+): Promise<TaskArtifactFileListResult> {
+  const notCanonical: TaskArtifactFileListResult = {
+    canonical: false,
+    files: [],
+    scanStatus: null,
+    truncated: false,
+  };
+  const controller = new AbortController();
+  const stopped = new Promise<TaskArtifactFileListResult>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(notCanonical), {
+      once: true,
+    });
+  });
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
+  const deadline = setTimeout(abort, TERMINAL_ARTIFACT_MANIFEST_TIMEOUT_MS);
+  return Promise.race([
+    loadTaskArtifactFileList({ ...input, signal: controller.signal }).catch(
+      () => notCanonical
+    ),
+    stopped,
+  ]).finally(() => {
+    clearTimeout(deadline);
+    signal.removeEventListener('abort', abort);
+  });
 }
 
 function normalizedFileIdentity(value: string | undefined): string {
@@ -2164,8 +2353,10 @@ const ensureSingleAgentAssignment = (
 };
 
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
-const persistSubtaskEdits = async (taskInfo: TaskInfo[]) => {
-  const projectId = useProjectStore.getState().activeProjectId;
+const persistSubtaskEdits = async (
+  taskInfo: TaskInfo[],
+  projectId: string | null
+) => {
   if (!projectId) return;
 
   const nonEmpty = taskInfo.filter((t) => t.content !== '');
@@ -2314,6 +2505,108 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Hydrate mount-scoped failure presentation, without changing history or execution. */
+export async function readTaskFailureFacts(
+  owner: VanillaChatStore,
+  projectId: string,
+  taskId: string,
+  signal: AbortSignal
+): Promise<TaskFailureFacts | null> {
+  const task = owner.getState().tasks[taskId];
+  const accountKey = getAccountEnvironmentKey(getAuthStore());
+  const controller = new AbortController();
+  const isCurrent = () => {
+    const current = owner.getState().tasks[taskId];
+    const projects = useProjectStore.getState();
+    return (
+      !signal.aborted &&
+      !controller.signal.aborted &&
+      getAccountEnvironmentKey(getAuthStore()) === accountKey &&
+      (projects.activeProjectId === projectId || hasSessionPane(projectId)) &&
+      projects
+        .getAllChatStores(projectId)
+        .some((entry) => entry.chatStore === owner) &&
+      Boolean(
+        task &&
+        current &&
+        current.executionId === task.executionId &&
+        RUN_RECEIPT_STATUSES.has(current.durableRunStatus!) &&
+        !current.isPending &&
+        current.status === ChatTaskStatus.FINISHED
+      )
+    );
+  };
+  if (!isCurrent()) return null;
+  // Stop events written before the Brain recorded causes carry none; the Run
+  // summary holds the backfilled cause.
+  const withRunTerminalReason = (facts: TaskFailureFacts) => ({
+    ...facts,
+    terminalReason:
+      facts.terminalReason ??
+      runProjectionStore.getRun(projectId, taskId)?.terminalReason ??
+      null,
+  });
+  const invalidate = () => {
+    if (!isCurrent()) controller.abort();
+  };
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const unsubscribe = [
+    owner.subscribe(invalidate),
+    useProjectStore.subscribe(invalidate),
+    useAuthStore.subscribe(invalidate),
+  ];
+  try {
+    const result = await readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      terminalEventTypes: [
+        'run.failed',
+        'run.deadline_reached',
+        'run.interrupted',
+        'runtime.interrupted',
+      ],
+      signal: controller.signal,
+      expectedAccountKey: accountKey,
+      includeFailureFacts: true,
+    });
+    if (
+      isCurrent() &&
+      task.durableRunStatus === 'interrupted' &&
+      !task.artifactManifestFinalized
+    ) {
+      const artifacts = await loadRecoveredTaskArtifactFileList(
+        {
+          taskId,
+          projectId,
+          email: getAuthStore().email || undefined,
+          userId: getAuthStore().user_id,
+        },
+        controller.signal
+      );
+      if (isCurrent() && artifacts.canonical)
+        owner.getState().setArtifactManifest(taskId, {
+          files: artifacts.files,
+          finalized: true,
+          scanStatus: artifacts.scanStatus || 'complete',
+          truncated: artifacts.truncated,
+        });
+    }
+    return isCurrent()
+      ? withRunTerminalReason(
+          result.failureFacts ?? unverifiedTaskFailureFacts()
+        )
+      : null;
+  } catch {
+    return isCurrent()
+      ? withRunTerminalReason(unverifiedTaskFailureFacts())
+      : null;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    unsubscribe.forEach((dispose) => dispose());
+  }
+}
+
 /** Recover terminal receipts and missing display without replaying execution. */
 function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
@@ -2328,25 +2621,45 @@ function recoverClosedTerminalResult(
     !task ||
     task.status !== ChatTaskStatus.FINISHED ||
     task.isPending ||
-    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    !['completed', 'failed', 'cancelled', 'timed_out'].includes(
+      outcome || ''
+    ) ||
     terminalUsageRecoveries.has(taskId)
   )
     return;
   const executionId = task.executionId;
   const controller = new AbortController();
   terminalUsageRecoveries.set(taskId, controller);
-  const terminalEventTypes =
-    outcome === 'failed'
-      ? ['run.failed', 'run.deadline_reached']
-      : [`run.${outcome}`];
-  void readTerminalRunResult({
-    projectId,
-    runId: taskId,
-    throughSequence,
-    terminalEventTypes,
-    signal: controller.signal,
-  })
-    .then(({ tokens, displayEvents, assistantFinal }) => {
+  const terminalEventTypes = [
+    CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[outcome!]!,
+  ];
+  const auth = getAuthStore();
+  void Promise.all([
+    readTerminalRunResult({
+      projectId,
+      runId: taskId,
+      throughSequence,
+      terminalEventTypes,
+      signal: controller.signal,
+    }),
+    outcome === 'completed' && !task.artifactManifestFinalized
+      ? loadRecoveredTaskArtifactFileList(
+          {
+            taskId,
+            projectId,
+            email: auth.email || undefined,
+            userId: auth.user_id,
+          },
+          controller.signal
+        )
+      : Promise.resolve<TaskArtifactFileListResult>({
+          canonical: false,
+          files: [],
+          scanStatus: null,
+          truncated: false,
+        }),
+  ])
+    .then(([{ tokens, displayEvents, assistantFinal }, artifactManifest]) => {
       const state = owner.getState();
       let current = state.tasks[taskId];
       if (
@@ -2359,6 +2672,19 @@ function recoverClosedTerminalResult(
         current.isPending
       )
         return;
+      if (
+        outcome === 'completed' &&
+        artifactManifest.canonical &&
+        !current.artifactManifestFinalized
+      ) {
+        state.setArtifactManifest(taskId, {
+          files: artifactManifest.files,
+          finalized: true,
+          scanStatus: artifactManifest.scanStatus || 'complete',
+          truncated: artifactManifest.truncated,
+        });
+        current = owner.getState().tasks[taskId];
+      }
       if (outcome === 'completed' && displayEvents.length) {
         const recovered = recoverCompletedRunDisplay(
           current,
@@ -2437,7 +2763,7 @@ function recoverClosedTerminalResult(
 }
 
 const chatStore = (initial?: Partial<ChatStore>) =>
-  createStore<ChatStore>()((set, get) => ({
+  createStore<ChatStore>()((set, get, store) => ({
     activeTaskId: null,
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
@@ -2466,11 +2792,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    create(id?: string, type?: any) {
+    create(id?: string, type?: any, activate = true) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
       set((state) => ({
-        activeTaskId: taskId,
+        activeTaskId: activate ? taskId : state.activeTaskId,
         tasks: {
           ...state.tasks,
           [taskId]: {
@@ -2666,7 +2992,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.no-active-session', {
             defaultValue: 'No active session selected.',
           })
@@ -2692,7 +3018,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error(
+        throw createLocalError(
           i18next.t('chat.selected-session-unavailable', {
             defaultValue: 'The selected session is not available.',
           })
@@ -2700,6 +3026,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Let the Session layout open Activity for a user-started task.
+      if (isLiveTask && project_id && !executionId) {
+        usePageTabStore.getState().markSessionTaskStarted(project_id);
+      }
       // Track genuine, user-facing task starts (skip replay/share playback).
       // Powers the "time to first task" lifecycle event.
       if (isLiveTask) {
@@ -2726,11 +3056,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       //Create a new chatStore on Start
       let newTaskId = taskId;
+      let queuedPresentationCommitted = false;
+      let queuedCandidateOwned = false;
       let targetChatStore = { getState: () => get() }; // Default to current store
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay' && startOptions.resumeRequestId) {
+      if (project_id && !type && startOptions.deferPresentationUntilAdmission) {
+        const owner = projectStore.getChatStore(project_id);
+        if (!owner)
+          throw createLocalError(
+            i18next.t('chat.selected-session-unavailable', {
+              defaultValue: 'The selected session is not available.',
+            })
+          );
+        targetChatStore = owner;
+        if (!owner.getState().tasks[taskId]) {
+          owner.getState().create(taskId, undefined, false);
+          queuedCandidateOwned = true;
+        }
+      } else if (
+        project_id &&
+        type !== 'replay' &&
+        startOptions.resumeRequestId
+      ) {
         const existing = projectStore
           .getAllChatStores(project_id)
           .find(({ chatStore }) => chatStore.getState().tasks[taskId]);
@@ -2850,6 +3199,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
         const targetState = targetChatStore.getState();
+        if (queuedCandidateOwned && !queuedPresentationCommitted) {
+          targetState.removeTask(newTaskId);
+          return;
+        }
         const task = targetState.tasks[newTaskId];
         if (!task) return;
         cleanupTaskSSEResources(newTaskId);
@@ -2932,16 +3285,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null =
-        startOptions.historyId != null
+      const deferHistoryCreate =
+        !type &&
+        !startOptions.skipHistoryCreate &&
+        !!startOptions.deferPresentationUntilAdmission;
+      const previousHistoryId = project_id
+        ? projectStore.getHistoryId(project_id)
+        : null;
+      let historyId: string | null = deferHistoryCreate
+        ? null
+        : startOptions.historyId != null
           ? String(startOptions.historyId)
-          : project_id
-            ? projectStore.getHistoryId(project_id)
-            : null;
+          : previousHistoryId;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
       let playbackLastStepTimeMs: number | null = null;
+      const playbackUserWaits = createPlaybackUserWaitTracker();
       let localDurableLegacyEventCount = 0;
 
       // replay or share request
@@ -3038,12 +3398,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       let spaceModelSelection: SpaceModelSelection | null = null;
       let adoptingSpaceDefault = false;
+      // A new Session starting on its Space's saved model.
+      let usingSpaceModel = false;
+      // Save the model a new Session adopts as its Space's model, unless the
+      // Space already has one (or a newer pick replaced this stale one).
+      let saveAdoptedSpaceModel: { replaces: SpaceModelChoice | null } | null =
+        null;
       // Only the actual Session model owns this gate. A global Cloud choice
       // must not block custom/local recovery, nor may another account's cached
       // incidents be consumed during an account transition.
       const assertCloudQuota = (candidateModelType: string | undefined) => {
         if (
-          (!adoptingSpaceDefault && !startOptions.resumeRequestId) ||
+          (!adoptingSpaceDefault &&
+            !usingSpaceModel &&
+            !startOptions.resumeRequestId) ||
           candidateModelType !== 'cloud'
         )
           return;
@@ -3135,12 +3503,38 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 ?.spaceModelAdmissionRunId
             )
               throw spaceModelError('unconfirmed');
-            adoptingSpaceDefault = true;
-            spaceModelSelection = await fetchSpaceModelSelection(
-              spaceId,
-              identity,
-              assertModelSelectionCurrent
-            );
+            // Precedence for a new Session: its Space's saved model, then
+            // the Space configuration's model, then the global default.
+            const savedChoice = getSpaceModelChoice(spaceId);
+            const spaceChoice = savedChoice
+              ? await resolveSpaceModelChoice(
+                  savedChoice,
+                  assertModelSelectionCurrent
+                )
+              : null;
+            if (spaceChoice) {
+              usingSpaceModel = true;
+              pinnedModelSelection = spaceChoice;
+              if (!sameSpaceModelChoice(spaceChoice, savedChoice))
+                void setSpaceModelChoice(spaceId, spaceChoice);
+            } else {
+              if (savedChoice) {
+                const message = i18next.t('chat.space-model-fallback');
+                console.warn(message);
+                toast.warning(message);
+              }
+              adoptingSpaceDefault = true;
+              spaceModelSelection = await fetchSpaceModelSelection(
+                spaceId,
+                identity,
+                assertModelSelectionCurrent
+              );
+              if (
+                !spaceModelSelection ||
+                spaceModelSelection.model_ref === 'provider://default'
+              )
+                saveAdoptedSpaceModel = { replaces: savedChoice };
+            }
           }
         }
         const ref =
@@ -3208,21 +3602,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         let provider: any = spaceModelBinding?.provider ?? null;
         if (!provider && pinnedModelSelection?.provider_id !== undefined) {
           try {
-            const res = await proxyFetchGet('/api/v1/providers');
-            const providerList = Array.isArray(res) ? res : res.items || [];
+            const providerList = await fetchConfiguredProviders();
             provider =
               providerList.find(
                 (p: { id: number }) => p.id === pinnedModelSelection.provider_id
               ) || null;
           } catch (error) {
             console.error('Failed to load pinned model provider:', error);
+            finishStartupFailure();
+            throw new Error(i18next.t('setting.model-list.pinned-load-failed'));
           }
           if (!provider) {
-            toast.warning(
-              i18next.t('chat.model-fallback-warning', {
-                defaultValue:
-                  'The model used earlier in this conversation is no longer available. Falling back to the default model.',
-              })
+            finishStartupFailure();
+            throw new Error(
+              i18next.t('setting.model-list.missing-configuration')
             );
           }
         }
@@ -3230,16 +3623,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const res = await proxyFetchGet('/api/v1/providers', {
             prefer: true,
           });
-          const providerList = res.items || [];
+          const providerList = Array.isArray(res) ? res : res.items || [];
           provider = providerList[0];
         }
 
         if (!provider) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.no-model-provider', {
               defaultValue:
-                'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
+                'No model provider is configured. Go to Settings > Models and configure at least one default model provider.',
             })
           );
         }
@@ -3270,10 +3663,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
-                'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
+                'The cloud model is unavailable. Try again or choose another model in Settings > Models.',
             })
           );
         }
@@ -3403,6 +3796,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           expectedModelSelection = JSON.stringify(
             projectStore.getProjectModel(project_id)
           );
+          if (
+            saveAdoptedSpaceModel &&
+            spaceId &&
+            sameSpaceModelChoice(
+              getSpaceModelChoice(spaceId),
+              saveAdoptedSpaceModel.replaces
+            )
+          )
+            void setSpaceModelChoice(spaceId, modelSelection);
         };
         // An admission failure (including a stale materialization) must not
         // turn an unaccepted Space default into an existing Session pin.
@@ -3437,15 +3839,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         try {
           const providersRes = await proxyFetchGet(
             '/api/v1/remote-sub-agent-providers',
-            { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+            { enabled: true }
           );
           const providerList = Array.isArray(providersRes)
             ? providersRes
             : providersRes.items || [];
-          const remoteSubAgentProvider = providerList[0];
-          remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
-            normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
-          );
+          remoteSubAgentConfig =
+            enabledRemoteSubAgentRuntimeConfig(providerList);
+          rememberSentRemoteSubAgentProvider(remoteSubAgentConfig?.provider);
         } catch (error) {
           console.error(
             'Failed to load remote sub agent configuration:',
@@ -3465,13 +3866,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (workerProviderIds.length > 0) {
         let workerProviderList: any[];
         try {
-          const providersRes = await proxyFetchGet('/api/v1/providers');
-          workerProviderList = Array.isArray(providersRes)
-            ? providersRes
-            : providersRes.items || [];
+          workerProviderList = await fetchConfiguredProviders();
         } catch (error) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-load-failed', {
               defaultValue:
                 'Could not load the model provider configured for a worker.',
@@ -3493,7 +3891,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         if (missingWorker) {
           finishStartupFailure();
-          throw new Error(
+          throw createLocalError(
             i18next.t('chat.worker-model-provider-unavailable', {
               defaultValue:
                 'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',
@@ -3547,7 +3945,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
         ? requestSpace?.rootPath || undefined
         : undefined;
-      if (!type && !startOptions.skipHistoryCreate) {
+      let deferredHistoryCreation: Promise<void> | undefined;
+      const createInitialHistory = async (deferred = false) => {
         const authStore = getAuthStore();
 
         const obj = {
@@ -3576,33 +3975,108 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
+        const controller = deferred ? new AbortController() : null;
+        const timer = controller
+          ? setTimeout(() => controller.abort(), 5000)
+          : undefined;
+        try {
+          const res = deferred
+            ? await proxyFetchPost('/api/v1/chat/history', obj, undefined, {
+                signal: controller!.signal,
+                expectedAccountKey: triggerAccountKey,
+              })
+            : await proxyFetchPost('/api/v1/chat/history', obj);
+          if (deferred && !res?.id)
+            throw new Error('Accepted task history did not return an ID');
           historyId = res.id;
-
-          /**Save history id for replay reuse purposes.
-           * TODO(history): Remove historyId handling to support per projectId
-           * instead in history api
-           */
-          if (project_id && historyId)
+          if (
+            project_id &&
+            historyId &&
+            (!deferred ||
+              (getAccountEnvironmentKey(getAuthStore()) === triggerAccountKey &&
+                projectStore.getHistoryId(project_id) === previousHistoryId))
+          )
             projectStore.setHistoryId(project_id, historyId);
-        });
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+      if (!type && !startOptions.skipHistoryCreate && !deferHistoryCreate) {
+        await createInitialHistory();
       } else if (!type && project_id && historyId) {
         projectStore.setHistoryId(project_id, historyId);
       }
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];
+      let browserUnavailableOnResume = false;
       if (!type) {
-        try {
-          ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
-            shouldEnsureBrowserForRequest(
-              workerList,
-              sessionModeForRequest,
-              messageContent
-            )
-          ));
-        } catch {
-          // Web mode: no CDP
+        let previouslyUsedBrowser = false;
+        if (startOptions.resumeRequestId) {
+          const controller = new AbortController();
+          let timeout: ReturnType<typeof setTimeout> | undefined;
+          try {
+            // Bound the optional hint even when transport setup or
+            // cancellation stalls.
+            const expired = new Promise<undefined>((resolve) => {
+              timeout = setTimeout(() => {
+                controller.abort();
+                resolve(undefined);
+              }, RESUME_BROWSER_HINT_TIMEOUT_MS);
+            });
+            const priorRun = await Promise.race([
+              fetchGet(
+                `/runs/${encodeURIComponent(newTaskId)}`,
+                { include_browser_evidence: true },
+                undefined,
+                {
+                  signal: controller.signal,
+                  expectedAccountKey: triggerAccountKey,
+                  beforeRequest: assertAdmissionCurrent,
+                }
+              ),
+              expired,
+            ]);
+            previouslyUsedBrowser =
+              priorRun?.run_id === newTaskId &&
+              priorRun?.project_id === project_id &&
+              priorRun?.used_browser === true;
+          } catch (error) {
+            // The earlier browser use is only a hint; Resume continues
+            // without it and still checks the original request below.
+            console.warn('[Resume] Could not read earlier browser use', error);
+          } finally {
+            clearTimeout(timeout);
+          }
+          assertAdmissionCurrent();
         }
+        const originalPrompt = targetChatStore
+          .getState()
+          .tasks[newTaskId]?.messages.find(
+            (message) =>
+              message.role === 'user' && !message.interactionResponseTo
+          )?.content;
+        const browserQuestion =
+          messageContent ??
+          (startOptions.resumeRequestId ? originalPrompt : undefined);
+        const needsBrowser =
+          previouslyUsedBrowser ||
+          shouldEnsureBrowserForRequest(
+            workerList,
+            sessionModeForRequest,
+            browserQuestion
+          );
+        try {
+          ({ browser_port, cdp_browsers } =
+            await resolveCdpBrowsersForRequest(needsBrowser));
+        } catch {
+          // The request below reports an unavailable browser on Resume.
+        }
+        browserUnavailableOnResume = Boolean(
+          startOptions.resumeRequestId &&
+          needsBrowser &&
+          getHostIpcRenderer()?.invoke &&
+          !cdp_browsers.length
+        );
       }
 
       // Persist identity after local preflight but BEFORE either admission
@@ -3649,6 +4123,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           finishStartupFailure();
           throw error;
         }
+        // The admitted Attempt continues this Run in the same task, which may
+        // still be the playback restored at startup. Only now that the Run is
+        // no longer interrupted is that history state retired.
+        targetChatStore.getState().markRunResumed(newTaskId);
       }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
@@ -3656,6 +4134,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      const createRunBrowserPreviewHandoff = () =>
+        createBrowserPreviewHandoff(
+          !isLiveTask || !getHostIpcRenderer() ? null : project_id,
+          (url, ownerProjectId) =>
+            usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+        );
+      let handoffBrowserPreview = createRunBrowserPreviewHandoff();
       // Resume keeps its Run ID. Until this admitted Attempt reaches either
       // the stream or a GET snapshot, older terminal receipts are history only.
       let resumedAttemptObserved = false;
@@ -3753,7 +4238,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             observedChatStore.getState().tasks[observedTaskId];
           const failureReason =
             observedTask &&
-            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+            UNSUCCESSFUL_RUN_STATUSES.has(
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]!
+            )
               ? reportError(
                   event.payload,
                   {
@@ -3833,6 +4320,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // ownership, in which case the guarded idle transition is a
             // no-op but this terminal observer is still finished.
             binding.dispose();
+            reclaimIdleStreamInBackground(project_id);
           } else {
             binding.dispose();
             cleanupSSEConnection(sseConnection);
@@ -3847,9 +4335,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ...Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
               'run.attempt_created',
               'run.attempt_started',
+              'approval.cancelled',
+              'interaction.cancelled',
             ],
           },
           (event) => {
+            if (
+              event.eventType === 'approval.cancelled' ||
+              event.eventType === 'interaction.cancelled'
+            ) {
+              // The chat stream never reports a request the backend closed
+              // itself, so close its card here and show the next one.
+              const interactionId =
+                event.payload.interaction_id ?? event.payload.approval_id;
+              if (active && typeof interactionId === 'string')
+                completeHumanInteraction(
+                  observedChatStore.getState(),
+                  observedTaskId,
+                  interactionId
+                );
+              return;
+            }
             if (
               ['run.attempt_created', 'run.attempt_started'].includes(
                 event.eventType
@@ -3891,6 +4397,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               .setElapsed(observedTaskId, run.totalAttemptElapsedMs);
           }
         };
+        // The task timer holds still while the Run waits for the user.
+        const syncTimerWithUserWait = createTaskTimerWaitSync({
+          projectId: project_id,
+          runId: observedTaskId,
+          getState: () => observedChatStore.getState(),
+        });
+        const checkProjectedRun = () => {
+          if (!active) return;
+          syncTimerWithUserWait();
+          settleProjectedTerminal();
+        };
         // Reconciliation GETs update the projection without publishing a
         // domain event. Defer their check by one microtask so a live terminal
         // event (Store first, Hub second) retains its payload and wins once.
@@ -3901,13 +4418,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             projectionCheckScheduled = true;
             queueMicrotask(() => {
               projectionCheckScheduled = false;
-              settleProjectedTerminal();
+              checkProjectedRun();
             });
           }
         );
         // Subscribe first, then read: neither events nor GET snapshots can
         // strand an observer installed just after the terminal transition.
-        settleProjectedTerminal();
+        checkProjectedRun();
 
         if (active) {
           runEventIngressRegistry.ensureLocal(project_id, observedTaskId);
@@ -3962,6 +4479,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         newChatStore: VanillaChatStore,
         newTaskId: string
       ) => {
+        if (lockedTaskId !== newTaskId) {
+          // Follow-up Runs reuse this SSE transport, but each owns its one
+          // preview reveal and pending tool receipts. Never carry either
+          // across the same ownership boundary as the reducer lock.
+          handoffBrowserPreview = createRunBrowserPreviewHandoff();
+        }
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
         bindSSEConnectionToTask(sseConnection, newTaskId);
@@ -4080,6 +4603,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             auth_source: apiModel.auth_source,
             installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             allow_local_system: true,
             attaches: (
               messageAttaches ||
@@ -4090,6 +4614,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             new_agents: [...addWorkers],
             browser_port: browser_port,
             cdp_browsers: cdp_browsers,
+            browser_unavailable_on_resume: browserUnavailableOnResume,
             env_path: envPath,
             search_config: searchConfig,
             server_url: getDirectServerApiBaseUrl(),
@@ -4101,14 +4626,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             ),
             resume_request_id: startOptions.resumeRequestId,
             review_handoff_ids: startOptions.reviewHandoffIds ?? [],
+            // Trigger text is not the user's words; Memory must not learn it.
+            ...(triggerExecutionId ? { source: 'scheduled' } : {}),
           }
         : undefined;
 
-      const handoffBrowserPreview = createBrowserPreviewHandoff(
-        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
-        (url, ownerProjectId) =>
-          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
-      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
@@ -4202,6 +4724,74 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ]);
       let legacyEndRunId: string | null = null;
 
+      // Admission failed before the event stream existed. Unlike an execution
+      // error, no later END frame can clear the optimistic pending state, so
+      // close it here and surface the typed Brain reason instead of leaving
+      // the composer stuck on "Preparing".
+      const failAdmission = (err: any) => {
+        if (
+          err?.code === 'project_consumer_active' &&
+          createdTriggerBinding &&
+          !startOptions.resumeRequestId &&
+          triggerExecutionId &&
+          project_id
+        ) {
+          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+        }
+        finishStartupFailure();
+        if (
+          startOptions.deferPresentationUntilAdmission &&
+          !queuedPresentationCommitted
+        )
+          return;
+        const failureState = targetChatStore.getState();
+        const failureTask = failureState.tasks[newTaskId];
+        const userMessage =
+          typeof err?.userMessage === 'string' && err.userMessage.trim()
+            ? err.userMessage.trim()
+            : typeof err?.message === 'string' && err.message.trim()
+              ? err.message.trim()
+              : i18next.t('chat.task-admission-failed', {
+                  defaultValue:
+                    'The task could not be started. Please try again.',
+                });
+        const isContinuationClarification =
+          typeof err?.code === 'string' && err.code.startsWith('continuation_');
+        const content = isContinuationClarification
+          ? i18next.t('chat.control-input-required-message', {
+              defaultValue: 'Input required: {{message}}',
+              message: userMessage,
+            })
+          : i18next.t('chat.error-message', {
+              defaultValue: '❌ **Error**: {{message}}',
+              message: userMessage,
+            });
+        const alreadyRendered = failureTask?.messages.some(
+          (message) => message.role === 'agent' && message.content === content
+        );
+        if (failureTask && !alreadyRendered) {
+          failureState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content,
+            ...(!isContinuationClarification
+              ? {
+                  step: AgentStep.ERROR,
+                  errorReason: reportError(
+                    err,
+                    {
+                      modelType: effectiveModelType,
+                      modelId: resolvedCloudModelId,
+                      executionId,
+                    },
+                    requestAccount
+                  ),
+                }
+              : {}),
+          });
+        }
+      };
+
       const guardDelivery =
         adoptingSpaceDefault || startOptions.resumeRequestId;
       if (!guardDelivery) admissionRequested = true;
@@ -4255,16 +4845,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
-            if (!type && completionTailSteps.has(parsed?.step)) {
+            if (
+              isLiveTask &&
+              (completionTailSteps.has(parsed?.step) ||
+                parsed?.step === AgentStep.ACTIVATE_TOOLKIT)
+            ) {
               const ownerRunId = getCurrentTaskId();
-              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              // Activation can replace an unkeyed pending browser visit.
+              // Validate it before projection or URL recording, just like
+              // its completion. Legacy frames without ids use this transport's
+              // captured ownership; every explicit id must agree with it.
               if (
                 abortController.signal.aborted ||
                 sseConnection.taskId !== ownerRunId ||
                 activeSSEControllers[ownerRunId] !== sseConnection ||
                 legacyEndRunId === ownerRunId ||
-                (typeof explicitRunId === 'string' &&
-                  explicitRunId !== ownerRunId)
+                [parsed?.run_id, parsed?.data?.run_id].some(
+                  (id) => typeof id === 'string' && id !== ownerRunId
+                ) ||
+                [parsed?.project_id, parsed?.data?.project_id].some(
+                  (id) => typeof id === 'string' && id !== project_id
+                )
               ) {
                 return;
               }
@@ -4388,6 +4989,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (stepTimeMs !== null) {
               playbackFirstStepTimeMs ??= stepTimeMs;
               playbackLastStepTimeMs = stepTimeMs;
+              playbackUserWaits.observe(
+                agentMessages?.step,
+                agentMessages?.data?.interaction_id,
+                stepTimeMs
+              );
             }
           }
 
@@ -4434,6 +5040,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.WAIT_CONFIRM;
 
           const isPostCompletionProjectionEvent =
+            agentMessages.step === AgentStep.HUMAN_REPLY ||
             agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
             agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
             agentMessages.step === AgentStep.PROJECT_METADATA;
@@ -4455,7 +5062,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
-            currentTask.durableRunStatus === 'failed' &&
+            UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
             agentMessages.step === AgentStep.ERROR
           ) {
             // A status GET can settle the Run before error details arrive.
@@ -4878,11 +5485,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (summaryTask && tasks[metadataTaskId]) {
               setSummaryTask(metadataTaskId, summaryTask);
             }
-            syncProjectDisplayName(project_id, projectName);
+            const sessionName = syncProjectDisplayName(project_id, projectName);
 
             if (!type && historyId && projectName) {
               void proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
-                project_name: projectName,
+                project_name: sessionName,
                 summary: clampHistorySummary(projectSummary),
                 tokens: getTokens(metadataTaskId),
               });
@@ -5043,13 +5650,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const projectName =
                 agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
-                project_name: projectName,
+                project_name: syncProjectDisplayName(project_id, projectName),
                 summary: clampHistorySummary(
                   agentMessages.data!.summary_task?.split('|')[1]
                 ),
                 tokens: getTokens(currentTaskId),
               };
-              syncProjectDisplayName(project_id, projectName);
               proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             setSummaryTask(
@@ -5268,7 +5874,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // Single-agent tasks have no confirm step, so `taskTime` is never
               // seeded by `handleConfirmTask`. Start the work-log clock here on
               // the first `todo_state`; the `=== 0` guard keeps it idempotent.
-              if (tasks[currentTaskId].taskTime === 0) {
+              // The clock stays stopped while the Run waits for the user,
+              // including in a Session restored during that wait.
+              if (
+                tasks[currentTaskId].taskTime === 0 &&
+                !isRunWaitingForUser(project_id, currentTaskId)
+              ) {
                 setTaskTime(currentTaskId, Date.now());
               }
               setStatus(currentTaskId, ChatTaskStatus.RUNNING);
@@ -5475,13 +6086,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const projectName =
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
-                  project_name: projectName,
+                  project_name: syncProjectDisplayName(project_id, projectName),
                   summary: clampHistorySummary(
                     tasks[currentTaskId].summaryTask.split('|')[1]
                   ),
                   tokens: getTokens(currentTaskId),
                 };
-                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               }
 
@@ -6083,23 +6693,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (agentMessages.step === AgentStep.ARTIFACT_MANIFEST) {
             const lockedTaskId = getCurrentTaskId();
-            const lockedTask = getCurrentChatStore().tasks[lockedTaskId];
+            const lockedState = getCurrentChatStore();
+            const lockedTask = lockedState.tasks[lockedTaskId];
             if (!lockedTask) return;
-            lockedTask.artifactManifestFiles = normalizeTaskArtifactFileList(
-              agentMessages.data.artifacts
-            );
-            lockedTask.artifactManifestScanStatus =
-              typeof agentMessages.data.scan_status === 'string'
-                ? agentMessages.data.scan_status
-                : 'complete';
-            lockedTask.artifactManifestTruncated =
-              agentMessages.data.truncated === true;
             // A finalized manifest is the durable barrier even when discovery
             // explicitly records workspace_unavailable. Re-querying the live
             // filesystem during replay would invent a second, non-canonical
             // history and produces noisy 404s after Cloud restore.
-            lockedTask.artifactManifestFinalized = true;
-            setUpdateCount();
+            lockedState.setArtifactManifest(lockedTaskId, {
+              files: normalizeTaskArtifactFileList(
+                agentMessages.data.artifacts
+              ),
+              finalized: true,
+              scanStatus:
+                typeof agentMessages.data.scan_status === 'string'
+                  ? agentMessages.data.scan_status
+                  : 'complete',
+              truncated: agentMessages.data.truncated === true,
+            });
             return;
           }
 
@@ -6234,7 +6845,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const failedTask = tasks[currentTaskId];
               const wasAlreadySettledByCanonical =
                 failedTask?.status === ChatTaskStatus.FINISHED &&
-                failedTask?.durableRunStatus === 'failed';
+                UNSUCCESSFUL_RUN_STATUSES.has(failedTask.durableRunStatus!);
               const errorContent = i18next.t('chat.error-message', {
                 defaultValue: '❌ **Error**: {{message}}',
                 message: errorMessage,
@@ -6242,14 +6853,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               // Freeze the clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
-              // made every error path render "Worked for 0s".
+              // made every error path render "Worked for 0s". A restored
+              // Run that failed after its history loaded keeps its own clock.
               const playbackElapsed =
                 (type === 'replay' || type === 'share') &&
+                !replayCaughtUp &&
                 playbackFirstStepTimeMs !== null &&
                 playbackLastStepTimeMs !== null
                   ? Math.max(
                       0,
-                      playbackLastStepTimeMs - playbackFirstStepTimeMs
+                      playbackLastStepTimeMs -
+                        playbackFirstStepTimeMs -
+                        playbackUserWaits.waitedMs()
                     )
                   : null;
               const settledElapsed =
@@ -6309,13 +6924,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (existingError) {
                 if (
                   existingError.content !== errorContent ||
-                  existingError.errorReason !== errorReason
+                  existingError.errorReason !== errorReason ||
+                  Boolean(existingError.resumable) !== isRetryableRunError
                 ) {
                   updateMessage(currentTaskId, existingError.id, {
                     ...existingError,
                     content: errorContent,
                     step: AgentStep.ERROR,
                     errorReason,
+                    resumable: isRetryableRunError,
                   });
                 }
               } else {
@@ -6325,6 +6942,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   content: errorContent,
                   step: AgentStep.ERROR,
                   errorReason,
+                  resumable: isRetryableRunError,
                 });
               }
               // Record the tokens consumed before the failure so the run's
@@ -6591,6 +7209,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // await below. A following NEW_TASK_STATE can then reactivate and
             // transfer ownership without a resumed END handler undoing it.
             markSSEConnectionIdleForTask(sseConnection, currentTaskId);
+            if (!type && project_id) reclaimIdleStreamInBackground(project_id);
 
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
@@ -6599,11 +7218,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // "Worked for 0s" with no Files changed section.
             const completedTask = tasks[currentTaskId];
             let completedElapsed = completedTask.elapsed;
+            // A restored Run that finishes after its history loaded keeps
+            // counting from its measured total. The span between its loaded
+            // events would count waits for the user and miss earlier work.
             const playbackElapsed =
               type &&
+              !replayCaughtUp &&
               playbackFirstStepTimeMs !== null &&
               playbackLastStepTimeMs !== null
-                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                ? Math.max(
+                    0,
+                    playbackLastStepTimeMs -
+                      playbackFirstStepTimeMs -
+                      playbackUserWaits.waitedMs()
+                  )
                 : null;
             if (playbackElapsed !== null) {
               completedElapsed = playbackElapsed;
@@ -6783,12 +7411,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 // history-replay polish keys off this flag.
                 const projectName = parts[0] || '';
                 const obj = {
-                  project_name: projectName,
+                  project_name: syncProjectDisplayName(project_id, projectName),
                   summary: clampHistorySummary(completionSummary),
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
-                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               } catch (e) {
                 console.warn('History update failed on END:', e);
@@ -6889,6 +7516,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (agentMessages.step === AgentStep.SYNC) return;
           if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            // canonicalRunEventToLegacyMessage carries these migration-only
+            // fields alongside the legacy reply payload.
+            const resolution = agentMessages.data as AgentMessage['data'] & {
+              __durable_interaction_resolution?: boolean;
+              decision?: { reply?: unknown };
+            };
             const resolvedInteractionId =
               typeof agentMessages.data?.interaction_id === 'string'
                 ? agentMessages.data.interaction_id
@@ -6906,25 +7539,63 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 resolvedInteractionId
               );
             }
-            // A local decision closes and advances the queue immediately.
-            // When the canonical decision later arrives, it is confirmation,
-            // not a second signal to consume another queued interaction.
-            if (interactionWasAlreadyResolved) return;
+            // A canonical question decision is persisted under decision.reply;
+            // legacy human_reply frames carry the same answer at the top level.
+            // Project the receipt even if control cleanup already closed ASK.
             const reply =
+              (resolution?.__durable_interaction_resolution === true &&
+              typeof resolution.decision?.reply === 'string'
+                ? resolution.decision.reply
+                : '') ||
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
               (typeof agentMessages.data === 'string'
                 ? agentMessages.data
                 : '');
-            if (reply) {
+            const existingReply = resolvedInteractionId
+              ? getCurrentChatStore().tasks[currentTaskId]?.messages.find(
+                  (message) =>
+                    message.role === 'user' &&
+                    message.interactionResponseTo === resolvedInteractionId
+                )
+              : undefined;
+            if (reply && !existingReply) {
               addMessages(currentTaskId, {
-                id: generateUniqueId(),
+                id: resolvedInteractionId
+                  ? `interaction-response:${resolvedInteractionId}`
+                  : generateUniqueId(),
                 role: 'user',
                 content: reply,
                 interactionResponseTo:
                   agentMessages.data?.interaction_id || undefined,
+                interactionResponseSource:
+                  resolution?.__durable_interaction_resolution === true
+                    ? 'canonical'
+                    : 'legacy',
+              });
+            } else if (
+              reply &&
+              existingReply &&
+              resolution?.__durable_interaction_resolution === true &&
+              (existingReply.content !== reply ||
+                existingReply.interactionResponseSource !== 'canonical')
+            ) {
+              // A competing client may have resolved the interaction. Only
+              // the journal's answer can replace an optimistic local reply.
+              updateMessage(currentTaskId, existingReply.id, {
+                ...existingReply,
+                content: reply,
+                interactionResponseSource: 'canonical',
               });
             }
+
+            // Receipt deduplication is separate from control idempotency. A
+            // repeated resolution must never consume the next queued ASK.
+            if (
+              interactionWasAlreadyResolved ||
+              tasks[currentTaskId].status === ChatTaskStatus.FINISHED
+            )
+              return;
 
             const latestTask =
               getCurrentChatStore().tasks[currentTaskId] ||
@@ -7009,43 +7680,41 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A definitive admission rejection is distinct from lost delivery.
               clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
             }
-            let detail = `HTTP ${respond.status}`;
-            let errorCode: string | undefined;
-            let userMessage: string | undefined;
-            try {
-              const body = await respond.clone().json();
-              const bodyDetail = body?.detail ?? body?.message ?? body?.text;
-              if (typeof body?.error_code === 'string') {
-                errorCode = body.error_code;
-              }
-              if (typeof bodyDetail === 'string') {
-                detail = bodyDetail;
-                userMessage = bodyDetail;
-              } else if (bodyDetail) {
-                detail = JSON.stringify(bodyDetail);
-                if (typeof bodyDetail?.code === 'string') {
-                  errorCode = bodyDetail.code;
-                }
-                if (typeof bodyDetail?.message === 'string') {
-                  userMessage = bodyDetail.message;
-                }
-              }
-            } catch {
-              // Preserve the HTTP fallback for non-JSON error responses.
-            }
-            const error: any = new Error(
-              contentType.startsWith('text/event-stream')
-                ? `Run stream returned ${detail}`
-                : `Run admission did not return an event stream: ${detail}`
-            );
-            error.status = respond.status;
-            error.code = errorCode;
-            error.userMessage = userMessage;
+            const error = await createSSEAdmissionError(respond, {
+              modelType: effectiveModelType,
+              modelId: resolvedCloudModelId,
+            });
+            // An awaited admission settles on this rejection and aborts the
+            // transport, which then never reaches onerror. Settle the new task
+            // here so it keeps its error receipt. A Resume keeps its
+            // interrupted task, whose controls ChatBox restores.
+            if (startOptions.awaitAdmission && !startOptions.resumeRequestId)
+              failAdmission(error);
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          // A reconnect may fall back to the window's own fetch.
+          sseConnection.relayed = isRelayedEventStreamResponse(respond);
           const firstOpen = !resumeStreamOpened;
-          if (resumeStreamOpened) reconcileStreamRun();
+          if (firstOpen && startOptions.deferPresentationUntilAdmission) {
+            queuedPresentationCommitted = true;
+            const state = targetChatStore.getState();
+            state.addMessages(newTaskId, {
+              id: newTaskId,
+              role: 'user',
+              content: messageContent || '',
+              attaches: messageAttaches || [],
+            });
+            state.setActiveTaskId(newTaskId);
+            state.setStatus(newTaskId, ChatTaskStatus.PENDING);
+            state.setIsPending(newTaskId, true);
+            state.setHasMessages(newTaskId, true);
+          }
+          if (resumeStreamOpened) {
+            reconcileStreamRun();
+            // Let waiting cards re-check Brain now instead of at their backoff.
+            notifyRunStreamReopened(lockedTaskId);
+          }
           if (commitSpaceModelPin) {
             try {
               commitSpaceModelPin();
@@ -7057,6 +7726,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
+          if (deferHistoryCreate) {
+            // Acceptance owns the queue acknowledgement even if history fails.
+            // Wait before reading SSE frames so they can only update this Run's
+            // history; reconnects share the same bounded creation request.
+            deferredHistoryCreation ??= createInitialHistory(true).catch(
+              (error) =>
+                console.warn('Accepted task history unavailable:', error)
+            );
+            await deferredHistoryCreation;
+          }
           if (!type && project_id) {
             observeCanonicalTerminal(lockedChatStore, lockedTaskId);
           }
@@ -7098,13 +7777,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           // Allow automatic retry for connection errors only when task is not finished
+          // Sanitized admission copy must not change the transport's existing
+          // retry decision; its original message is retained as the cause.
+          const transportMessage =
+            err?.response && typeof err?.cause === 'string'
+              ? err.cause
+              : err?.message;
           const isConnectionError =
             err instanceof TypeError ||
-            err?.message?.includes('Failed to fetch') ||
-            err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError') ||
-            err?.message?.includes('ERR_NETWORK_CHANGED') ||
-            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+            transportMessage?.includes('Failed to fetch') ||
+            transportMessage?.includes('ECONNREFUSED') ||
+            transportMessage?.includes('NetworkError') ||
+            transportMessage?.includes('ERR_NETWORK_CHANGED') ||
+            transportMessage?.includes('ERR_INTERNET_DISCONNECTED');
           if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
@@ -7112,75 +7797,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
-          if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
-
           if (!resumeStreamOpened) {
-            if (
-              err?.code === 'project_consumer_active' &&
-              createdTriggerBinding &&
-              !startOptions.resumeRequestId &&
-              triggerExecutionId &&
-              project_id
-            ) {
-              forgetRejectedTriggerRun(
-                triggerExecutionId,
-                project_id,
-                newTaskId
-              );
-            }
-            // Admission failed before the event stream existed. Unlike an
-            // execution error, no later END frame can clear the optimistic
-            // pending state, so close it here and surface the typed Brain
-            // reason instead of leaving the composer stuck on "Preparing".
-            finishStartupFailure();
-            const failureState = targetChatStore.getState();
-            const failureTask = failureState.tasks[newTaskId];
-            const userMessage =
-              typeof err?.userMessage === 'string' && err.userMessage.trim()
-                ? err.userMessage.trim()
-                : typeof err?.message === 'string' && err.message.trim()
-                  ? err.message.trim()
-                  : i18next.t('chat.task-admission-failed', {
-                      defaultValue:
-                        'The task could not be started. Please try again.',
-                    });
-            const isContinuationClarification =
-              typeof err?.code === 'string' &&
-              err.code.startsWith('continuation_');
-            const content = isContinuationClarification
-              ? i18next.t('chat.control-input-required-message', {
-                  defaultValue: 'Input required: {{message}}',
-                  message: userMessage,
-                })
-              : i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: userMessage,
-                });
-            const alreadyRendered = failureTask?.messages.some(
-              (message) =>
-                message.role === 'agent' && message.content === content
-            );
-            if (failureTask && !alreadyRendered) {
-              failureState.addMessages(newTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content,
-                ...(!isContinuationClarification
-                  ? {
-                      step: AgentStep.ERROR,
-                      errorReason: reportError(
-                        err,
-                        {
-                          modelType: effectiveModelType,
-                          modelId: resolvedCloudModelId,
-                          executionId,
-                        },
-                        requestAccount
-                      ),
-                    }
-                  : {}),
-              });
-            }
+            rejectResumeStreamOpen?.(err);
+            failAdmission(err);
           }
 
           // A transport error does not establish a cancelled execution outcome.
@@ -7487,7 +8106,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
+            messages: state.tasks[taskId].messages.some(
+              (existing) => existing.id === message.id
+            )
+              ? state.tasks[taskId].messages.map((existing) =>
+                  existing.id === message.id ? message : existing
+                )
+              : [...state.tasks[taskId].messages, message],
           },
         },
       }));
@@ -7543,7 +8168,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const alreadyResolved = resolvedInteractionIds.includes(interactionId);
         const messages = removeResolvedInteractionMessages(
           task.messages,
-          interactionId
+          interactionId,
+          true
         );
         const askList = removeResolvedInteractionMessages(
           task.askList,
@@ -7647,6 +8273,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
       computedProgressValue(taskId);
     },
+    setArtifactManifest(taskId, manifest) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              artifactManifestFiles: [...manifest.files],
+              artifactManifestFinalized: manifest.finalized,
+              artifactManifestScanStatus: manifest.scanStatus,
+              artifactManifestTruncated: manifest.truncated,
+            },
+          },
+        };
+      });
+    },
     addWebViewUrl(taskId: string, webViewUrl: string, processTaskId: string) {
       set((state) => ({
         ...state,
@@ -7719,10 +8364,102 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
+    observeTaskFailureFacts(
+      taskId,
+      onFacts,
+      projectId = useProjectStore.getState().activeProjectId
+    ) {
+      if (!projectId) return () => {};
+      const executionId = get().tasks[taskId]?.executionId;
+      const accountKey = getAccountEnvironmentKey(getAuthStore());
+      const controller = new AbortController();
+      const invalidate = () => {
+        if (controller.signal.aborted) return;
+        if (
+          getAccountEnvironmentKey(getAuthStore()) !== accountKey ||
+          (useProjectStore.getState().activeProjectId !== projectId &&
+            !hasSessionPane(projectId)) ||
+          !useProjectStore
+            .getState()
+            .getAllChatStores(projectId)
+            .some((entry) => entry.chatStore === store) ||
+          !RUN_RECEIPT_STATUSES.has(get().tasks[taskId]?.durableRunStatus!) ||
+          get().tasks[taskId]?.status !== ChatTaskStatus.FINISHED ||
+          get().tasks[taskId]?.executionId !== executionId
+        ) {
+          controller.abort();
+          onFacts(undefined);
+        }
+      };
+      let reading = false;
+      let refreshRequested = false;
+      const refresh = async () => {
+        refreshRequested = true;
+        if (reading) return;
+        reading = true;
+        try {
+          while (refreshRequested && !controller.signal.aborted) {
+            refreshRequested = false;
+            const facts = await readTaskFailureFacts(
+              store,
+              projectId,
+              taskId,
+              controller.signal
+            );
+            if (!controller.signal.aborted && facts) onFacts(facts);
+          }
+        } finally {
+          reading = false;
+        }
+      };
+      const unsubscribe = [
+        useAuthStore.subscribe(invalidate),
+        useProjectStore.subscribe(invalidate),
+        store.subscribe(invalidate),
+        // A legacy error may finish the UI before the durable receipt exists.
+        // Refresh when its committed boundary arrives, including mid-read.
+        runDomainEventHub.subscribe(
+          {
+            projectId,
+            runId: taskId,
+            eventTypes: [
+              'run.failed',
+              'run.deadline_reached',
+              'run.interrupted',
+              'runtime.interrupted',
+            ],
+          },
+          () => void refresh()
+        ),
+      ];
+      void refresh();
+      return () => {
+        controller.abort();
+        unsubscribe.forEach((dispose) => dispose());
+      };
+    },
     setDurableRunStatus(
       taskId: string,
       durableRunStatus: DurableRunDisplayStatus | undefined
     ) {
+      // Retired requests stay attached to history even when Resume starts a
+      // new Attempt in this same Run. This receipt never asserts a decision.
+      const retireApproval = (message: Message): Message => {
+        if (
+          !durableRunStatus ||
+          !isStoppedRunStatus(durableRunStatus) ||
+          message.interaction?.interaction_type !== 'approval' ||
+          message.interaction.receipt
+        )
+          return message;
+        return {
+          ...message,
+          interaction: {
+            ...message.interaction,
+            receipt: { runStatus: durableRunStatus },
+          },
+        };
+      };
       set((state) => {
         const task = state.tasks[taskId];
         if (!task) return state;
@@ -7733,6 +8470,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...task,
               durableRunStatus,
+              messages: task.messages.map(retireApproval),
+              askList: task.askList.map(retireApproval),
+            },
+          },
+        };
+      });
+    },
+    markRunResumed(taskId: string) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              type: undefined,
+              durableRunStatus: undefined,
+              activeAsk: '',
+              askList: [],
             },
           },
         };
@@ -8032,10 +8790,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
     },
-    saveTaskInfo() {
+    saveTaskInfo(projectId = useProjectStore.getState().activeProjectId) {
       const { tasks, activeTaskId } = get();
       if (!activeTaskId) return;
-      persistSubtaskEdits(tasks[activeTaskId].taskInfo);
+      persistSubtaskEdits(tasks[activeTaskId].taskInfo, projectId);
     },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
@@ -8221,14 +8979,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
     },
-    async savePlan(taskId: string) {
+    async savePlan(
+      taskId: string,
+      projectId = useProjectStore.getState().activeProjectId
+    ) {
       const { tasks, setPlanDirty, setAutoConfirmDeadline } = get();
       const task = tasks[taskId];
       if (!task || task.status === ChatTaskStatus.FINISHED) return;
       const save = Symbol(taskId);
       activePlanSaves.set(taskId, save);
       try {
-        await persistSubtaskEdits(task.taskInfo);
+        await persistSubtaskEdits(task.taskInfo, projectId);
         // Status may already be PENDING again after terminal -> Resume.
         if (activePlanSaves.get(taskId) !== save) return;
         const currentTask = get().tasks[taskId];
@@ -8244,8 +9005,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
-      // After Save, restart the 30-second auto-confirm timer for predictable UX.
-      const projectId = useProjectStore.getState().activeProjectId;
+      // After Save, restart the 30-second auto-confirm timer for this Session.
       const currentTask = get().tasks[taskId];
       if (!currentTask || currentTask.status === ChatTaskStatus.FINISHED)
         return;
@@ -8497,9 +9257,29 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   );
 }
 
+type IdleStreamReclaimOptions = {
+  /** Leave relayed transports open; they hold no renderer connection. */
+  keepRelayed?: boolean;
+};
+
 /** Returns true if any task still owns a physical SSE transport. */
-export function hasSSETransportForTasks(taskIds: string[]): boolean {
-  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+export function hasSSETransportForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): boolean {
+  return taskIds.some((taskId) => {
+    const connection = activeSSEControllers[taskId];
+    return !!connection && !(keepRelayed && connection.relayed);
+  });
+}
+
+/** Idle relayed transports, each physical connection counted once. */
+export function countIdleRelayedSSEConnections(): number {
+  return new Set(
+    Object.values(activeSSEControllers).filter(
+      (connection) => connection.relayed && !connection.logicalActive
+    )
+  ).size;
 }
 
 /** Return the Run id that owns an idle reusable legacy `/chat` transport. */
@@ -8537,10 +9317,18 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
 }
 
 /** Close only reusable transports that no longer have a logically active Run. */
-export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+export function closeIdleSSEConnectionsForTasks(
+  taskIds: string[],
+  { keepRelayed = false }: IdleStreamReclaimOptions = {}
+): void {
   for (const taskId of taskIds) {
     const connection = activeSSEControllers[taskId];
-    if (connection && !connection.logicalActive && !connection.displayTail) {
+    if (
+      connection &&
+      !connection.logicalActive &&
+      !connection.displayTail &&
+      !(keepRelayed && connection.relayed)
+    ) {
       console.log(
         '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
         taskId

@@ -24,7 +24,7 @@ from app.agent.prompt import (
     SINGLE_AGENT_SYS_PROMPT,
     append_connected_app_mcp_notice,
 )
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
@@ -86,11 +86,12 @@ async def single_agent(
             runtime_environment=runtime_environment,
         )
 
+    prompt_time = agent_current_time(options, task_id=current_task_id)
     system_message = SINGLE_AGENT_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
-        now_str=NOW_STR,
+        now_str=prompt_time,
     )
     if managed_execution is None:
         system_message = append_connected_app_mcp_notice(system_message)
@@ -103,22 +104,41 @@ async def single_agent(
         if bundle_context:
             system_message = f"{system_message}\n\n{bundle_context}"
 
-    agent = agent_model(
-        Agents.single_agent,
-        BaseMessage.make_assistant_message(
-            role_name="Single Agent",
-            content=system_message,
-        ),
-        options,
-        assembly.tools,
-        tool_names=assembly.tool_names,
-        toolkits_to_register_agent=assembly.toolkits_to_register_agent,
-        **(
-            {"managed_resources": managed_execution.model_resources}
-            if managed_execution is not None
-            else {}
-        ),
+    system_prompt = BaseMessage.make_assistant_message(
+        role_name="Single Agent",
+        content=system_message,
     )
+    try:
+        agent = agent_model(
+            Agents.single_agent,
+            system_prompt,
+            options,
+            assembly.tools,
+            tool_names=assembly.tool_names,
+            toolkits_to_register_agent=assembly.toolkits_to_register_agent,
+            **(
+                {"managed_resources": managed_execution.model_resources}
+                if managed_execution is not None
+                else {}
+            ),
+        )
+    except BaseException:
+        # Without an Agent, nothing would release the assembled Browser
+        # reservation, Terminal sessions or MCP servers.
+        if managed_execution is None:
+            from app.agent.factory.toolkit_assembler import (
+                _rollback_runtime_assembly,
+            )
+
+            await _rollback_runtime_assembly(
+                assembly,
+                project_id=options.project_id,
+                options=options,
+                hands=hands,
+            )
+        raise
+    agent._prompt_current_time = prompt_time
+    agent._prompt_system_message = system_prompt
     if pause_event is not None:
         agent.pause_event = pause_event
     if assembly.observable_todo_toolkit is not None:

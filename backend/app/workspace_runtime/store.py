@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import RUN_STOPPED_STATES
+
 if TYPE_CHECKING:
     from app.run_journal.store import SQLiteRunJournal
 
@@ -464,16 +466,15 @@ class WorkspaceStateStore:
     ) -> None:
         self._require_transaction(connection)
         queued = connection.execute(
-            """SELECT r.request_id FROM workspace_writer_requests r
+            """SELECT r.* FROM workspace_writer_requests r
             JOIN workspace_legacy_targets t USING(repository_id,checkout_id)
             WHERE t.target_id=? AND r.status='queued'
-            ORDER BY r.created_at,r.request_id LIMIT 1""",
+            ORDER BY r.created_at,r.request_id""",
             (target_id,),
-        ).fetchone()
-        if queued is not None:
-            self.journal._acquire_workspace_writer_in_transaction(
-                connection, request_id=queued[0], now=time.time()
-            )
+        ).fetchall()
+        self.journal._promote_first_eligible_writer_in_transaction(
+            connection, queued, now=time.time()
+        )
 
     def revision_at(self, target_id: str, cursor: int) -> str:
         with self.journal._lock:
@@ -616,7 +617,7 @@ class WorkspaceStateStore:
         Caller validates checkpoint and immutable artifact content first.
         """
         self._require_transaction(connection)
-        if outcome not in {"completed", "failed", "cancelled", "interrupted"}:
+        if outcome not in RUN_STOPPED_STATES:
             raise ValueError("invalid finalization outcome")
         if not checkpoint_revision or not manifest_digest:
             raise ValueError("immutable checkpoint and manifest are required")

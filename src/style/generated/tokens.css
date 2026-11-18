@@ -61,6 +61,9 @@
   --ds-dialog-radius: var(--ds-radius-dialog);
   --ds-elevation-card:
     0 1px 2px rgb(29 33 41 / 0.06), 0 8px 16px -8px rgb(29 33 41 / 0.1);
+  --ds-elevation-card-subtle:
+    0 1px 2px rgb(29 33 41 / 0.04), 0 4px 8px -2px rgb(29 33 41 / 0.05),
+    0 12px 24px -8px rgb(29 33 41 / 0.07);
   --ds-elevation-control:
     inset 0 1px 0 0 rgb(255 255 255 / 0.33), 0 3px 4px -1px rgb(0 0 0 / 0.25),
     0 0 0 1px rgb(212 212 212 / 0.25);
@@ -122,6 +125,7 @@
   --ds-radius-panel: var(--ds-ref-radius-16);
   --ds-radius-popover: var(--ds-ref-radius-16);
   --ds-radius-primary-action: var(--ds-ref-radius-full);
+  --ds-radius-shell-control: var(--ds-ref-radius-12);
   --ds-ref-border-accent: 4px;
   --ds-ref-border-hairline: 0.5px;
   --ds-ref-border-strong: 2px;

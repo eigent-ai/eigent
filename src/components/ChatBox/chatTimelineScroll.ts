@@ -14,12 +14,26 @@
 
 import { animate } from 'framer-motion';
 
-/** Default breathing room below the top border of the ChatBox scroll viewport. */
-export const CHAT_QUERY_HEADER_GAP_PX = 44;
+/**
+ * Space left above an anchored query. The Session header sits above the
+ * ChatBox scroll viewport, so the query aligns flush with the header's bottom.
+ */
+export const CHAT_QUERY_HEADER_GAP_PX = 0;
 export const CHAT_QUERY_SCROLL_DURATION_SECONDS = 0.8;
 const CHAT_QUERY_SCROLL_EASE = [0.22, 1, 0.36, 1] as const;
 
 export type ChatTimelineScrollAnimation = ReturnType<typeof animate>;
+
+/** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
+const NEAR_BOTTOM_SLACK_PX = 48;
+
+export function isChatTimelineNearBottom(
+  distanceFromBottom: number,
+  bottomInsetPx: number,
+  slackPx = NEAR_BOTTOM_SLACK_PX
+): boolean {
+  return distanceFromBottom <= Math.max(0, bottomInsetPx) + slackPx;
+}
 
 export function getChatTimelineAnchorScrollTop({
   containerTop,

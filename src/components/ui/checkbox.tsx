@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import * as CheckboxPrimitives from '@radix-ui/react-checkbox';
 import { Check } from 'lucide-react';
 import * as React from 'react';
@@ -41,9 +42,11 @@ const Checkbox = React.forwardRef<
     {...props}
   >
     <CheckboxPrimitives.Indicator className="flex items-center justify-center">
-      <Check
+      <DsIcon
+        icon={Check}
+        recipe="main-compact"
         className={cn(
-          'size-ds-icon-sm shrink-0 group-data-[state=checked]/checkbox:!text-ds-success-indicator-on-default',
+          'shrink-0 group-data-[state=checked]/checkbox:!text-ds-success-indicator-on-default',
           iconClassName
         )}
       />

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import {
   ensureShellSession,
@@ -54,6 +55,8 @@ export interface ShellTerminalProps {
   shellId: string;
   /** Directory the shell starts in; falls back to the home directory. */
   cwd?: string;
+  /** Hold the cached terminal size while the display panel animates. */
+  viewportSettled?: boolean;
   /** Called with the URL when a link in the output is clicked. */
   onOpenLink?: (url: string) => void;
 }
@@ -61,12 +64,13 @@ export interface ShellTerminalProps {
 /**
  * A real interactive terminal — xterm in front, a main-process PTY running
  * the user's login shell behind. Feels like the desktop terminal: native
- * prompt, arrow keys, colors, Ctrl+C, full-screen programs. Scrollback is
- * replayed from the session registry when the tab remounts.
+ * prompt, arrow keys, colors, Ctrl+C, full-screen programs. The cached parser
+ * and scrollback are reattached when the tab remounts.
  */
 export function ShellTerminal({
   shellId,
   cwd,
+  viewportSettled = true,
   onOpenLink,
 }: ShellTerminalProps) {
   const { t } = useTranslation();
@@ -83,6 +87,10 @@ export function ShellTerminal({
   }, [onOpenLink]);
   // Bump to re-run the mount effect after "Restart shell".
   const [runId, setRunId] = useState(0);
+  const focusTargetRef = useRef<Element | null>(null);
+  useEffect(() => {
+    focusTargetRef.current = document.activeElement;
+  }, [shellId, runId, electronAPI]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -153,6 +161,10 @@ export function ShellTerminal({
     );
 
     const safeFit = () => {
+      // Display panel entrance and exit can shrink the viewport to two columns.
+      // Reflow at that width can evict history from xterm's bounded buffer and
+      // trigger shell prompt redraws. Keep parsing at the last settled size.
+      if (!viewportSettled) return;
       if (!container.clientWidth || !container.clientHeight) return;
       try {
         fitAddon.fit();
@@ -166,6 +178,7 @@ export function ShellTerminal({
     // container resizes (panel drag, window resize, side panel fold).
     let disposed = false;
     const initialFrame = requestAnimationFrame(() => {
+      if (!viewportSettled) return;
       safeFit();
       void ensureShellSession(api, {
         id: shellId,
@@ -175,7 +188,15 @@ export function ShellTerminal({
       }).then((next) => {
         if (!disposed) setSession(next);
       });
-      terminal.focus();
+      // Fitting may wait for the entrance animation. Do not take focus back
+      // if the user has moved to another input during that wait.
+      if (
+        document.activeElement === focusTargetRef.current ||
+        document.activeElement === document.body ||
+        container.contains(document.activeElement)
+      ) {
+        terminal.focus();
+      }
     });
     let frame = 0;
     const observer = new ResizeObserver(() => {
@@ -195,7 +216,7 @@ export function ShellTerminal({
     };
     // cwd only matters at spawn time; a change never restarts a live shell.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shellId, runId, electronAPI]);
+  }, [shellId, runId, electronAPI, viewportSettled]);
 
   const handleRestart = async () => {
     if (!electronAPI) return;
@@ -233,7 +254,7 @@ export function ShellTerminal({
             size="xs"
             onClick={() => void handleRestart()}
           >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            <DsIcon icon={RotateCcw} recipe="main-compact" aria-hidden />
             {t('layout.terminal-restart', { defaultValue: 'Restart shell' })}
           </Button>
         </div>

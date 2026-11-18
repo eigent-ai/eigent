@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { generateUniqueId } from '@/lib';
 import { cn } from '@/lib/utils';
 import {
@@ -46,6 +47,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { FOOTER_COMPACT_TRIGGER_CLASS } from './footerCompact';
 
 interface ApprovalOption {
   value: PermissionProfileName;
@@ -58,7 +60,7 @@ const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-neutral-default-default text-ds-ink-default-default'
+  'bg-ds-neutral-subtle-default text-ds-ink-default-default'
 );
 
 export interface ApprovalModeSelectProps {
@@ -66,7 +68,7 @@ export interface ApprovalModeSelectProps {
   disabled?: boolean;
   /** Shows the current mode in the same read-only shell as the model/mode controls. */
   readOnly?: boolean;
-  /** When true, hides the text label and shows only the icon (narrow footer). */
+  /** When true, shows only the mode icon: no label, no chevron (narrow footer). */
   compact?: boolean;
   className?: string;
 }
@@ -224,14 +226,12 @@ export function ApprovalModeSelect({
           triggerShellClass,
           'pointer-events-none bg-transparent',
           { 'opacity-50': disabled || loading },
+          compact && FOOTER_COMPACT_TRIGGER_CLASS,
           className
         )}
       >
         <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
-          <CurrentIcon
-            className="h-3.5 w-3.5 shrink-0 opacity-80"
-            aria-hidden
-          />
+          <DsIcon icon={CurrentIcon} className="opacity-80" />
           {!compact && (
             <span className="min-w-0 truncate !text-ds-text-meta font-semibold">
               {current.label}
@@ -255,28 +255,22 @@ export function ApprovalModeSelect({
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
-            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
+            'hover:bg-ds-neutral-default-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-default-default',
+            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
+            compact && FOOTER_COMPACT_TRIGGER_CLASS,
             className
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <CurrentIcon
-              className="h-3.5 w-3.5 shrink-0 opacity-80"
-              aria-hidden
-            />
+            <DsIcon icon={CurrentIcon} className="opacity-80" />
             {!compact && (
               <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
                 {current.label}
               </span>
             )}
           </span>
-          <ChevronDown
-            className="h-3.5 w-3.5 shrink-0 opacity-80"
-            aria-hidden
-            strokeWidth={2}
-          />
+          {!compact && <DsIcon icon={ChevronDown} className="opacity-80" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -296,10 +290,7 @@ export function ApprovalModeSelect({
               className="flex items-center justify-between gap-2"
             >
               <span className="flex min-w-0 items-start gap-2">
-                <OptionIcon
-                  className="mt-0.5 h-4 w-4 shrink-0 opacity-80"
-                  aria-hidden
-                />
+                <DsIcon icon={OptionIcon} className="opacity-80" />
                 <span className="min-w-0">
                   <span className="block text-ds-text-base">
                     {option.label}
@@ -310,7 +301,10 @@ export function ApprovalModeSelect({
                 </span>
               </span>
               {value === option.value && (
-                <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                <DsIcon
+                  icon={Check}
+                  className="text-ds-text-success-default-default"
+                />
               )}
             </DropdownMenuItem>
           );

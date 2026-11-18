@@ -92,6 +92,25 @@ function delayForTooltipVariant(variant: TooltipVariant): number | undefined {
   return undefined;
 }
 
+/** Open delay in ms for a variant, including the shared default. */
+function tooltipOpenDelayMs(variant: TooltipVariant): number {
+  return delayForTooltipVariant(variant) ?? TOOLTIP_DELAY_MS;
+}
+
+/**
+ * The tooltip surface for a tooltip drawn outside Radix (one shared shell
+ * that moves between triggers): the same classes and token aliases.
+ */
+function tooltipSurfaceProps(className?: string): {
+  className: string;
+  style: React.CSSProperties;
+} {
+  return {
+    className: cn(tooltipContentVariants({ variant: 'instant' }), className),
+    style: mergeAliasStyles(tooltipTokenAliases, undefined),
+  };
+}
+
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> &
@@ -127,6 +146,40 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * </TooltipSimple>
  * ```
  */
+const DIALOG_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"]';
+
+const isDialogLayer = (node: Node) =>
+  node instanceof Element &&
+  (node.matches(DIALOG_LAYER_SELECTOR) ||
+    node.querySelector(DIALOG_LAYER_SELECTOR) !== null);
+
+/**
+ * Radix closes a tooltip on pointer leave or blur. A dialog that opens over
+ * the pointer, from a menu or a shortcut such as quitting, fires neither, so
+ * the tooltip would stay open above the dialog's scrim. Only dialogs added
+ * after the tooltip opened count; a tooltip inside an open dialog stays.
+ */
+function useCloseWhenDialogOpens(
+  open: boolean,
+  setOpen: (open: boolean) => void
+) {
+  React.useEffect(() => {
+    if (!open || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver((records) => {
+      if (
+        records.some((record) =>
+          Array.from(record.addedNodes).some(isDialogLayer)
+        )
+      ) {
+        setOpen(false);
+      }
+    });
+    // Dialogs portal straight into body, so its direct children are enough.
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [open, setOpen]);
+}
+
 interface TooltipSimpleProps extends Omit<
   React.ComponentPropsWithoutRef<typeof TooltipContent>,
   'children' | 'content'
@@ -168,6 +221,8 @@ const TooltipSimple = React.forwardRef<
       }
     }, [enabled]);
 
+    useCloseWhenDialogOpens(open, setOpen);
+
     const tooltip = (
       <Tooltip
         open={enabled && open}
@@ -206,8 +261,10 @@ TooltipSimple.displayName = 'TooltipSimple';
 export {
   Tooltip,
   TooltipContent,
+  tooltipOpenDelayMs,
   TooltipProvider,
   TooltipSimple,
+  tooltipSurfaceProps,
   TooltipTrigger,
 };
 export type { TooltipVariant };

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TooltipSimple, type TooltipVariant } from '@/components/ui/tooltip';
+import { type TooltipVariant } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
@@ -21,6 +21,7 @@ import {
   SIDEBAR_FOLD_SPRING,
   SIDEBAR_TOOLTIP_CONTENT_CLASS,
 } from './constants';
+import { SidebarRowTooltip } from './SidebarTooltip';
 
 /** App-sidebar tabs keep the same layout while folding so the leading icon does not jump. */
 export function sidebarTabButtonClass(active: boolean): string {
@@ -210,14 +211,11 @@ export function NavTab({
 
   if (layout === 'split') {
     return (
-      <TooltipSimple
+      <SidebarRowTooltip
         content={tooltip}
-        side="right"
-        align="center"
         enabled={tooltipEnabled}
-        compact={tooltipCompact}
         variant={resolvedTooltipVariant}
-        className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+        className={cn(SIDEBAR_TOOLTIP_CONTENT_CLASS, tooltipCompact && 'py-0')}
       >
         <div
           className={cn(
@@ -278,19 +276,16 @@ export function NavTab({
             </motion.div>
           ) : null}
         </div>
-      </TooltipSimple>
+      </SidebarRowTooltip>
     );
   }
 
   return (
-    <TooltipSimple
+    <SidebarRowTooltip
       content={tooltip}
-      side="right"
-      align="center"
       enabled={tooltipEnabled}
-      compact={tooltipCompact}
       variant={resolvedTooltipVariant}
-      className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+      className={cn(SIDEBAR_TOOLTIP_CONTENT_CLASS, tooltipCompact && 'py-0')}
     >
       <button
         type="button"
@@ -313,6 +308,6 @@ export function NavTab({
       >
         {inner}
       </button>
-    </TooltipSimple>
+    </SidebarRowTooltip>
   );
 }

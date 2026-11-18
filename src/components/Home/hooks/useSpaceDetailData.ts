@@ -21,6 +21,7 @@ import type { Trigger } from '@/types';
 import type { ProjectGroup } from '@/types/history';
 import { useEffect, useMemo } from 'react';
 import { useHomeHub } from '../context';
+import { timestampFromHubValue } from '../utils';
 
 function projectFromMetadata(
   projectId: string,
@@ -90,8 +91,8 @@ export function useSpaceDetailData(spaceId: string) {
 
     return [...merged, ...historyById.values()].sort(
       (left, right) =>
-        new Date(right.latest_task_date).getTime() -
-        new Date(left.latest_task_date).getTime()
+        timestampFromHubValue(right.latest_task_date) -
+        timestampFromHubValue(left.latest_task_date)
     );
   }, [historyProjects, projectsBySpaceId, spaceId]);
 

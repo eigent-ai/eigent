@@ -16,6 +16,7 @@ import ContentHeader, {
   useFocusContentHeading,
 } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { ArrowLeft } from 'lucide-react';
@@ -55,7 +56,7 @@ export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
               aria-label={backLabel}
               onClick={headerOverride.onBack}
             >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
+              <DsIcon icon={ArrowLeft} aria-hidden />
             </Button>
             <h1
               ref={headingRef}

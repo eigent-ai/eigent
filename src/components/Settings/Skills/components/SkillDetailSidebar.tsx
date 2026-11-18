@@ -68,7 +68,7 @@ export default function SkillDetailSidebar({
               disabled={loading || pendingIds.size > 0}
               aria-label={t('agents.add-skill')}
             >
-              <Plus aria-hidden />
+              <DsIcon icon={Plus} aria-hidden />
             </Button>
           </TooltipSimple>
         }

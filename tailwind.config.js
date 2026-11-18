@@ -981,6 +981,8 @@ export default {
           'star-movement-bottom linear infinite alternate',
         'star-movement-top': 'star-movement-top linear infinite alternate',
         'fade-in': 'fade-in 0.5s ease-in-out',
+        'status-pulse':
+          'status-pulse 1.1s cubic-bezier(0.645, 0.045, 0.355, 1) infinite',
       },
       keyframes: {
         'star-movement-bottom': {
@@ -994,6 +996,12 @@ export default {
         'fade-in': {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        // A live status mark shrinks and returns while work is running; it
+        // never grows past its own size.
+        'status-pulse': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(0.6)' },
         },
       },
     },

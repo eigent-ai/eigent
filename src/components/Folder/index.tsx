@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -59,8 +61,12 @@ import {
 import { CsvPreviewTable } from './CsvPreviewTable';
 import { FileOpenActions } from './FileOpenActions';
 import FolderComponent from './FolderComponent';
-import { PdfPreview } from './PdfPreview';
-import { PreviewFailure } from './PreviewRecovery';
+import { PdfPreview, usePdfFrameLoadFailed } from './PdfPreview';
+import {
+  PreviewFailure,
+  previewLoadFailure,
+  type PreviewLoadFailure,
+} from './PreviewRecovery';
 import { useIdeOpenActions } from './useIdeOpenActions';
 
 import { fetchGet, getBaseURL } from '@/api/http';
@@ -71,6 +77,12 @@ import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
+import {
+  authorizeBrainFile,
+  getBrainFilePreviewUrl,
+  isBrainFileUrl,
+  shareBrainFileAccess,
+} from '@/lib/brainFileAccess';
 import {
   isRemotePreviewSource,
   loadFilePreview,
@@ -727,9 +739,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 border-x-0 border-y-0 bg-transparent text-inherit hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   {isExpanded ? (
-                    <ChevronDown className={rowIconClass} />
+                    <DsIcon icon={ChevronDown} className={rowIconClass} />
                   ) : (
-                    <ChevronRight className={rowIconClass} />
+                    <DsIcon icon={ChevronRight} className={rowIconClass} />
                   )}
                 </button>
                 <button
@@ -741,7 +753,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   }
                   className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 border-x-0 border-y-0 bg-transparent px-1 text-left text-inherit focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
-                  <FolderIcon className={rowIconClass} aria-hidden />
+                  <DsIcon
+                    icon={FolderIcon}
+                    className={rowIconClass}
+                    aria-hidden
+                  />
                   <span className="min-w-0 flex-1 truncate text-left text-ds-text-base leading-normal font-medium">
                     {child.name}
                   </span>
@@ -980,17 +996,48 @@ export async function downloadFromUrl(
   );
 }
 
-/** Web-first download for the file viewer: prefers in-memory content, then fetchable URL. */
-export async function downloadOpenedFile(file: FileInfo): Promise<void> {
+type DownloadIpc = {
+  invoke: (channel: string, ...args: unknown[]) => Promise<any>;
+};
+
+/**
+ * Save a file without reading it into renderer memory. The desktop host
+ * downloads Brain files itself, because it never opens a local backend URL in
+ * a browser. Anything else is handed to the browser or OS.
+ */
+async function downloadWithoutLoading(
+  file: FileInfo,
+  ipcRenderer?: DownloadIpc | null
+): Promise<void> {
+  if (!isRemotePreviewSource(file) || !file.path) return;
+  if (ipcRenderer && isBrainFileUrl(file.path)) {
+    // A preview can stay open longer than its file grant lasts.
+    const target = await authorizeBrainFile(file).catch(() => file);
+    const result = await ipcRenderer
+      .invoke('download-backend-file', target.path)
+      .catch(() => null);
+    if (result?.success) return;
+    console.warn('Desktop download of a Brain file was not started');
+  }
+  window.open(file.path, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Web-first download for the file viewer: prefers in-memory content, then
+ * fetchable URL. Pass the desktop host's `ipcRenderer` so a file whose preview
+ * was blocked can be saved there too.
+ */
+export async function downloadOpenedFile(
+  file: FileInfo,
+  ipcRenderer?: DownloadIpc | null
+): Promise<void> {
   if (file.isFolder || (!file.path && file.content === undefined)) return;
 
   // A blocked preview must never fall back to fetch(...).blob(), because that
   // would reintroduce an unbounded renderer allocation for the exact files the
-  // preview policy rejected. Let the browser/OS own the transfer instead.
+  // preview policy rejected. Let the host, browser or OS own the transfer.
   if (file.preview?.kind === 'blocked') {
-    if (isRemotePreviewSource(file) && file.path) {
-      window.open(file.path, '_blank', 'noopener,noreferrer');
-    }
+    await downloadWithoutLoading(file, ipcRenderer);
     return;
   }
 
@@ -1023,7 +1070,10 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
     }
   }
 
-  await downloadFromUrl(file.path, filename);
+  // A preview can stay open longer than its file grant lasts, so ask for a
+  // fresh one before downloading from the Brain.
+  const target = await authorizeBrainFile(file).catch(() => file);
+  await downloadFromUrl(target.path, filename);
 }
 
 export interface FileViewerOpenAction {
@@ -1066,7 +1116,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<PreviewLoadFailure | false>(
+    false
+  );
   const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -1142,7 +1194,8 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       setIsShowSourceCode(Boolean(isShowSourceCode));
     }
     setLoading(true);
-    void resolveArtifactAssetFile(file)
+    void resolveArtifactAssetFile(file, controller.signal)
+      .then((resolved) => authorizeBrainFile(resolved, controller.signal))
       .then((resolvedFile) =>
         loadFilePreview(resolvedFile, {
           ipcRenderer,
@@ -1157,7 +1210,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setLoadFailed(true);
+          setLoadFailed(previewLoadFailure(error));
           console.error('Failed to load file preview:', error);
         }
       })
@@ -1660,7 +1713,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           label: t('folder.open-in-browser', {
             defaultValue: 'Open in browser',
           }),
-          icon: <ExternalLink className="size-4" aria-hidden />,
+          icon: <DsIcon icon={ExternalLink} aria-hidden />,
           onSelect: () =>
             window.open(
               selectedBrowserTargetUrl,
@@ -1695,7 +1748,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       {
         id: 'file-manager',
         label: fileManagerLabel,
-        icon: <FolderOpen className="size-4" aria-hidden />,
+        icon: <DsIcon icon={FolderOpen} aria-hidden />,
         onSelect: () => void handleRevealLocalFile(),
       },
       ...ideOpenActions,
@@ -1757,6 +1810,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         projectFiles={fileGroups[0]?.files || []}
         surfaceClassName="bg-ds-neutral-subtle-default"
         embedded
+        // With a Space id this is the Space's Files page, which starts at the
+        // content column's left edge under the top bar.
+        alignHeaderToTopBar={Boolean(spaceId)}
         openInActions={openInActions}
         isFileTreeOpen={isFileSidebarOpen}
         onToggleFileTree={() => setIsFileSidebarOpen((open) => !open)}
@@ -1779,7 +1835,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           }
           if (selectedTargetIsRemote) {
             if (!selectedFile.isFolder) {
-              void downloadOpenedFile(selectedFile);
+              void downloadOpenedFile(selectedFile, ipcRenderer);
             }
             return;
           }
@@ -1791,13 +1847,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         }
         onDownloadFile={() => {
           if (!selectedFile || selectedFile.isFolder) return;
-          if (selectedFile.preview?.kind === 'blocked') {
-            if (isRemotePreviewSource(selectedFile)) {
-              window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
-            }
-            return;
-          }
-          void downloadOpenedFile(selectedFile);
+          void downloadOpenedFile(selectedFile, ipcRenderer);
         }}
         onToggleSourceCode={isShowSourceCodeChange}
       />
@@ -1824,7 +1874,11 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           <div id={fileTreeControlsId} className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-1.5 px-2 pb-2">
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-ds-ink-muted-default" />
+                <DsIcon
+                  icon={Search}
+                  recipe="main-compact"
+                  className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ds-ink-muted-default"
+                />
                 <input
                   type="search"
                   value={fileSearchQuery}
@@ -1868,7 +1922,12 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
                 />
               ) : (
                 <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 text-center text-ds-text-base text-ds-ink-muted-default">
-                  <FileText className="size-7" aria-hidden />
+                  <DsIcon
+                    icon={FileText}
+                    recipe="illustration"
+                    illustrationSize={32}
+                    aria-hidden
+                  />
                   <p className="m-0">
                     {fileSearchQuery.trim()
                       ? t('folder.no-search-results', {
@@ -2177,16 +2236,21 @@ function shouldInlineHtmlImageUrl(url: string, baseHref?: string): boolean {
 
 async function inlineImageUrl(
   url: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string | null> {
   if (!shouldInlineHtmlImageUrl(url, baseHref)) {
     return null;
   }
 
-  const absoluteUrl = toAbsoluteResourceUrl(url, baseHref);
-  if (!absoluteUrl) {
+  const resourceUrl = toAbsoluteResourceUrl(url, baseHref);
+  if (!resourceUrl) {
     return null;
   }
+  // Brain file URLs written into the page need the previewed file's grant.
+  const absoluteUrl = authorizedUrl
+    ? shareBrainFileAccess(resourceUrl, authorizedUrl)
+    : resourceUrl;
 
   try {
     return await fetchRemoteFileAsDataUrl(absoluteUrl);
@@ -2198,7 +2262,8 @@ async function inlineImageUrl(
 
 async function inlineSrcsetImages(
   srcset: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   if (srcset.toLowerCase().includes('data:')) {
     return srcset;
@@ -2216,7 +2281,7 @@ async function inlineSrcsetImages(
   const rewrittenCandidates = await Promise.all(
     candidates.map(async (candidate) => {
       const [url, ...descriptors] = candidate.split(/\s+/);
-      const dataUrl = await inlineImageUrl(url, baseHref);
+      const dataUrl = await inlineImageUrl(url, baseHref, authorizedUrl);
       return [dataUrl || url, ...descriptors].join(' ');
     })
   );
@@ -2226,7 +2291,8 @@ async function inlineSrcsetImages(
 
 async function inlineCssImageUrls(
   cssText: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   const matches = Array.from(
     cssText.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)
@@ -2239,7 +2305,7 @@ async function inlineCssImageUrls(
     matches.map(async (match) => {
       const fullMatch = match[0];
       const url = match[2];
-      const dataUrl = await inlineImageUrl(url, baseHref);
+      const dataUrl = await inlineImageUrl(url, baseHref, authorizedUrl);
       return dataUrl ? { fullMatch, replacement: `url("${dataUrl}")` } : null;
     })
   );
@@ -2303,7 +2369,8 @@ function injectSandboxStorageShim(html: string): string {
 
 async function inlineRemoteHtmlImages(
   html: string,
-  baseHref?: string
+  baseHref?: string,
+  authorizedUrl?: string
 ): Promise<string> {
   if (typeof DOMParser === 'undefined') {
     return html;
@@ -2318,7 +2385,7 @@ async function inlineRemoteHtmlImages(
       async (element) => {
         const src = element.getAttribute('src');
         if (src) {
-          const dataUrl = await inlineImageUrl(src, baseHref);
+          const dataUrl = await inlineImageUrl(src, baseHref, authorizedUrl);
           if (dataUrl) {
             element.setAttribute('src', dataUrl);
           }
@@ -2326,7 +2393,7 @@ async function inlineRemoteHtmlImages(
 
         const href = element.getAttribute('href');
         if (href && element.tagName.toLowerCase() === 'image') {
-          const dataUrl = await inlineImageUrl(href, baseHref);
+          const dataUrl = await inlineImageUrl(href, baseHref, authorizedUrl);
           if (dataUrl) {
             element.setAttribute('href', dataUrl);
           }
@@ -2336,7 +2403,7 @@ async function inlineRemoteHtmlImages(
         if (srcset) {
           element.setAttribute(
             'srcset',
-            await inlineSrcsetImages(srcset, baseHref)
+            await inlineSrcsetImages(srcset, baseHref, authorizedUrl)
           );
         }
       }
@@ -2349,7 +2416,7 @@ async function inlineRemoteHtmlImages(
       if (style) {
         element.setAttribute(
           'style',
-          await inlineCssImageUrls(style, baseHref)
+          await inlineCssImageUrls(style, baseHref, authorizedUrl)
         );
       }
     })
@@ -2359,7 +2426,8 @@ async function inlineRemoteHtmlImages(
     Array.from(doc.querySelectorAll('style')).map(async (styleElement) => {
       styleElement.textContent = await inlineCssImageUrls(
         styleElement.textContent || '',
-        baseHref
+        baseHref,
+        authorizedUrl
       );
     })
   );
@@ -2386,42 +2454,12 @@ function getRemoteRelativePath(file: FileInfo): string | undefined {
   }
 }
 
-function encodePathSegments(path: string): string {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
 function getRemotePreviewUrl(file: FileInfo): string | undefined {
   const relativePath = getRemoteRelativePath(file);
   if (!relativePath || !file.path) {
     return undefined;
   }
-
-  try {
-    const url = new URL(file.path, window.location.origin);
-    const email = url.searchParams.get('email');
-    const projectId = url.searchParams.get('project_id');
-    const spaceId = url.searchParams.get('space_id');
-    const userId = url.searchParams.get('user_id');
-    if (!email || !projectId) {
-      return undefined;
-    }
-
-    const filesIndex = url.pathname.indexOf('/files/stream');
-    const routePrefix =
-      filesIndex >= 0 ? url.pathname.substring(0, filesIndex) : '';
-
-    const query = new URLSearchParams();
-    if (spaceId) query.set('space_id', spaceId);
-    if (userId) query.set('user_id', userId);
-    const queryString = query.toString();
-    return `${url.origin}${routePrefix}/files/preview/${encodeURIComponent(email)}/${encodeURIComponent(projectId)}/${encodePathSegments(relativePath)}${queryString ? `?${queryString}` : ''}`;
-  } catch {
-    return undefined;
-  }
+  return getBrainFilePreviewUrl(file.path, relativePath);
 }
 
 function getRemotePreviewBaseHref(file: FileInfo): string | undefined {
@@ -2479,15 +2517,31 @@ function rewriteRemoteHtmlReferences(
   const baseDir = getRelativeDirPath(htmlRelativePath, selectedFile.name);
   const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
   const fileMap = new Map<string, FileInfo>();
+  const previewBaseHref = getRemotePreviewBaseHref(selectedFile);
 
   projectFiles.forEach((file) => {
     if (!file.relativePath) return;
     fileMap.set(normalizeLookupPath(file.relativePath), file);
   });
 
+  // A page can link to Brain file URLs directly instead of by relative path.
+  // Give those the previewed file's grant when they read the same file root.
+  const shareAccessWithBrainFileUrl = (value: string): string | null => {
+    const absoluteUrl = toAbsoluteResourceUrl(value, previewBaseHref);
+    if (!absoluteUrl) return null;
+    const sharedUrl = shareBrainFileAccess(absoluteUrl, selectedFile.path);
+    return sharedUrl === absoluteUrl ? null : sharedUrl;
+  };
+
   const rewriteAttribute = (element: Element, attributeName: string) => {
     const originalValue = element.getAttribute(attributeName);
-    if (!originalValue || isSpecialBrowserUrl(originalValue)) return;
+    if (!originalValue) return;
+    const brainFileUrl = shareAccessWithBrainFileUrl(originalValue);
+    if (brainFileUrl) {
+      element.setAttribute(attributeName, brainFileUrl);
+      return;
+    }
+    if (isSpecialBrowserUrl(originalValue)) return;
 
     const match = originalValue.match(/^([^?#]*)(.*)$/);
     const pathPart = match?.[1] || originalValue;
@@ -2498,7 +2552,10 @@ function rewriteRemoteHtmlReferences(
     const matchedFile = fileMap.get(normalizeLookupPath(resolvedRelativePath));
 
     if (matchedFile?.path) {
-      element.setAttribute(attributeName, `${matchedFile.path}${suffix}`);
+      element.setAttribute(
+        attributeName,
+        `${shareBrainFileAccess(matchedFile.path, selectedFile.path)}${suffix}`
+      );
     }
   };
 
@@ -2574,7 +2631,8 @@ function HtmlRenderer({
           : rewrittenHtml;
         const htmlWithInlineImages = await inlineRemoteHtmlImages(
           htmlWithBaseHref,
-          previewBaseHref
+          previewBaseHref,
+          selectedFile.path
         );
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
@@ -2689,8 +2747,9 @@ function HtmlRenderer({
       <div className="flex h-full w-full items-center justify-center bg-ds-neutral-strong-default p-6">
         <div className="w-full max-w-[36rem] rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-5 shadow-sm">
           <div className="flex items-start gap-3">
-            <AlertTriangle
-              className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
+            <DsIcon
+              icon={AlertTriangle}
+              className="mt-0.5 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
             <div className="min-w-0">
@@ -2785,7 +2844,8 @@ export interface FileViewerPanelProps {
   selectedFile: FileInfo | null;
   /** Whether content is currently being fetched. */
   loading: boolean;
-  loadFailed?: boolean;
+  /** Whether loading failed; `access-expired` asks the user to reopen it. */
+  loadFailed?: boolean | PreviewLoadFailure;
   onRetry?: () => void;
   canRevealFile?: boolean;
   /** Render raw source instead of the rich view (md/html). */
@@ -2801,6 +2861,11 @@ export interface FileViewerPanelProps {
   surfaceClassName?: string;
   /** Remove standalone spacing/radius when rendered inside another panel shell. */
   embedded?: boolean;
+  /**
+   * The header sits at the content column's left edge (a full page), so its
+   * first item lines up with the top bar's search icon.
+   */
+  alignHeaderToTopBar?: boolean;
   /** Clicking the breadcrumb (reveal in folder / download remote). The header
    * does not invoke this in `file-path` mode or when segment clicks are supplied.
    * Also used by the file-manager action when `canRevealFile` is enabled. */
@@ -2829,10 +2894,11 @@ export interface FileViewerPanelProps {
   emptyState?: React.ReactNode;
 }
 
-function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+function TextPreviewNotice({ file }: { file: FileInfo }) {
   const { t } = useTranslation();
-  if (file.preview?.kind !== 'truncated-text') return null;
-  const { bytesRead, totalBytes } = file.preview;
+  if (file.preview?.kind !== 'text' || file.preview.completeness === 'complete')
+    return null;
+  const { bytesRead, totalBytes, completeness } = file.preview;
   const values = {
     bytesRead: formatFileSize(bytesRead),
     totalBytes:
@@ -2847,7 +2913,12 @@ function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
       aria-live="polite"
       className="mb-ds-8 rounded-lg bg-ds-neutral-subtle-default px-ds-12 py-ds-8 text-ds-ink-muted-default"
     >
-      {t('folder.truncated-preview-summary', values)}
+      {t(
+        completeness === 'truncated'
+          ? 'folder.truncated-preview-summary'
+          : 'folder.preview-byte-summary',
+        values
+      )}
     </DsText>
   );
 }
@@ -2863,7 +2934,7 @@ function SourceFilePreview({
   const sourcePath = file.relativePath || file.path || file.name;
   return (
     <div className="flex h-full min-h-0 w-full flex-col p-2">
-      <TruncatedPreviewNotice file={file} />
+      <TextPreviewNotice file={file} />
       <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
         <SourceCodeViewer
           value={file.content || ''}
@@ -2898,7 +2969,7 @@ function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
           });
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-ds-stack-related p-ds-panel-inset text-center text-ds-ink-muted-default">
-      <DsIcon icon={AlertTriangle} recipe="detailed" />
+      <DsIcon icon={AlertTriangle} recipe="illustration" />
       <DsText
         role="body-large"
         weight="semibold"
@@ -2928,7 +2999,8 @@ function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
  * Presentational file viewer: breadcrumb header + type-aware content body.
  * Shared by the Files tab and the inline project-page preview so both
  * render markdown/PDF/docs/HTML/media identically. All data and callbacks are
- * supplied by the parent — this component owns no loading state.
+ * supplied by the parent — this component owns no loading state. It only
+ * tracks whether the embedded PDF frame failed, which the parent cannot see.
  */
 export function FileViewerPanel({
   selectedFile,
@@ -2942,6 +3014,7 @@ export function FileViewerPanel({
   projectFiles,
   surfaceClassName = 'bg-ds-neutral-subtle-default',
   embedded = false,
+  alignHeaderToTopBar = false,
   onRevealFile,
   onBreadcrumbSegmentClick,
   onDownloadFile,
@@ -2958,10 +3031,16 @@ export function FileViewerPanel({
   const appearance = useAuthStore((state) => state.appearance);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
+  const pdfFrameFailed = usePdfFrameLoadFailed(
+    selectedType === 'pdf' && typeof selectedFile?.content === 'string'
+      ? selectedFile.content
+      : undefined,
+    selectedFile?.name
+  );
   const supportsRichView =
     Boolean(selectedFile) &&
     ['md', 'markdown', 'html', 'htm'].includes(selectedType) &&
-    selectedFile?.preview?.kind !== 'truncated-text' &&
+    selectedFile?.preview?.kind !== 'text' &&
     selectedFile?.preview?.kind !== 'blocked';
   const previewViewLabel = t('folder.preview-view', {
     defaultValue: 'Preview',
@@ -2973,7 +3052,7 @@ export function FileViewerPanel({
     Boolean(selectedFile) &&
     ['html', 'htm'].includes(selectedType) &&
     !isShowSourceCode &&
-    selectedFile?.preview?.kind !== 'truncated-text';
+    selectedFile?.preview?.kind !== 'text';
   const showsCodeSource =
     Boolean(selectedFile) &&
     !loading &&
@@ -2999,7 +3078,10 @@ export function FileViewerPanel({
         <ContentHeader
           border={false}
           height="adaptive"
-          className="flex-wrap py-ds-4"
+          className={cn(
+            'flex-wrap py-ds-4',
+            alignHeaderToTopBar && CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS
+          )}
         >
           {selectedFile && pathPresentation === 'file-path' ? (
             <TooltipSimple
@@ -3045,8 +3127,10 @@ export function FileViewerPanel({
                   return (
                     <Fragment key={`${index}-${segment}`}>
                       {index > 0 ? (
-                        <ChevronRight
-                          className="h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default"
+                        <DsIcon
+                          icon={ChevronRight}
+                          recipe="main-compact"
+                          className="shrink-0 text-ds-ink-muted-default"
                           aria-hidden
                         />
                       ) : null}
@@ -3086,7 +3170,7 @@ export function FileViewerPanel({
                 aria-label={t('layout.retry')}
                 title={t('layout.retry')}
               >
-                <RotateCcw aria-hidden />
+                <DsIcon icon={RotateCcw} aria-hidden />
               </Button>
             )}
             {supportsRichView ? (
@@ -3108,7 +3192,7 @@ export function FileViewerPanel({
                       : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
-                  <Eye className="size-3.5" aria-hidden />
+                  <DsIcon icon={Eye} recipe="main-compact" aria-hidden />
                   {previewViewLabel}
                 </button>
                 <button
@@ -3122,7 +3206,7 @@ export function FileViewerPanel({
                       : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
-                  <CodeXml className="size-3.5" aria-hidden />
+                  <DsIcon icon={CodeXml} recipe="main-compact" aria-hidden />
                   {sourceViewLabel}
                 </button>
               </div>
@@ -3134,7 +3218,9 @@ export function FileViewerPanel({
                 onReveal={onRevealFile}
                 onOpen={
                   !selectedFile.isFolder &&
-                  (loadFailed || selectedFile.preview?.kind === 'blocked')
+                  (loadFailed ||
+                    pdfFrameFailed ||
+                    selectedFile.preview?.kind === 'blocked')
                     ? onOpenExternalFile
                     : undefined
                 }
@@ -3181,9 +3267,9 @@ export function FileViewerPanel({
                   onClick={onToggleFileTree}
                 >
                   {isFileTreeOpen ? (
-                    <PanelRightClose className="size-4" aria-hidden />
+                    <DsIcon icon={PanelRightClose} aria-hidden />
                   ) : (
-                    <PanelRight className="size-4" aria-hidden />
+                    <DsIcon icon={PanelRight} aria-hidden />
                   )}
                 </Button>
               </TooltipSimple>
@@ -3195,7 +3281,7 @@ export function FileViewerPanel({
 
       {/* content */}
       <div
-        className={`flex min-h-0 flex-1 flex-col ${
+        className={`flex min-h-0 min-w-0 flex-1 flex-col ${
           showsHtmlPreview || showsCodeSource || selectedType === 'pdf'
             ? 'overflow-hidden'
             : 'scrollbar-always-visible overflow-y-auto'
@@ -3211,12 +3297,26 @@ export function FileViewerPanel({
           {selectedFile ? (
             !loading ? (
               loadFailed ? (
-                <PreviewFailure />
+                <PreviewFailure
+                  message={
+                    loadFailed === 'access-expired'
+                      ? t('folder.preview-access-expired', {
+                          defaultValue:
+                            'Access to this preview has expired. Reopen the file or try again.',
+                        })
+                      : undefined
+                  }
+                />
               ) : selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
-                  <div className="flex max-w-md flex-col items-center gap-2 text-center">
-                    <FolderOpen className="size-10 text-ds-ink-muted-default" />
-                    <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
+                  <div className="flex w-full flex-col items-center gap-2 text-center">
+                    <DsIcon
+                      icon={FolderOpen}
+                      recipe="illustration"
+                      illustrationSize={40}
+                      className="text-ds-ink-muted-default"
+                    />
+                    <p className="m-0 text-ds-text-body-large font-semibold wrap-anywhere text-ds-ink-default-default">
                       {selectedFile.name}
                     </p>
                     <p className="m-0 text-ds-text-base text-ds-ink-muted-default">
@@ -3239,7 +3339,7 @@ export function FileViewerPanel({
               ) : ['md', 'markdown'].includes(selectedType) &&
                 !isShowSourceCode ? (
                 <DocumentContentRail>
-                  <TruncatedPreviewNotice file={selectedFile} />
+                  <TextPreviewNotice file={selectedFile} />
                   <MarkDown
                     content={selectedFile.content || ''}
                     enableTypewriter={false}
@@ -3252,16 +3352,24 @@ export function FileViewerPanel({
                   />
                 </DocumentContentRail>
               ) : selectedType === 'pdf' ? (
-                <PdfPreview
-                  key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
-                  url={selectedFile.content as string}
-                  name={selectedFile.name}
-                />
+                pdfFrameFailed ? (
+                  <PreviewFailure
+                    message={t('folder.pdf-preview-failed', {
+                      defaultValue:
+                        'This PDF could not be displayed here. Open it in another app instead.',
+                    })}
+                  />
+                ) : (
+                  <PdfPreview
+                    key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
+                    url={selectedFile.content as string}
+                    name={selectedFile.name}
+                  />
+                )
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
                 <FolderComponent selectedFile={selectedFile} />
               ) : ['html', 'htm'].includes(selectedType) ? (
-                isShowSourceCode ||
-                selectedFile.preview?.kind === 'truncated-text' ? (
+                isShowSourceCode || selectedFile.preview?.kind === 'text' ? (
                   <SourceFilePreview
                     file={selectedFile}
                     appearance={appearance}
@@ -3304,7 +3412,12 @@ export function FileViewerPanel({
             (emptyState ?? (
               <div className="flex h-full w-full flex-1 items-center justify-center text-ds-ink-muted-default">
                 <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-ds-ink-muted-default" />
+                  <DsIcon
+                    icon={FileText}
+                    recipe="illustration"
+                    illustrationSize={48}
+                    className="mx-auto mb-4 text-ds-ink-muted-default"
+                  />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>

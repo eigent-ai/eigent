@@ -26,6 +26,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
 from typing import Annotated, Any
@@ -42,9 +43,17 @@ from app.run_journal import (
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
     RunNotFoundError,
+    RunRecord,
+    SQLiteRunJournal,
     UnsafeResumeError,
     get_default_run_journal,
 )
+from app.run_journal.models import (
+    EffectiveEnvironmentSpecRecord,
+    RunAttemptRecord,
+    latest_environment_attempt,
+)
+from app.run_journal.transitions import ATTEMPT_ACTIVE_STATES
 from app.run_policy import (
     RunTimeoutPolicy,
     TimeoutOutcome,
@@ -56,8 +65,10 @@ from app.run_runtime import (
     SubscriberLaggedError,
     get_default_run_coordinator,
 )
+from app.run_runtime.tool_checkpoint import build_tool_display_projection
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
+from app.workspace_runtime.runtime import get_default_execution_service
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -311,26 +322,131 @@ async def _load_run_or_404(run_id: str):
     return run
 
 
-def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
-    """Return Run execution wall time without counting gaps between attempts.
+UserWaits = Mapping[str, Sequence[tuple[float, float | None]]]
 
-    Older/legacy attempts did not emit periodic heartbeat accounting, so their
-    ``elapsed_active_ms`` remains zero. For those rows the durable started/end
-    timestamps are the best available source. Summing each attempt separately
+
+def _user_wait_seconds(
+    waits: Sequence[tuple[float, float | None]], *, start: float, end: float
+) -> float:
+    """Return how long the union of ``waits`` covers ``[start, end]``.
+
+    Overlapping waits, e.g. parallel workers asking at once, count once. An
+    open wait (no end yet) lasts until ``end``.
+    """
+
+    clipped = sorted(
+        (
+            max(wait_start, start),
+            min(end if wait_end is None else wait_end, end),
+        )
+        for wait_start, wait_end in waits
+    )
+    covered = 0.0
+    cursor = start
+    for wait_start, wait_end in clipped:
+        wait_start = max(wait_start, cursor)
+        if wait_end > wait_start:
+            covered += wait_end - wait_start
+            cursor = wait_end
+    return covered
+
+
+def _user_waits_by_attempt(interactions: list[Any]) -> UserWaits:
+    """Group already loaded HumanInteractions as ``list_attempt_user_waits``."""
+
+    waits: dict[str, list[tuple[float, float | None]]] = {}
+    for interaction in interactions:
+        if interaction.attempt_id is not None:
+            waits.setdefault(interaction.attempt_id, []).append(
+                (interaction.created_at, interaction.resolved_at)
+            )
+    return waits
+
+
+def _total_attempt_elapsed_ms(
+    attempts: list[Any], *, now: float, user_waits: UserWaits | None = None
+) -> int:
+    """Return how long a Run's attempts worked, leaving out user waits.
+
+    Each Attempt counts from its start to its end, or to ``now`` while it is
+    live, minus the time it spent waiting for an approval or for an answer
+    to a question (``user_waits``, keyed by attempt id). An open wait lasts
+    until ``now``, so an Attempt that is waiting for the user reports a value
+    that does not grow. ``elapsed_active_ms`` only advances on heartbeats
+    while running, so it is only the fallback for legacy rows that never
+    recorded an end. Startup recovery ends every active Attempt, so a live
+    one never spans a process-down interval. Summing each attempt separately
     deliberately excludes the offline interval between an interruption and a
     later Resume.
     """
 
+    waits_by_attempt = user_waits or {}
     total = 0
     for attempt in attempts:
-        ended_at = attempt.ended_at
-        if ended_at is not None:
-            total += max(0, round((ended_at - attempt.started_at) * 1000))
-        elif attempt.status == "running":
-            total += max(0, round((now - attempt.started_at) * 1000))
+        if attempt.ended_at is not None:
+            end = attempt.ended_at
+        elif attempt.status in ATTEMPT_ACTIVE_STATES:
+            end = now
         else:
             total += max(0, int(attempt.elapsed_active_ms))
+            continue
+        waited = _user_wait_seconds(
+            waits_by_attempt.get(attempt.attempt_id, ()),
+            start=attempt.started_at,
+            end=end,
+        )
+        total += max(0, round((end - attempt.started_at - waited) * 1000))
     return total
+
+
+async def _unsafe_resume_blockers(
+    journal: SQLiteRunJournal, run: RunRecord
+) -> list[dict[str, Any]]:
+    """Name the Tool calls an explicit Resume of this Run refuses to replay.
+
+    Derived from the same fail-closed rule as Resume admission. Only an
+    interrupted Run offers Resume, so every other state reports none.
+    """
+    if run.status != "interrupted":
+        return []
+    calls = await asyncio.to_thread(
+        journal.list_unsafe_resume_blockers, run.run_id
+    )
+    return [
+        {
+            "tool_call_id": call.tool_call_id,
+            "tool_name": call.tool_name,
+            "display_title": build_tool_display_projection(
+                tool_name=call.tool_name,
+                request=call.request,
+                status=call.status,
+            ).title,
+        }
+        for call in calls
+    ]
+
+
+def _resolved_model_for_attempt(
+    spec: EffectiveEnvironmentSpecRecord | None,
+    attempt: RunAttemptRecord | None,
+) -> dict[str, str] | None:
+    """Expose only the model identity from an attempt's immutable binding."""
+
+    if spec is None or attempt is None:
+        return None
+    if spec.owner_type == "run":
+        expected_owner = attempt.run_id
+    elif spec.owner_type == "run_attempt":
+        expected_owner = attempt.attempt_id
+    else:
+        return None
+    if (
+        spec.owner_id != expected_owner
+        or spec.environment_spec_id != attempt.environment_spec_id
+        or spec.environment_spec_digest != attempt.environment_spec_digest
+    ):
+        return None
+    return spec.bound_model()
 
 
 @router.get("/runs")
@@ -360,19 +476,47 @@ async def list_project_runs(
         limit=limit,
     )
     items: list[dict[str, Any]] = []
+    user_waits = await asyncio.to_thread(
+        journal.list_attempt_user_waits, [run.run_id for run in runs]
+    )
     now = time.time()
+    attempts_by_run = await asyncio.to_thread(
+        journal.list_attempts_for_runs, [run.run_id for run in runs]
+    )
+    bound_attempts = {
+        run_id: latest_environment_attempt(attempts)
+        for run_id, attempts in attempts_by_run.items()
+    }
+    specs = await asyncio.to_thread(
+        journal.get_effective_environment_specs,
+        [
+            attempt.environment_spec_id
+            for attempt in bound_attempts.values()
+            if attempt is not None and attempt.environment_spec_id is not None
+        ],
+    )
     for run in runs:
-        attempts = await asyncio.to_thread(
-            journal.list_run_attempts, run.run_id
-        )
+        attempts = attempts_by_run[run.run_id]
+        bound_attempt = bound_attempts[run.run_id]
         items.append(
             {
                 **asdict(run),
                 "latest_attempt": (asdict(attempts[-1]) if attempts else None),
+                "resolved_model": _resolved_model_for_attempt(
+                    specs.get(bound_attempt.environment_spec_id)
+                    if bound_attempt
+                    else None,
+                    bound_attempt,
+                ),
                 "total_attempt_elapsed_ms": (
-                    _total_attempt_elapsed_ms(attempts, now=now)
+                    _total_attempt_elapsed_ms(
+                        attempts, now=now, user_waits=user_waits
+                    )
                     if attempts
                     else None
+                ),
+                "unsafe_resume_blockers": await _unsafe_resume_blockers(
+                    journal, run
                 ),
             }
         )
@@ -385,8 +529,44 @@ async def list_project_runs(
     }
 
 
+@router.get("/runs/active")
+async def active_local_execution():
+    """One local registry read across every Space and Session.
+
+    A Run that is still being admitted has no Attempt yet, so the journal
+    alone cannot tell it apart from a row a refused admission left behind.
+    """
+    if get_default_run_coordinator().has_admission_in_progress():
+        return {"active": True}
+    service = get_default_execution_service()
+    active = await asyncio.to_thread(
+        get_default_run_journal().has_active_local_execution,
+        admission_owner_id=service.owner_id if service is not None else None,
+    )
+    return {"active": active}
+
+
+@router.get("/runs/attention")
+async def project_attention():
+    """Which Sessions have active work, across every Space.
+
+    Read-only. ``waiting`` means a Run waits for the user's reply or decision;
+    it outranks ``running`` when a Session has both.
+    """
+    rows = await asyncio.to_thread(
+        get_default_run_journal().list_project_attention
+    )
+    return [
+        {"project_id": project_id, "state": state}
+        for project_id, state in rows
+    ]
+
+
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(
+    run_id: str,
+    include_browser_evidence: Annotated[bool, Query()] = False,
+):
     run = await _load_run_or_404(run_id)
     handle = await get_default_run_coordinator().get_handle(run_id)
     journal = get_default_run_journal()
@@ -396,18 +576,44 @@ async def get_run(run_id: str):
         asyncio.to_thread(journal.list_human_interactions, run_id),
         asyncio.to_thread(journal.list_tool_calls, run_id),
     )
+    bound_attempt = latest_environment_attempt(attempts)
+    spec = (
+        await asyncio.to_thread(
+            journal.get_effective_environment_spec,
+            bound_attempt.environment_spec_id,
+        )
+        if bound_attempt and bound_attempt.environment_spec_id is not None
+        else None
+    )
+    # Only Resume reads browser evidence; other summary readers skip the scan.
+    browser_evidence = (
+        {
+            "used_browser": bool(
+                await asyncio.to_thread(journal.browser_tool_attempts, run_id)
+            )
+        }
+        if include_browser_evidence
+        else {}
+    )
     return {
         **asdict(run),
+        **browser_evidence,
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
+        "resolved_model": _resolved_model_for_attempt(spec, bound_attempt),
         "total_attempt_elapsed_ms": (
-            _total_attempt_elapsed_ms(attempts, now=time.time())
+            _total_attempt_elapsed_ms(
+                attempts,
+                now=time.time(),
+                user_waits=_user_waits_by_attempt(interactions),
+            )
             if attempts
             else None
         ),
         "approvals": [asdict(approval) for approval in approvals],
         "interactions": [asdict(interaction) for interaction in interactions],
         "tool_calls": [asdict(tool_call) for tool_call in tool_calls],
+        "unsafe_resume_blockers": await _unsafe_resume_blockers(journal, run),
         "runtime": {
             "consumer_alive": bool(handle and handle.consumer_alive),
             "subscriber_count": handle.subscriber_count if handle else 0,
@@ -416,6 +622,30 @@ async def get_run(run_id: str):
             ),
         },
     }
+
+
+def _interaction_receipt(journal, interaction):
+    """Return committed decision data, never echo a retry's proposed decision."""
+    receipt = asdict(interaction)
+    decisions = journal.list_human_interaction_decisions(
+        interaction.interaction_id
+    )
+    receipt["response"] = (
+        decisions[-1].decision
+        if interaction.status == "resolved" and decisions
+        else None
+    )
+    if interaction.interaction_type == "approval":
+        approval = next(
+            (
+                item
+                for item in journal.list_approvals(interaction.run_id)
+                if item.approval_id == interaction.interaction_id
+            ),
+            None,
+        )
+        receipt["action_digest"] = approval.action_digest if approval else None
+    return receipt
 
 
 @router.get("/runs/{run_id}/interactions")
@@ -442,7 +672,11 @@ async def list_run_interactions(
         )
         items.append(
             {
-                **asdict(interaction),
+                **(
+                    await asyncio.to_thread(
+                        _interaction_receipt, journal, interaction
+                    )
+                ),
                 "options": [asdict(option) for option in options],
             }
         )
@@ -455,8 +689,40 @@ async def decide_run_interaction(
     interaction_id: str,
     body: InteractionDecisionBody,
 ):
+    from app.service.task import commit_and_deliver, get_task_lock_if_exists
+
     journal = get_default_run_journal()
-    decision_applied = False
+
+    async def answer_waiter() -> None:
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        agent = interaction.request.get("agent")
+        if run is None or not isinstance(agent, str) or not agent:
+            return
+        task_lock = get_task_lock_if_exists(run.project_id)
+        if task_lock is None:
+            return
+        reply_value = body.decision.get("reply")
+        if reply_value is None:
+            reply_value = body.decision.get("decision")
+        if reply_value is None and body.decision:
+            reply_value = json.dumps(
+                body.decision,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        if reply_value is not None:
+            try:
+                await task_lock.put_human_input(agent, str(reply_value))
+            except KeyError:
+                logger.info(
+                    "Interaction decision persisted without a live waiter",
+                    extra={
+                        "run_id": run_id,
+                        "interaction_id": interaction_id,
+                    },
+                )
+
     try:
         interaction = await asyncio.to_thread(
             journal.get_human_interaction, interaction_id
@@ -527,9 +793,11 @@ async def decide_run_interaction(
                 for key, value in body.decision.items()
                 if key != "decision"
             }
-            await asyncio.to_thread(
+            await commit_and_deliver(
+                answer_waiter,
                 journal.decide_approval,
                 interaction_id,
+                include_transition=True,
                 decision=approval_decision,
                 details=details,
                 expected_version=body.expected_version,
@@ -561,11 +829,12 @@ async def decide_run_interaction(
                 journal.get_human_interaction, interaction_id
             )
             assert result is not None
-            decision_applied = True
         else:
-            result = await asyncio.to_thread(
+            result, decision_applied, _ = await commit_and_deliver(
+                answer_waiter,
                 journal.resolve_human_interaction,
                 interaction_id,
+                include_transition=True,
                 decision_request_id=body.decision_request_id,
                 decision=body.decision,
                 expected_version=body.expected_version,
@@ -575,8 +844,10 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
-            decision_applied = True
-            if interaction.interaction_type == "merge_conflict":
+            if (
+                decision_applied
+                and interaction.interaction_type == "merge_conflict"
+            ):
                 from app.workspace_git import (
                     get_default_workforce_git_service,
                 )
@@ -587,40 +858,7 @@ async def decide_run_interaction(
                 )
     except Exception as exc:
         raise _control_error(exc) from exc
-    run = await asyncio.to_thread(journal.get_run, run_id)
-    agent = interaction.request.get("agent")
-    if (
-        decision_applied
-        and run is not None
-        and isinstance(agent, str)
-        and agent
-    ):
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(run.project_id)
-        if task_lock is not None:
-            reply_value = body.decision.get("reply")
-            if reply_value is None:
-                reply_value = body.decision.get("decision")
-            if reply_value is None and body.decision:
-                reply_value = json.dumps(
-                    body.decision,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            if reply_value is not None:
-                try:
-                    await task_lock.put_human_input(agent, str(reply_value))
-                except KeyError:
-                    logger.info(
-                        "Interaction decision persisted without a live waiter",
-                        extra={
-                            "run_id": run_id,
-                            "interaction_id": interaction_id,
-                        },
-                    )
-    return asdict(result)
+    return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 
 @router.get("/runs/{run_id}/events")

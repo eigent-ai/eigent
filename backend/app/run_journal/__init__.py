@@ -91,15 +91,20 @@ from app.run_journal.store import (
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
     OutboxLeaseLostError,
+    ProjectExecutionLeaseConflictError,
     RunJournalError,
     RunNotFoundError,
     SQLiteRunJournal,
     UnsafeResumeError,
     UnsupportedSchemaVersionError,
+    WorkspaceMutationBlockedError,
+    WorkspaceWriterLeaseLostError,
 )
+from app.run_journal.transitions import RUN_ACTIVE_STATES
 from app.workload import WorkloadProfileRecord
 
 __all__ = [
+    "RUN_ACTIVE_STATES",
     "SCHEMA_VERSION",
     "ApprovalRecord",
     "ApprovalRuleRecord",
@@ -143,6 +148,7 @@ __all__ = [
     "InvalidRunTransitionError",
     "OptimisticConcurrencyError",
     "OutboxLeaseLostError",
+    "ProjectExecutionLeaseConflictError",
     "RunEventDraft",
     "RunEventSyncBatch",
     "RunEventSyncOutboxRecord",
@@ -169,6 +175,8 @@ __all__ = [
     "WorkspaceOverlayEntryRecord",
     "WorkspaceReadSnapshotRecord",
     "WorkspaceSnapshotRangeRecord",
+    "WorkspaceMutationBlockedError",
+    "WorkspaceWriterLeaseLostError",
     "WorkspaceWriterLeaseRecord",
     "WorkspaceWriterReleaseResult",
     "WorkspaceWriterRequestRecord",

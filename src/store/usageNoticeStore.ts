@@ -12,9 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreditRecoveryToastBody } from '@/components/ChatBox/CreditRecoveryActions';
 import { createHost } from '@/host/createHost';
-import { errorCopy, type UsageReason } from '@/lib/usageErrors';
+import {
+  isAccountWithoutCredits,
+  isCreditRecoveryReason,
+  isOwnKeyRecoveryReason,
+} from '@/lib/creditRecovery';
+import { trialAwareUsageReason, usageNoticeCopy } from '@/lib/trialQuotaCopy';
+import type { ErrorReason, UsageReason } from '@/lib/usageErrors';
 import i18n from 'i18next';
+import { createElement } from 'react';
 import { toast } from 'sonner';
 import { create } from 'zustand';
 
@@ -28,6 +36,9 @@ export interface SubscriptionUsage {
   trial_total_credits_limit?: number;
   trial_total_credits_used?: number;
   trial_total_credits_remaining?: number;
+  trial_used?: boolean;
+  trial_available?: boolean | null;
+  trial_unavailable_reason?: string | null;
 }
 export interface UsageIncident {
   reason: UsageReason;
@@ -41,19 +52,24 @@ interface UsageNoticeState {
   incidents: UsageIncident[];
   acknowledged: string[];
   presented: string | null;
+  presentedCopy: string | null;
   credits: number | null;
   subscription: SubscriptionUsage | null;
   refreshing: boolean;
   refreshError: string | null;
+  /** The usage reminder this account closed; it stays closed until it changes. */
+  dismissedBanner: string | null;
 }
 const initial = {
   incidents: [],
   acknowledged: [],
   presented: null,
+  presentedCopy: null,
   credits: null,
   subscription: null,
   refreshing: false,
   refreshError: null,
+  dismissedBanner: null,
 };
 export const useUsageNoticeStore = create<UsageNoticeState>(() => ({
   account: null,
@@ -62,6 +78,8 @@ export const useUsageNoticeStore = create<UsageNoticeState>(() => ({
 }));
 const isCreditIncident = (incident: UsageIncident) =>
   !['service', 'model-access'].includes(incident.reason);
+const isTrialIncident = (incident: UsageIncident) =>
+  incident.reason === 'trial-daily' || incident.reason === 'trial-total';
 // Shared presentation/dismissal identity; service recovery is tracked per model.
 const key = (incident: UsageIncident) =>
   isCreditIncident(incident)
@@ -78,14 +96,99 @@ const priority = (incident: UsageIncident) =>
       : 2;
 export const activeUsageIncident = (state: UsageNoticeState) =>
   [...state.incidents].sort((a, b) => priority(b) - priority(a))[0] ?? null;
+/** The toast announces an incident; inline notices wait until it is dismissed. */
+export const isUsageToastOpen = (state: UsageNoticeState) =>
+  state.presented !== null;
+
+/**
+ * A recorded spend-limit failure has no account snapshot. Read it against the
+ * current trial details, or the open trial blocker while they are unknown.
+ */
+export function presentedUsageReason<Reason extends ErrorReason>(
+  reason: Reason,
+  state: Pick<UsageNoticeState, 'subscription' | 'incidents'> &
+    Partial<Pick<UsageNoticeState, 'credits'>>
+): Reason | 'trial-daily' | 'trial-total' {
+  if (reason !== 'credits') return reason;
+  if (state.subscription)
+    return trialAwareUsageReason(reason, state.subscription, state.credits);
+  const blocker = state.incidents.find(isTrialIncident)?.reason;
+  return blocker === 'trial-daily' || blocker === 'trial-total'
+    ? blocker
+    : reason;
+}
+
+/** Subscribing form, for failure text shown outside TaskErrorNotice. */
+export function usePresentedUsageReason() {
+  const credits = useUsageNoticeStore((state) =>
+    presentedUsageReason('credits', state)
+  );
+  return (reason: ErrorReason): ErrorReason =>
+    reason === 'credits' ? credits : reason;
+}
+
+/** Current account copy, shared by the toast and the composer notice. */
+export function liveUsageNoticeCopy(
+  reason: UsageReason,
+  state: Pick<UsageNoticeState, 'subscription' | 'credits'>
+) {
+  if (isAccountWithoutCredits(reason, state.subscription, state.credits))
+    return {
+      message: i18n.t('chat.notice-credits-new'),
+      description: i18n.t('chat.notice-credits-new-description'),
+    };
+  return {
+    message: usageNoticeCopy(reason, state.subscription),
+    description: i18n.t(
+      reason === 'service'
+        ? 'chat.notice-contact-description'
+        : 'chat.notice-refresh-description'
+    ),
+  };
+}
+
+const dismissedBannerSlot = (account: string) =>
+  `eigent-usage-banner-dismissed:${account}`;
+
+function readDismissedBanner(account: string | null): string | null {
+  if (!account) return null;
+  try {
+    return window.localStorage.getItem(dismissedBannerSlot(account));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Close the usage reminder `id` for this account, across Sessions and
+ * restarts. A different reminder (a higher level, or out of credits) shows
+ * again; `null` forgets it, once the reminder no longer applies.
+ */
+export function dismissUsageBanner(id: string | null) {
+  const { account, dismissedBanner } = useUsageNoticeStore.getState();
+  if (dismissedBanner === id) return;
+  useUsageNoticeStore.setState({ dismissedBanner: id });
+  if (!account) return;
+  try {
+    if (id) window.localStorage.setItem(dismissedBannerSlot(account), id);
+    else window.localStorage.removeItem(dismissedBannerSlot(account));
+  } catch {
+    // Without storage it stays closed until the app restarts.
+  }
+}
 
 export function setUsageAccount(account: string | null) {
   const previous = useUsageNoticeStore.getState().account;
   if (previous === account) return;
   accountEpoch += 1;
   inFlight = null;
+  clearFollowUpRefresh();
   if (previous) toast.dismiss(slot(previous));
-  useUsageNoticeStore.setState({ ...initial, account });
+  useUsageNoticeStore.setState({
+    ...initial,
+    account,
+    dismissedBanner: readDismissedBanner(account),
+  });
 }
 
 export function contactSupport() {
@@ -109,6 +212,28 @@ export function acknowledgeUsageNotice() {
   if (state.account) toast.dismiss(slot(state.account));
 }
 
+/**
+ * Sonner keeps the element it was given, so the toast reads the shared refresh
+ * state itself instead of a snapshot taken when it opened.
+ */
+function LiveCreditRecoveryToastBody(props: {
+  description: string;
+  upgrade: boolean;
+}) {
+  const refreshing = useUsageNoticeStore((state) => state.refreshing);
+  const refreshError = useUsageNoticeStore((state) =>
+    state.refreshError === 'chat.notice-refresh-failed'
+      ? state.refreshError
+      : null
+  );
+  return createElement(CreditRecoveryToastBody, {
+    ...props,
+    refreshing,
+    refreshError: refreshError ? i18n.t(refreshError) : undefined,
+    onRefresh: () => void refreshUsage(),
+  });
+}
+
 function syncReminder() {
   const state = useUsageNoticeStore.getState();
   const incident = activeUsageIncident(state);
@@ -119,52 +244,108 @@ function syncReminder() {
     return;
   }
   const identity = key(incident);
-  // No Sonner call on repeats: even updating an identical toast restarts its timer.
+  // Preserve dismissal across copy changes; only update an open toast when its copy changes.
   if (state.acknowledged.includes(identity)) {
     if (state.presented) toast.dismiss(slot(state.account));
     useUsageNoticeStore.setState({ presented: null });
     return;
   }
-  if (state.presented === identity) return;
-  useUsageNoticeStore.setState({ presented: identity });
+  const { message, description } = liveUsageNoticeCopy(incident.reason, state);
+  const recovery = isOwnKeyRecoveryReason(incident.reason);
+  if (state.presented === identity && state.presentedCopy === message) return;
+  useUsageNoticeStore.setState({ presented: identity, presentedCopy: message });
   const account = state.account;
   const acknowledge = () => {
     if (useUsageNoticeStore.getState().account === account)
       acknowledgeUsageNotice();
   };
-  toast.error(errorCopy(incident.reason), {
+  toast.error(message, {
     id: slot(account),
     duration: Infinity,
     closeButton: true,
     icon: null,
-    description: i18n.t(
-      incident.reason === 'service'
-        ? 'chat.notice-contact-description'
-        : 'chat.notice-refresh-description'
-    ),
-    action: {
-      label: i18n.t(
-        incident.reason === 'service'
-          ? 'chat.notice-contact-support'
-          : 'chat.notice-refresh'
-      ),
-      onClick: (event) => {
-        event.preventDefault();
-        if (incident.reason === 'service') contactSupport();
-        else void refreshUsage();
-      },
-    },
+    ...(recovery
+      ? {
+          description: createElement(LiveCreditRecoveryToastBody, {
+            description,
+            upgrade: isCreditRecoveryReason(incident.reason),
+          }),
+          // Updating a toast merges options; drop an earlier Refresh action.
+          action: undefined,
+        }
+      : {
+          description,
+          action: {
+            label: i18n.t(
+              incident.reason === 'service'
+                ? 'chat.notice-contact-support'
+                : 'chat.notice-refresh'
+            ),
+            onClick: (event) => {
+              event.preventDefault();
+              if (incident.reason === 'service') contactSupport();
+              else void refreshUsage();
+            },
+          },
+        }),
     onDismiss: acknowledge,
     onAutoClose: acknowledge,
   });
 }
 
+/** After a failure, read the account again once it has settled. */
+export const USAGE_FOLLOW_UP_REFRESH_MS = [2_000, 15_000] as const;
+let followUpRefresh: ReturnType<typeof setTimeout>[] = [];
+function clearFollowUpRefresh() {
+  followUpRefresh.forEach(clearTimeout);
+  followUpRefresh = [];
+}
+/**
+ * Timed from the failure itself, so every way a task starts (a new Session,
+ * a follow-up, a queued or background task) gets the same check, however long
+ * the task ran before it hit the limit.
+ */
+function scheduleFollowUpRefresh(account: string) {
+  clearFollowUpRefresh();
+  followUpRefresh = USAGE_FOLLOW_UP_REFRESH_MS.map((delay) =>
+    setTimeout(() => {
+      if (useUsageNoticeStore.getState().account === account)
+        void refreshUsage();
+    }, delay)
+  );
+}
+
+/** A task or request failed for a usage reason. */
 export function reportUsageIncident(
-  incident: UsageIncident,
+  reported: UsageIncident,
   account = useUsageNoticeStore.getState().account
 ) {
+  // While Refresh reads the account, a refused key is reported here by the
+  // request layer. That answer is the check, so it must not schedule another.
+  const duringRefresh = inFlight !== null && inFlight.account === account;
+  if (
+    recordUsageIncident(reported, account) &&
+    !duringRefresh &&
+    reported.reason !== 'service'
+  )
+    scheduleFollowUpRefresh(account as string);
+}
+
+/** Records an incident; Refresh reports what it read through here directly. */
+function recordUsageIncident(
+  reported: UsageIncident,
+  account: string | null
+): boolean {
   const state = useUsageNoticeStore.getState();
-  if (!account || state.account !== account) return;
+  if (!account || state.account !== account) return false;
+  const incident = {
+    ...reported,
+    reason: trialAwareUsageReason(
+      reported.reason,
+      state.subscription,
+      state.credits
+    ),
+  };
   incidentVersion += 1;
   const previous = state.incidents.find(
     (item) =>
@@ -173,9 +354,14 @@ export function reportUsageIncident(
   );
   if (previous) {
     const refinedCredits =
-      previous.reason === 'credits' &&
-      isCreditIncident(incident) &&
-      incident.reason !== 'credits';
+      (previous.reason === 'credits' &&
+        isCreditIncident(incident) &&
+        incident.reason !== 'credits') ||
+      // One allowance yields to the other only when it is stated, by the
+      // server or by a fresh account read, never when it was only inferred.
+      (isTrialIncident(previous) &&
+        isTrialIncident(reported) &&
+        previous.reason !== reported.reason);
     const executionIds = [
       ...new Set([
         ...(previous.executionIds ?? []),
@@ -204,9 +390,12 @@ export function reportUsageIncident(
     });
   }
   syncReminder();
+  return true;
 }
 
 let inFlight: { account: string; promise: Promise<void> } | null = null;
+/** A stalled request must not leave Refresh spinning; it ends as a failed refresh. */
+export const USAGE_REFRESH_TIMEOUT_MS = 15_000;
 /** Read-only and shared by all surfaces; never retries a task or changes billing. */
 export function refreshUsage(): Promise<void> {
   const account = useUsageNoticeStore.getState().account;
@@ -216,12 +405,37 @@ export function refreshUsage(): Promise<void> {
   if (inFlight?.account === account) return inFlight.promise;
   useUsageNoticeStore.setState({ refreshing: true, refreshError: null });
   const promise = (async () => {
-    const { proxyFetchGet } = await import('@/api/http');
-    const results = await Promise.allSettled([
-      proxyFetchGet('/api/v1/subscription'),
-      proxyFetchGet('/api/v1/user/current_credits'),
-      proxyFetchGet('/api/v1/user/key'),
-    ]);
+    const controller = new AbortController();
+    const timedOut = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener(
+        'abort',
+        () => reject(new Error('Usage refresh timed out')),
+        { once: true }
+      );
+    });
+    timedOut.catch(() => undefined);
+    const timer = setTimeout(
+      () => controller.abort(),
+      USAGE_REFRESH_TIMEOUT_MS
+    );
+    let results: PromiseSettledResult<any>[];
+    try {
+      const { proxyFetchGet } = await import('@/api/http');
+      const get = (url: string) =>
+        Promise.race([
+          proxyFetchGet(url, undefined, undefined, {
+            signal: controller.signal,
+          }),
+          timedOut,
+        ]);
+      results = await Promise.allSettled([
+        get('/api/v1/subscription'),
+        get('/api/v1/user/current_credits'),
+        get('/api/v1/user/key'),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     if (
       useUsageNoticeStore.getState().account !== account ||
       accountEpoch !== epoch
@@ -259,11 +473,22 @@ export function refreshUsage(): Promise<void> {
       access &&
       !subscription?.is_trialing &&
       ['plus', 'pro'].includes(subscription?.plan_key?.toLowerCase() ?? '');
-    const incidents = state.incidents.filter(
-      (item) =>
-        item.reason === 'service' ||
-        (item.reason === 'model-access' ? !recoveredAccess : !recoveredCredits)
-    );
+    const incidents = state.incidents
+      .filter(
+        (item) =>
+          item.reason === 'service' ||
+          (item.reason === 'model-access'
+            ? !recoveredAccess
+            : !recoveredCredits)
+      )
+      .map((item) => {
+        const reason = trialAwareUsageReason(
+          item.reason,
+          subscription,
+          credits
+        );
+        return reason === item.reason ? item : { ...item, reason };
+      });
     useUsageNoticeStore.setState({
       subscription,
       credits,
@@ -286,15 +511,15 @@ export function refreshUsage(): Promise<void> {
       subscription.trial_total_credits_remaining != null &&
       subscription.trial_total_credits_remaining <= 0
     )
-      reportUsageIncident({ reason: 'trial-total' }, account);
+      recordUsageIncident({ reason: 'trial-total' }, account);
     else if (
       subscription?.is_trialing &&
       subscription.trial_daily_credits_remaining != null &&
       subscription.trial_daily_credits_remaining <= 0
     )
-      reportUsageIncident({ reason: 'trial-daily' }, account);
+      recordUsageIncident({ reason: 'trial-daily' }, account);
     else if (credits !== null && credits <= 0)
-      reportUsageIncident(
+      recordUsageIncident(
         {
           reason:
             subscription?.plan_key === 'free' ? 'free-credits' : 'credits',

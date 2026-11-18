@@ -41,6 +41,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const restoreQueuedMessage = vi.fn();
 const removeQueuedMessage = vi.fn();
 const startTask = vi.fn();
+const legacyStream = vi.hoisted(() => ({
+  closeIdleSSEConnectionsForTasks: vi.fn(),
+  getIdleSSETransportTaskId: vi.fn(),
+  waitForIdleSSEDisplayTail: vi.fn(),
+}));
+
+vi.mock('@/store/chatStore', () => legacyStream);
 
 vi.mock('@/api/http', () => ({
   fetchGet: vi.fn(),
@@ -69,8 +76,14 @@ vi.mock('@/store/projectStore', () => ({
   useProjectStore: {
     getState: () => ({
       projects: { 'project-1': { chatStores: {} } },
-      getProjectById: () => ({ mode: 'single-agent' }),
+      getProjectById: () => ({
+        mode: 'single-agent',
+        chatStores: {
+          primary: { getState: () => ({ tasks: { 'run-1': {} } }) },
+        },
+      }),
       getChatStore: () => ({ getState: () => ({ startTask }) }),
+      appendInitChatStore: () => null,
       restoreQueuedMessage,
       removeQueuedMessage,
     }),
@@ -126,9 +139,15 @@ describe('Remote Control durable follow-up admission', () => {
     vi.mocked(fetchGet).mockResolvedValue({
       has_lock: true,
       status: 'processing',
+      consumer_alive: true,
+    });
+    vi.mocked(fetchPost).mockResolvedValue({
+      retired: true,
+      consumer_alive: false,
     });
     vi.mocked(markFollowUpRequestAdmitted).mockResolvedValue({} as never);
     startTask.mockResolvedValue(undefined);
+    legacyStream.getIdleSSETransportTaskId.mockReturnValue(null);
   });
 
   it('rejects managed ownership before remote legacy submission', async () => {
@@ -303,5 +322,87 @@ describe('Remote Control durable follow-up admission', () => {
     ).rejects.toThrow('Say what should continue');
     expect(markFollowUpRequestAdmitted).not.toHaveBeenCalled();
     expect(removeQueuedMessage).toHaveBeenCalledWith('project-1', 'run-2');
+  });
+
+  describe('after the previous Run finished', () => {
+    const command = {
+      id: 'command-1',
+      session_id: 'session-1',
+      user_id: 1,
+      source_channel: 'remote_control',
+      type: 'user_message',
+      target_project_id: 'project-1',
+      next_task_id: 'run-2',
+      payload: { content: 'continue the report' },
+    };
+    const mockIdleConsumer = (subscriberCount: number) =>
+      vi.mocked(fetchGet).mockResolvedValue({
+        has_lock: true,
+        status: 'done',
+        run_id: 'run-1',
+        consumer_alive: true,
+        subscriber_count: subscriberCount,
+      });
+
+    it('starts cold when the desktop no longer holds that Run stream', async () => {
+      mockIdleConsumer(0);
+
+      await __remoteControlBridgeTestHooks.executeRemoteCommand(
+        command,
+        'token'
+      );
+
+      expect(fetchPost).toHaveBeenCalledWith(
+        '/chat/project-1/runtime/retire-idle',
+        { run_id: 'run-1' },
+        undefined,
+        { signal: undefined }
+      );
+      expect(legacyStream.closeIdleSSEConnectionsForTasks).toHaveBeenCalledWith(
+        ['run-1']
+      );
+      expect(startTask).toHaveBeenCalledWith(
+        'run-2',
+        undefined,
+        undefined,
+        undefined,
+        'continue the report',
+        [],
+        undefined,
+        'project-1',
+        'single-agent',
+        expect.objectContaining({ preserveTaskId: true, awaitAdmission: true })
+      );
+      expect(fetchPost).not.toHaveBeenCalledWith(
+        '/chat/project-1',
+        expect.anything()
+      );
+    });
+
+    it('stays warm while the desktop still holds that Run stream', async () => {
+      mockIdleConsumer(1);
+      legacyStream.getIdleSSETransportTaskId.mockImplementation(
+        (taskIds: string[]) => (taskIds.includes('run-1') ? 'run-1' : null)
+      );
+
+      await __remoteControlBridgeTestHooks.executeRemoteCommand(
+        command,
+        'token'
+      );
+
+      expect(fetchPost).toHaveBeenCalledWith('/chat/project-1', {
+        question: 'continue the report',
+        task_id: 'run-2',
+        attaches: [],
+        target: undefined,
+      });
+      expect(fetchPost).not.toHaveBeenCalledWith(
+        '/chat/project-1/runtime/retire-idle',
+        expect.anything(),
+        undefined,
+        expect.anything()
+      );
+      expect(startTask).not.toHaveBeenCalled();
+    });
   });
 });

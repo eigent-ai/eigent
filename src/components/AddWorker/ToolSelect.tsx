@@ -23,6 +23,7 @@ import {
 import IntegrationList from '@/components/Dashboard/IntegrationList';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   useIntegrationManagement,
   type IntegrationItem,
@@ -840,8 +841,9 @@ const ToolSelect = forwardRef<
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
           <div className="flex items-center justify-center rounded-sm bg-transparent">
-            <X
-              className="h-4 w-4 shrink-0 cursor-pointer text-ds-ink-default-disabled hover:text-ds-ink-default-default"
+            <DsIcon
+              icon={X}
+              className="shrink-0 cursor-pointer text-ds-ink-default-disabled hover:text-ds-ink-default-default"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -887,12 +889,21 @@ const ToolSelect = forwardRef<
         <div className="flex min-h-5 shrink-0 items-center gap-1 text-sm leading-normal font-bold text-ds-ink-default-default">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
-            <CircleAlert
-              size={16}
+            <DsIcon
+              icon={CircleAlert}
               className="shrink-0 text-ds-ink-default-default"
             />
           </TooltipSimple>
         </div>
+        {/* Hosted connectors reach every agent through the Connector
+            Gateway at task start, so only local tools are picked here. */}
+        <p
+          id="agent-tool-connectors-note"
+          data-agent-tool-connectors-note
+          className="m-0 text-ds-text-meta text-ds-ink-muted-default"
+        >
+          {t('workforce.agent-tool-connectors-note')}
+        </p>
         <div
           onMouseDown={() => inputRef.current?.focus()}
           className={cn(
@@ -909,6 +920,7 @@ const ToolSelect = forwardRef<
               showSearchPlaceholder ? t('setting.search-mcp') : undefined
             }
             aria-label={t('workforce.agent-tool')}
+            aria-describedby="agent-tool-connectors-note"
             aria-controls="agent-tool-picker-panel"
             className="!min-h-[20px] min-w-[8ch] flex-1 resize-none border-none p-0 text-sm leading-5 text-ds-ink-default-default !shadow-none !ring-0 !ring-offset-0 placeholder:text-ds-ink-muted-default focus-visible:ring-0"
             rows={1}

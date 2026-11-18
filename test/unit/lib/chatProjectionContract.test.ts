@@ -145,6 +145,55 @@ describe('chat projection presentation contract', () => {
     ]);
   });
 
+  it('keeps the file a durable approval is for on its timeline receipt', () => {
+    const state = projectChatEvents('project-1', [
+      event(
+        'approval.requested',
+        {
+          approval_id: 'approval:call-1',
+          prompt: {
+            question:
+              'The agent wants to run write_to_file (filesystem.write).',
+            operation: 'filesystem.write',
+            target_resources: ['/workspace/imp25/check.txt'],
+          },
+        },
+        1
+      ),
+    ]);
+
+    expect(selectRenderableChatNodes(state)).toEqual([
+      expect.objectContaining({
+        kind: 'interaction',
+        targets: ['/workspace/imp25/check.txt'],
+      }),
+    ]);
+  });
+
+  it('names the command line of a live shell approval, not its digest', () => {
+    const state = projectChatEvents('project-1', [
+      event(
+        'interaction.requested',
+        {
+          interaction_id: 'approval:call-2',
+          interaction_type: 'approval',
+          question: 'The agent wants to run shell_exec (terminal.execute).',
+          operation: 'terminal.execute',
+          target_resources: [`terminal-command:sha256:${'c'.repeat(64)}`],
+          display_arguments: { command: 'npm test' },
+        },
+        1
+      ),
+    ]);
+
+    expect(selectRenderableChatNodes(state)).toEqual([
+      expect.objectContaining({
+        kind: 'interaction',
+        targets: ['npm test'],
+      }),
+    ]);
+  });
+
   it('reads the requesting agent from a typed approval prompt', () => {
     // The legacy ASK mirror carries `agent` at the top level while the typed
     // approval nests it in the prompt. Both lanes must name the same agent, or
@@ -229,6 +278,46 @@ describe('chat projection presentation contract', () => {
         )
       )
     ).not.toContain('task-private');
+
+    expect(
+      adaptChatProjectionEvent(
+        event(
+          'workspace.writer.queued',
+          {
+            reason: 'holder_requires_attention',
+            blocker_task_id: 'task-private',
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'workspace_writer',
+              subject: { type: 'writer_request', id: 'workspace-writer:run-1' },
+              lifecycle: { phase: 'requested', status: 'pending' },
+              completeness: { state: 'complete', missing_fields: [] },
+              correlation: {
+                blocker_run_id: 'run-blocker',
+                blocker_project_id: 'session-blocker',
+                blocker_reason: 'unknown_tool_outcome',
+              },
+            },
+          },
+          1
+        )
+      )
+    ).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'notice',
+        severity: 'warning',
+        title: 'Waiting for Space',
+        content: expect.stringContaining(
+          'stopped while it was changing files and needs your attention'
+        ),
+        writerWait: {
+          holderNeedsAttention: true,
+          blockerProjectId: 'session-blocker',
+        },
+      },
+    });
 
     expect(
       adaptChatProjectionEvent(
@@ -894,7 +983,14 @@ describe('chat projection presentation contract', () => {
   });
 
   it('gives migrated live transcript families to the canonical lane only', () => {
-    for (const step of ['confirmed', 'end', 'decompose_text', 'write_file']) {
+    for (const step of [
+      'confirmed',
+      'end',
+      'decompose_text',
+      'write_file',
+      'activate_toolkit',
+      'deactivate_toolkit',
+    ]) {
       expect(shouldProjectLegacyChatStep(step, true)).toBe(false);
       expect(shouldProjectLegacyChatStep(step, false)).toBe(true);
       expect(shouldProjectLegacyChatStep(step, true, true)).toBe(true);

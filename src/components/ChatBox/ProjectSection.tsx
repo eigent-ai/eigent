@@ -13,23 +13,39 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { VanillaChatStore } from '@/store/chatStore';
-import { AgentStep } from '@/types/constants';
+import { AgentStep, type SessionModeType } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
+import { HistoryEvidence } from './EventTimeline/HistoryEvidence';
+import { partitionLegacyMessageEvidence } from './EventTimeline/legacyReplyEvidence';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
+import {
+  ModelChangeDivider,
+  type ResolvedRunModel,
+} from './TimelineModes/ModelChangeDivider';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
+import { useHistoryEntrance } from './useHistoryEntrance';
 
 interface ProjectSectionProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   taskId?: string;
+  /** The last known model of an earlier Task in this Session. */
+  previousModel?: ResolvedRunModel | null;
+  /** The model this Task's Run ran on, when the Run read reported one. */
+  model?: ResolvedRunModel | null;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
+  /** The Session's mode, for Tasks that record none of their own. */
+  sessionMode?: SessionModeType;
 }
 
 export const ProjectSection = React.forwardRef<
   HTMLDivElement,
   ProjectSectionProps
->(({ chatId, chatStore, taskId, activeQueryId, onQueryActive }, ref) => {
+>((props, ref) => {
+  const { chatId, chatStore, taskId, activeQueryId, onQueryActive } = props;
   // Subscribe to store changes with throttling to prevent excessive re-renders
   const [chatState, setChatState] = React.useState(() => chatStore.getState());
 
@@ -63,16 +79,18 @@ export const ProjectSection = React.forwardRef<
     };
   }, [chatStore]);
 
+  // Reloaded history appears where it ended instead of animating in again.
+  const entrance = useHistoryEntrance();
   const activeTaskId = taskId ?? chatState.activeTaskId;
   const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
   const messages = React.useMemo(() => {
-    return task?.messages || [];
+    return partitionLegacyMessageEvidence(task?.messages || []);
   }, [task?.messages]);
 
   // Memoize grouping to prevent re-creating objects on every render
   const queryGroups = React.useMemo(() => {
-    return groupMessagesByQuery(messages);
+    return groupMessagesByQuery(messages.messages);
   }, [messages]);
   if (!activeTaskId || !task) {
     return null;
@@ -82,12 +100,17 @@ export const ProjectSection = React.forwardRef<
     <motion.div
       ref={ref}
       data-turn-id={activeTaskId}
-      initial={{ opacity: 0, y: 20 }}
+      initial={entrance({ opacity: 0, y: 20 })}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
       className="relative mb-8"
     >
+      <ModelChangeDivider
+        className="mb-3"
+        previous={props.previousModel}
+        current={props.model}
+      />
       {/* User Query Groups */}
       <div className="space-y-3">
         {queryGroups.map((group, index) => (
@@ -98,11 +121,14 @@ export const ProjectSection = React.forwardRef<
             queryGroup={group}
             isActive={activeQueryId === group.queryId}
             onQueryActive={onQueryActive}
+            onEditUserMessage={props.onEditUserMessage}
             index={index}
             taskId={activeTaskId}
+            sessionMode={props.sessionMode}
           />
         ))}
       </div>
+      <HistoryEvidence entries={messages.evidence} />
     </motion.div>
   );
 });
@@ -111,7 +137,7 @@ export const ProjectSection = React.forwardRef<
 ProjectSection.displayName = 'ProjectSection';
 
 // Helper function to group messages by query cycles
-export function groupMessagesByQuery(messages: any[]): QueryGroup[] {
+export function groupMessagesByQuery(messages: readonly any[]): QueryGroup[] {
   const groups: QueryGroup[] = [];
 
   let currentGroup: any = null;
@@ -123,22 +149,30 @@ export function groupMessagesByQuery(messages: any[]): QueryGroup[] {
     if (message.role === 'user') {
       const previousMessage = messages[index - 1];
 
-      // An explicit ASK is an interruption inside the current Run, not a new
-      // query turn. Structured replies correlate by interaction id; legacy
-      // ASK frames use only strict adjacency so an ordinary follow-up can
-      // never be guessed into a human-input receipt.
-      if (
-        currentGroup &&
-        previousMessage?.role === 'agent' &&
-        previousMessage?.step === AgentStep.ASK &&
-        (!message.interactionResponseTo ||
-          (previousMessage?.interaction?.interaction_id &&
-            message.interactionResponseTo ===
-              previousMessage.interaction.interaction_id))
-      ) {
-        currentGroup.interactionResponses = {
-          ...currentGroup.interactionResponses,
-          [previousMessage.id]: message,
+      const replyId = message.interactionResponseTo;
+      const askGroup = replyId
+        ? [...groups, ...(currentGroup ? [currentGroup] : [])].find((group) =>
+            group.otherMessages.some(
+              (candidate: Message) =>
+                candidate.step === AgentStep.ASK &&
+                candidate.interaction?.interaction_id === replyId
+            )
+          )
+        : previousMessage?.role === 'agent' &&
+            previousMessage.step === AgentStep.ASK
+          ? currentGroup
+          : undefined;
+      const ask = replyId
+        ? askGroup?.otherMessages.find(
+            (candidate: Message) =>
+              candidate.step === AgentStep.ASK &&
+              candidate.interaction?.interaction_id === replyId
+          )
+        : previousMessage;
+      if (askGroup && ask) {
+        askGroup.interactionResponses = {
+          ...askGroup.interactionResponses,
+          [ask.id]: message,
         };
         return;
       }

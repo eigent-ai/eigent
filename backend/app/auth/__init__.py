@@ -19,24 +19,36 @@ from app.auth.brain_auth import (
     set_brain_auth_provider,
     with_brain_auth_provider,
 )
+from app.auth.file_access import (
+    FileAccessScope,
+    issue_file_access_grant,
+    require_file_preview_access,
+    require_file_stream_access,
+)
 from app.auth.interface import IAuthProvider, NoneAuth
 from app.auth.local_control import (
     LOCAL_CONTROL_CAPABILITY_ENV,
     LOCAL_CONTROL_CAPABILITY_HEADER,
     LocalControlPrincipal,
+    require_local_control_if_configured,
     require_local_control_principal,
 )
 
 __all__ = [
     "BrainAuthContext",
+    "FileAccessScope",
     "IAuthProvider",
     "NoneAuth",
     "get_brain_auth_context",
     "get_brain_auth_provider",
     "set_brain_auth_provider",
     "with_brain_auth_provider",
+    "issue_file_access_grant",
+    "require_file_preview_access",
+    "require_file_stream_access",
     "LOCAL_CONTROL_CAPABILITY_ENV",
     "LOCAL_CONTROL_CAPABILITY_HEADER",
     "LocalControlPrincipal",
+    "require_local_control_if_configured",
     "require_local_control_principal",
 ]

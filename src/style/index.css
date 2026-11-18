@@ -10,6 +10,25 @@
 @source '../../index.html';
 @source '../../src';
 @source '../../.storybook';
+
+/*
+ * Named width steps. The JS config's spacing scale also names its steps
+ * (`gap-sm`, `p-md`, …), and Tailwind resolves `max-w-*` / `min-w-*` through
+ * spacing before its container sizes, which made `max-w-md` 16px instead of
+ * 28rem. These pin the named widths to Tailwind's container scale.
+ */
+@theme {
+  --max-width-xs: 20rem;
+  --max-width-sm: 24rem;
+  --max-width-md: 28rem;
+  --max-width-lg: 32rem;
+  --max-width-xl: 36rem;
+  --min-width-xs: 20rem;
+  --min-width-sm: 24rem;
+  --min-width-md: 28rem;
+  --min-width-lg: 32rem;
+  --min-width-xl: 36rem;
+}
 @source not inline('container');
 
 /* Public Accent / Neutral / Ink / Hairline / Ring groups. Engine still emits
@@ -336,7 +355,7 @@ body {
     --spacing-lg: var(--ds-ref-space-32);
     --spacing-xl: var(--ds-ref-space-64);
     --spacing-multi-value: 8 64;
-    /* Tailwind spacing-2 / `px-2` — always-visible scrollbar track. */
+    /* Tailwind spacing-2 / `px-2` — scrollbar track of every product recipe. */
     --scrollbar-size: 0.5rem;
     --borderRadius-sm: var(--ds-ref-radius-4);
     --borderRadius-lg: var(--ds-ref-radius-8);
@@ -406,26 +425,39 @@ body {
 
 /* scroll Style */
 
+/*
+ * Product scrollbars share one geometry: an 8px track (--scrollbar-size) with
+ * a 6px thumb centered in it by a 1px transparent border. The thumb is muted
+ * at rest and shows its full color while the pointer is on it.
+ *
+ * Chromium ignores every ::-webkit-scrollbar rule on an element that sets the
+ * standard scrollbar-width or scrollbar-color, and draws its own wider thin
+ * bar instead. Those properties therefore apply only where ::-webkit-scrollbar
+ * is unsupported (Firefox), in the block after these recipes.
+ */
+
 .scrollbar {
   scrollbar-gutter: stable;
 }
 
 .scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size);
 }
 
 .scrollbar::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 3px;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
   transition: background-color 0.3s ease;
 }
 
 .scrollbar.scrolling::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.2);
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar::-webkit-scrollbar-track {
@@ -434,8 +466,6 @@ body {
 
 .scrollbar-always-visible {
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {
@@ -444,14 +474,15 @@ body {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.6);
+  background-color: rgba(156, 163, 175, 0.5);
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  opacity: 0.5;
-  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
-  opacity: 1;
+  background-color: rgb(156, 163, 175);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-track {
@@ -461,16 +492,10 @@ body {
 /* Overlay scrollbar - sits on top of content without taking space */
 .scrollbar-overlay {
   overflow-y: scroll;
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: transparent transparent; /* Firefox - invisible by default */
-}
-
-.scrollbar-overlay:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.3) transparent; /* Firefox - show on hover */
 }
 
 .scrollbar-overlay::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
   background: transparent;
 }
 
@@ -479,17 +504,19 @@ body {
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb {
-  background: transparent;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
   border-radius: 4px;
-  transition: background 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .scrollbar-overlay:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3);
+  background-color: rgba(156, 163, 175, 0.5);
 }
 
 .scrollbar-overlay::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background-color: rgb(156, 163, 175);
 }
 
 .terminal-scrollbar::-webkit-scrollbar {
@@ -590,18 +617,10 @@ body {
   font-size: 12px; /* text-sm */
 }
 
-/* Hover-style scrollbar - appears only on hover with 20% opacity */
-.hover-style-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.hover-style-scrollbar:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
-}
+/* Hover-style scrollbar - appears only while the container is hovered */
 
 .hover-style-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-track {
@@ -609,14 +628,38 @@ body {
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--ds-text-neutral-muted-default, rgba(0, 0, 0, 0.4));
-  opacity: 0;
-  border-radius: 9999px;
-  transition: opacity 0.2s ease;
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .hover-style-scrollbar:hover::-webkit-scrollbar-thumb {
-  opacity: 0.2;
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+.hover-style-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156, 163, 175);
+}
+
+/* Firefox: the standard properties stand in for the ::-webkit-scrollbar rules. */
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-always-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+
+  .scrollbar-overlay,
+  .hover-style-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-overlay:hover,
+  .hover-style-scrollbar:hover {
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
 }
 
 /* Scoped file viewer: prevent file content CSS from affecting sidebar and app layout */
@@ -709,6 +752,136 @@ body {
   );
   animation: progress-install-shimmer 3s linear infinite;
   will-change: transform;
+}
+
+/*
+ * Session loading: a ring of light in the user's accent flows up from below
+ * the content area, sweeps past the top on a fast ease-out, and disappears;
+ * after a short pause the next one starts. The ring's centre sits below the
+ * bottom edge and it is wider than the area, so its arc spans the whole
+ * bottom. Each ring band steps the accent lighter and a little further round
+ * the hue wheel, palest at the leading edge. Dark mode adds light with
+ * `screen`; light mode tints the page faintly. `--halo-elapsed` lets a
+ * handover join the cycle mid-way.
+ */
+.session-loading-halo-frame {
+  --halo-cycle: 3100ms;
+  container-type: size;
+}
+
+.session-loading-halo {
+  --halo-accent: var(--ds-accent-default-default);
+  --halo-strength: 0.6;
+  /* How far below the bottom edge the ring's centre sits. */
+  --halo-depth: 35cqw;
+  /* Big enough that the ring's inner edge clears the top corners at the end. */
+  --halo-radius: calc(hypot(50cqw, calc(100cqh + var(--halo-depth))) / 0.5);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--halo-depth));
+  width: calc(2 * var(--halo-radius));
+  height: calc(2 * var(--halo-radius));
+  margin-top: calc(-1 * var(--halo-radius));
+  margin-left: calc(-1 * var(--halo-radius));
+  border-radius: 50%;
+  background: radial-gradient(
+    circle closest-side,
+    transparent 50%,
+    oklch(from var(--halo-accent) l c h / calc(0.22 * var(--halo-strength))) 62%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.08) c calc(h + 18) /
+          calc(0.32 * var(--halo-strength))
+      )
+      76%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.15) calc(c * 0.85) calc(h + 36) /
+          calc(0.38 * var(--halo-strength))
+      )
+      88%,
+    oklch(
+        from var(--halo-accent) calc(l + 0.22) calc(c * 0.4) calc(h + 50) /
+          calc(0.3 * var(--halo-strength))
+      )
+      95%,
+    transparent 100%
+  );
+  animation:
+    session-loading-halo-travel var(--halo-cycle) linear infinite,
+    session-loading-halo-fade var(--halo-cycle) linear infinite;
+  animation-delay: calc(-1 * var(--halo-elapsed, 0ms));
+  will-change: transform, opacity;
+}
+
+[data-theme='dark'] .session-loading-halo {
+  --halo-strength: 1;
+  mix-blend-mode: screen;
+}
+
+/* The Eigent mark brightens as the ring passes it and dims as it leaves. */
+.session-loading-halo-logo {
+  animation: session-loading-halo-logo var(--halo-cycle) ease-in-out infinite;
+  animation-delay: calc(-1 * var(--halo-elapsed, 0ms));
+}
+
+.session-loading-halo-logo-dark,
+[data-theme='dark'] .session-loading-halo-logo-light {
+  display: none;
+}
+
+[data-theme='dark'] .session-loading-halo-logo-dark {
+  display: block;
+}
+
+/* Reduced motion: no ring, the mark holds still. */
+@media (prefers-reduced-motion: reduce) {
+  .session-loading-halo {
+    display: none;
+  }
+
+  .session-loading-halo-logo {
+    animation: none;
+  }
+}
+
+/*
+ * 0–1.6s the ring travels from below the bottom edge to past the top, fast
+ * at first and easing out; it fades over the second half of that trip; then
+ * 1.5s of pause before the next ring.
+ */
+@keyframes session-loading-halo-travel {
+  0% {
+    transform: scale(0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  51.6%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes session-loading-halo-fade {
+  0%,
+  22% {
+    opacity: 1;
+    animation-timing-function: ease-in;
+  }
+  51.6%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes session-loading-halo-logo {
+  0%,
+  45%,
+  100% {
+    opacity: 0.55;
+    scale: 0.96;
+  }
+  10% {
+    opacity: 1;
+    scale: 1;
+  }
 }
 
 @keyframes progress-install-shimmer {

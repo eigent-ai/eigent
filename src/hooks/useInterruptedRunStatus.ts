@@ -15,7 +15,11 @@
 import { useHost } from '@/host';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
-import type { ProjectedRun } from '@/lib/projector';
+import type {
+  ProjectedRun,
+  ProjectedUnsafeResumeBlocker,
+} from '@/lib/projector';
+import { TERMINAL_RUN_STATUSES } from '@/lib/projector/runSummary';
 import {
   runEventIngressRegistry,
   runProjectionStore,
@@ -26,14 +30,19 @@ import {
   resumeRequestsRevision,
   subscribeResumeRequests,
 } from '@/lib/runResumeRequest';
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
+
+/** Retries after a failed load; later loads wait for focus/backend-ready. */
+const REFRESH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 
 export interface DurableRunSummary {
   run_id: string;
@@ -42,6 +51,8 @@ export interface DurableRunSummary {
   updated_at: number;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  terminalReason?: RunTerminalReason | null;
+  terminalDetail?: string | null;
   /** Local retry authority; the canonical Run remains pending. */
   retry_request_id?: string;
   latest_attempt?: {
@@ -49,6 +60,8 @@ export interface DurableRunSummary {
     status: string;
     resume_request_id?: string;
   } | null;
+  /** Tool calls with unknown outcomes; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
 }
 
 type RunsByProject = Record<string, DurableRunSummary | null>;
@@ -96,6 +109,9 @@ function projectedRunToDurableSummary(
     updated_at: Date.parse(run.updatedAt) / 1000,
     origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
+    terminalReason: run.terminalReason,
+    terminalDetail: run.terminalDetail,
+    unsafeResumeBlockers: run.unsafeResumeBlockers,
     latest_attempt: run.latestAttempt
       ? {
           attempt_number: run.latestAttempt.attemptNumber,
@@ -115,7 +131,9 @@ function projectedRunToDurableSummary(
  * normal path. A Brain restart while the renderer survives emits
  * `backend-ready`; returning to the app emits `focus`. Resume/cancel callers
  * also invoke `refresh` explicitly on errors. Those boundaries cover state
- * changes without a GET every five seconds for every open Project.
+ * changes without a GET every five seconds for every open Project. A failed
+ * load keeps the last reconciled state and retries a few times with backoff,
+ * then waits for the next boundary.
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
@@ -125,6 +143,13 @@ export function useInterruptedRunStatus(projectId: string | null) {
     resumeRequestsRevision,
     resumeRequestsRevision
   );
+  const refreshRevision = useRef(0);
+  const lastLoadedScope = useRef<string | null>(null);
+  const failedRefreshes = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRef = useRef<() => Promise<void>>();
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const scope = JSON.stringify([accountKey, projectId]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const selectInterrupted = useCallback(
     (state: import('@/lib/projector').ProjectViewState | null) => {
@@ -195,25 +220,55 @@ export function useInterruptedRunStatus(projectId: string | null) {
         setDismissed(null);
         return Promise.resolve();
       }
+      const revision = ++refreshRevision.current;
+      const refreshAccountKey = getAccountEnvironmentKey(getAuthStore());
+      clearTimeout(retryTimer.current);
+      setLoadedScope(null);
       return runEventIngressRegistry
         .reconcileProject(projectId)
-        .then(() => setDismissed(null))
+        .then(() => {
+          if (
+            refreshRevision.current !== revision ||
+            getAccountEnvironmentKey(getAuthStore()) !== refreshAccountKey
+          )
+            return;
+          const loaded = JSON.stringify([accountKey, projectId]);
+          failedRefreshes.current = 0;
+          lastLoadedScope.current = loaded;
+          setDismissed(null);
+          setLoadedScope(loaded);
+        })
         .catch((error) => {
           // Brain can still be booting while the Project shell is visible. Keep
           // the last canonical state until backend-ready/focus retries it.
           if (error?.name !== 'AbortError') {
             console.debug('[RunControl] Run status refresh deferred', error);
           }
+          if (refreshRevision.current !== revision) return;
+          // Brain still refuses a busy Session, so a failed load must not
+          // hold queued messages until the next focus or backend-ready.
+          setLoadedScope(lastLoadedScope.current);
+          if (error?.name === 'AbortError') return;
+          const delay = REFRESH_RETRY_DELAYS_MS[failedRefreshes.current++];
+          if (delay !== undefined)
+            retryTimer.current = setTimeout(
+              () => void refreshRef.current?.(),
+              delay
+            );
         });
     },
-    [projectId]
+    [projectId, accountKey]
   );
 
   useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
+    failedRefreshes.current = 0;
     void refresh();
 
     const handleFocus = () => void refresh();
-    const handleBackendReady = () => void refresh();
     const handleDurableRunStatusChanged = (event: Event) => {
       const changedProjectId = (event as CustomEvent<{ projectId?: string }>)
         .detail?.projectId;
@@ -221,22 +276,37 @@ export function useInterruptedRunStatus(projectId: string | null) {
         void refresh();
       }
     };
-    const ipcRenderer = host?.ipcRenderer;
     window.addEventListener('focus', handleFocus);
     window.addEventListener(
       DURABLE_RUN_STATUS_CHANGED_EVENT,
       handleDurableRunStatusChanged
     );
-    ipcRenderer?.on('backend-ready', handleBackendReady);
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener(
         DURABLE_RUN_STATUS_CHANGED_EVENT,
         handleDurableRunStatusChanged
       );
-      ipcRenderer?.off('backend-ready', handleBackendReady);
+      clearTimeout(retryTimer.current);
     };
-  }, [host?.ipcRenderer, projectId, refresh]);
+  }, [projectId, refresh]);
 
-  return { run, setRun, refresh };
+  // A host object that changes identity only re-subscribes to backend-ready.
+  // It must not start another load: the load marks the status as unsettled,
+  // and a render caused by that would otherwise re-run this effect forever.
+  useEffect(() => {
+    const ipcRenderer = host?.ipcRenderer;
+    if (!ipcRenderer) return;
+    const handleBackendReady = () => void refreshRef.current?.();
+    ipcRenderer.on('backend-ready', handleBackendReady);
+    return () => {
+      ipcRenderer.off('backend-ready', handleBackendReady);
+    };
+  }, [host?.ipcRenderer]);
+
+  const settled =
+    loadedScope === scope &&
+    (!summary ||
+      TERMINAL_RUN_STATUSES.has(summary.status as ProjectedRun['status']));
+  return { run, setRun, refresh, settled };
 }

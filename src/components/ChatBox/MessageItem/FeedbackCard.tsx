@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Check, Copy } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -83,9 +84,13 @@ export function FeedbackCard({
           buttonContent="icon-only"
         >
           {copied ? (
-            <Check className="h-4 w-4 text-ds-text-success-default-default" />
+            <DsIcon
+              recipe="main-compact"
+              icon={Check}
+              className="text-ds-text-success-default-default"
+            />
           ) : (
-            <Copy className="h-4 w-4" />
+            <DsIcon recipe="main-compact" icon={Copy} />
           )}
         </Button>
       </div>

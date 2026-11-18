@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WebSocketConnectionStatus } from '@/store/triggerStore';
@@ -61,9 +62,11 @@ export function NavTabReconnectSuffix({
           onReconnect();
         }}
       >
-        <RefreshCw
+        <DsIcon
+          icon={RefreshCw}
+          recipe="main-compact"
           className={cn(
-            'h-3.5 w-3.5',
+            '',
             wsConnectionStatus === 'connecting' && 'animate-spin'
           )}
           aria-hidden

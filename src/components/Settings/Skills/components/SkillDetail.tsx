@@ -32,12 +32,9 @@ const SKILL_DETAIL_HEADER_CONTROL_CLASS = 'box-border h-ds-control-sm';
 
 export default function SkillDetail({
   skillId,
-  onNavigateHome,
   onNavigateToSkills,
 }: {
   skillId: string;
-  /** Breadcrumb root — returns to the Home hub. */
-  onNavigateHome?: () => void;
   /** Breadcrumb parent — returns to the Skills list. */
   onNavigateToSkills?: () => void;
 }) {
@@ -65,10 +62,7 @@ export default function SkillDetail({
             headingRef={setHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
-              {
-                label: t('layout.home', { defaultValue: 'Home' }),
-                onClick: onNavigateHome,
-              },
+              { label: t('layout.settings', { defaultValue: 'Settings' }) },
               {
                 label: t('agents.skills', { defaultValue: 'Skills' }),
                 onClick: onNavigateToSkills,

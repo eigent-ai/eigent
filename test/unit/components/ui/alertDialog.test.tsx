@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import AlertDialog from '@/components/ui/alertDialog';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('AlertDialog', () => {
@@ -102,5 +102,97 @@ describe('AlertDialog', () => {
 
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('lets an asynchronous confirmation owner keep the dialog open', () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
+
+    render(
+      <AlertDialog
+        isOpen
+        onClose={onClose}
+        onConfirm={onConfirm}
+        closeOnConfirm={false}
+        title="Rename session"
+        confirmText="Save"
+      >
+        <input aria-label="Session name" defaultValue="Original name" />
+      </AlertDialog>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Session name' })).toHaveValue(
+      'Original name'
+    );
+  });
+
+  it('cancels on Escape and on a press outside the card', async () => {
+    const onClose = vi.fn();
+    render(
+      <AlertDialog
+        isOpen
+        onClose={onClose}
+        onConfirm={vi.fn()}
+        title="Quit Eigent"
+        confirmText="Quit Eigent"
+      />
+    );
+
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: 'Escape',
+    });
+    expect(onClose).toHaveBeenCalledOnce();
+
+    // Radix starts listening for outside presses on the next tick.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.pointerDown(document.querySelector('.alert-dialog')!);
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('focuses Cancel and returns focus to where the user was', async () => {
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <>
+          <textarea aria-label="Message" />
+          <AlertDialog
+            isOpen={open}
+            onClose={vi.fn()}
+            onConfirm={vi.fn()}
+            title="Quit Eigent"
+            confirmText="Quit Eigent"
+          />
+        </>
+      );
+    }
+    const { rerender } = render(<Harness open={false} />);
+    const message = screen.getByRole('textbox', { name: 'Message' });
+    message.focus();
+
+    rerender(<Harness open />);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    rerender(<Harness open={false} />);
+    await waitFor(() => expect(message).toHaveFocus());
+  });
+
+  it('leaves focus on a field that asks for it', () => {
+    render(
+      <AlertDialog
+        isOpen
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Rename Space"
+        confirmText="Save"
+      >
+        <input aria-label="Space name" autoFocus />
+      </AlertDialog>
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Space name' })).toHaveFocus();
   });
 });

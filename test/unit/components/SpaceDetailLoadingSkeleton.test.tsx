@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+// Load the HTTP client first, as the app does at boot, so the auth store
+// and i18n settle their import cycle in the same order.
+import '@/api/http';
+
 import { SpaceDetailSuspenseContent } from '@/components/Home/SpaceDetail';
 import {
   SpaceDetailListSkeleton,
@@ -63,7 +67,7 @@ describe('SpaceDetail loading skeletons', () => {
     (tab, marker) => {
       const { container } = render(<SpaceDetailTabSkeleton tab={tab} />);
       const loadingLabel = {
-        context: 'Loading Context content',
+        context: 'Loading Files content',
         memory: 'Loading Memory content',
         'workspace-profile': 'Loading Workspace settings content',
       }[tab];

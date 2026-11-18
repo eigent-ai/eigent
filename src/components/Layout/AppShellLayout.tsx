@@ -18,10 +18,19 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
 
-/** Fixed rail width. The sidebar is no longer resizable. */
+/**
+ * App rail width: the column of places left of every page, below the top bar.
+ * It stays when the sidebar folds.
+ */
+export const APP_SHELL_RAIL_WIDTH_PX = 48;
+/** Fixed sidebar width. The sidebar is no longer resizable. */
 export const APP_SHELL_SIDEBAR_WIDTH_PX = 240;
-/** Sidebar tabs sit inside the rail's shared `p-1` inset. */
-export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 4;
+/**
+ * The sidebar shell's inline padding (`px-ds-8`). The top bar ends its
+ * sidebar controls this far inside the sidebar edge, so Forward lines up with
+ * the sidebar's own trailing buttons, such as Space settings.
+ */
+export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 8;
 /** Gap between the rail and the content pane. */
 export const APP_SHELL_COLUMN_GAP_PX = 2;
 
@@ -49,6 +58,11 @@ export interface AppShellLayoutProps {
    * their own surface (or need several) can opt out.
    */
   contentSurface?: boolean;
+  /**
+   * The page sits right of the app rail, so its top-left corner rounds away
+   * from the rail and top bar. A Session's own window has no rail.
+   */
+  besideAppRail?: boolean;
   className?: string;
   contentClassName?: string;
 }
@@ -64,6 +78,7 @@ export default function AppShellLayout({
   overlay,
   sidebarHidden = false,
   contentSurface = true,
+  besideAppRail = true,
   className,
   contentClassName,
 }: AppShellLayoutProps) {
@@ -94,7 +109,13 @@ export default function AppShellLayout({
         className
       )}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-2xl bg-ds-neutral-default-default">
+      <div
+        data-app-shell-columns
+        className={cn(
+          'flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden bg-ds-neutral-default-default',
+          besideAppRail && 'rounded-tl-ds-panel'
+        )}
+      >
         <motion.div
           ref={sidebarRailRef}
           className="h-full min-h-0 shrink-0 overflow-hidden"

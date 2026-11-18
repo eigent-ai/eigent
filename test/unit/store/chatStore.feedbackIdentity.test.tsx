@@ -110,18 +110,24 @@ vi.mock('../../../src/store/authStore', () => ({
   getWorkerList: vi.fn(() => []),
 }));
 
-vi.mock('../../../src/store/projectStore', () => ({
-  useProjectStore: {
-    getState: vi.fn(() => ({
-      activeProjectId: null,
-      getHistoryId: () => null,
-      getProjectById: (projectId: string) => ({
-        id: projectId,
-        mode: 'single-agent',
-      }),
-    })),
-  },
-}));
+vi.mock('../../../src/store/projectStore', () => {
+  const state = () => ({
+    activeProjectId: null,
+    getHistoryId: () => null,
+    getProjectById: (projectId: string) => ({
+      id: projectId,
+      mode: 'single-agent',
+    }),
+  });
+  return {
+    // Components subscribe through the hook; the store reads getState().
+    useProjectStore: Object.assign(
+      (selector: (value: ReturnType<typeof state>) => unknown) =>
+        selector(state()),
+      { getState: vi.fn(state) }
+    ),
+  };
+});
 
 import { normalizeLegacyChatStep } from '@/lib/projector/adapters/legacyChatStep';
 import { composeTimelineRuns } from '@/lib/projector/chat/presentation';

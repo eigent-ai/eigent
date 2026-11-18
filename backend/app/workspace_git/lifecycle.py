@@ -30,6 +30,7 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.run_journal.transitions import RUN_TERMINAL_STATES
 from app.utils.workspace_paths import get_eigent_root
 from app.workspace_config import canonical_digest
 from app.workspace_git.content import ContentRepositoryError
@@ -83,7 +84,7 @@ class WorkspaceGitLifecycle:
         values: list[GitRunFinalization] = []
         failed: list[str] = []
         for run in self.journal.list_all_runs():
-            if run.status not in {"completed", "failed", "cancelled"}:
+            if run.status not in RUN_TERMINAL_STATES:
                 continue
             try:
                 value = self.finalize_run(run.run_id)
@@ -108,7 +109,7 @@ class WorkspaceGitLifecycle:
         canonical_run = self.journal.get_run(run_id)
         if canonical_run is None:
             raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
-        if canonical_run.status not in {"completed", "failed", "cancelled"}:
+        if canonical_run.status not in RUN_TERMINAL_STATES:
             return GitRunFinalization(run_id, "deferred_active", None, None)
         try:
             return self._finalize_terminal_run(
@@ -339,7 +340,7 @@ class WorkspaceGitLifecycle:
         canonical_run = self.journal.get_run(run_id)
         if canonical_run is None:
             raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
-        if canonical_run.status in {"completed", "failed", "cancelled"}:
+        if canonical_run.status in RUN_TERMINAL_STATES:
             return GitRunFinalization(run_id, "already_terminal", None, None)
         run = self.journal.get_run_git_materialization(run_id)
         if run is None or run.materialization_state == "unmaterialized":

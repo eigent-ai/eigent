@@ -21,6 +21,7 @@ import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
@@ -432,15 +433,15 @@ export function AgentDetailPane({
                       <div className="flex min-w-0 items-center gap-x-2 gap-y-0.5">
                         <div className="flex h-4 shrink-0 items-center justify-center">
                           {task.reAssignTo ? (
-                            <CircleSlash2
-                              size={16}
+                            <DsIcon
+                              icon={CircleSlash2}
                               className="text-ds-icon-status-pending-default-default"
                             />
                           ) : (
                             <>
                               {task.status === TaskStatus.RUNNING && (
-                                <LoaderCircle
-                                  size={16}
+                                <DsIcon
+                                  icon={LoaderCircle}
                                   className={cn(
                                     'text-ds-icon-status-splitting-default-default',
                                     activeTaskId &&
@@ -451,33 +452,33 @@ export function AgentDetailPane({
                                 />
                               )}
                               {task.status === TaskStatus.SKIPPED && (
-                                <LoaderCircle
-                                  size={16}
+                                <DsIcon
+                                  icon={LoaderCircle}
                                   className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.COMPLETED && (
-                                <CircleCheckBig
-                                  size={16}
+                                <DsIcon
+                                  icon={CircleCheckBig}
                                   className="text-ds-icon-status-completed-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.FAILED && (
-                                <CircleSlash
-                                  size={16}
+                                <DsIcon
+                                  icon={CircleSlash}
                                   className="text-ds-icon-status-error-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.BLOCKED && (
-                                <TriangleAlert
-                                  size={16}
+                                <DsIcon
+                                  icon={TriangleAlert}
                                   className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
                               {(task.status === TaskStatus.EMPTY ||
                                 task.status === TaskStatus.WAITING) && (
-                                <Circle
-                                  size={16}
+                                <DsIcon
+                                  icon={Circle}
                                   className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
@@ -544,9 +545,10 @@ export function AgentDetailPane({
                           }));
                         }}
                       >
-                        <ChevronDown
+                        <DsIcon
+                          icon={ChevronDown}
                           className={cn(
-                            'size-4 transition-transform duration-200 motion-reduce:transition-none',
+                            'transition-transform duration-200 motion-reduce:transition-none',
                             isExpanded && 'rotate-180'
                           )}
                           aria-hidden
@@ -620,7 +622,7 @@ export function AgentDetailPane({
                   })}
                   onClick={() => setDetailTask(null)}
                 >
-                  <ChevronLeft className="size-4" aria-hidden />
+                  <DsIcon icon={ChevronLeft} aria-hidden />
                 </Button>
                 <span className="min-w-0 truncate text-ds-text-base font-bold text-ds-ink-default-default">
                   {t('chat.task-number', {
