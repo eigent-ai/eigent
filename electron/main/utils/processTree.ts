@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ChildProcess, exec, spawn } from 'child_process';
 import log from 'electron-log';
+import { ChildProcess, exec, spawn } from 'node:child_process';
 
 /**
  * Termination of the backend process tree, verified against actual exit.
