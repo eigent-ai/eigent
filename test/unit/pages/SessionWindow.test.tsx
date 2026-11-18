@@ -28,10 +28,14 @@ const state = vi.hoisted(() => ({
   ensureLoaded: vi.fn().mockResolvedValue(undefined),
   returnToMain: vi.fn().mockResolvedValue(undefined),
   link: vi.fn(),
+  markSeen: vi.fn(),
 }));
 
 vi.mock('@/hooks/useInstallationSetup', () => ({
   useInstallationSetup: vi.fn(),
+}));
+vi.mock('@/hooks/useMarkSessionOutcomeSeen', () => ({
+  useMarkSessionOutcomeSeen: state.markSeen,
 }));
 vi.mock('@/store/installationStore', () => ({
   useInstallationUI: () => ({ isBackendReady: state.backendReady }),
@@ -129,6 +133,12 @@ describe('Session window page', () => {
     renderPage();
     expect(screen.getByText('Opening session…')).toBeInTheDocument();
     expect(state.setActiveProject).not.toHaveBeenCalled();
+    expect(state.markSeen).not.toHaveBeenCalledWith('p1');
+  });
+
+  it("marks its Session's results as read once it is shown", () => {
+    renderPage();
+    expect(state.markSeen).toHaveBeenLastCalledWith('p1');
   });
 
   it('selects its Session in its Space, loads it and shows it', async () => {

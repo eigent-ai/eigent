@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -14,7 +14,7 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "postinstall": "node scripts/fix-node-pty-permissions.js",
+    "postinstall": "node scripts/fix-node-pty-permissions.js && node scripts/patch-electron-builder-keychain.js",
     "clean-cache": "rimraf node_modules/.vite",
     "dev": "npm run clean-cache && vite",
     "dev:web": "npm run clean-cache && vite --config vite.config.web.ts",
@@ -109,6 +109,7 @@
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.17.0",
+    "frimousse": "0.4.0",
     "github-markdown-css": "^5.8.1",
     "gsap": "^3.13.0",
     "koffi": "^2.14.1",
@@ -170,6 +171,7 @@
     "electron": "^33.2.0",
     "electron-builder": "^24.13.3",
     "electron-devtools-installer": "^4.0.0",
+    "emojibase-data": "18.0.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",

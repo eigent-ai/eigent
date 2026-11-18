@@ -106,7 +106,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import SettingsContentShell from '../SettingsContentShell';
 import SettingsSectionPage from '../SettingsSectionPage';
@@ -405,7 +405,6 @@ async function resolveOpenProviderByName(
 
 export default function ConnectorGateway() {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const publishItems = usePublishConnectorsNavigation();
@@ -493,7 +492,6 @@ export default function ConnectorGateway() {
       replace?: boolean;
     }) => {
       const next = new URLSearchParams(searchParams);
-      next.set('section', 'settings');
       next.set('tab', 'connectors');
       if (connectorId) next.set('connectorId', connectorId);
       else next.delete('connectorId');
@@ -997,9 +995,6 @@ export default function ConnectorGateway() {
     setBrowseTarget(null);
     updateConnectorLocation({ view: 'add', tab: 'browse', targetId: null });
   }, [updateConnectorLocation]);
-  const navigateHome = useCallback(() => {
-    navigate('/home?section=spaces');
-  }, [navigate]);
 
   const openRecommendedConnector = (provider: ConnectorProvider) => {
     const existing = connectorItems.find(
@@ -1548,10 +1543,7 @@ export default function ConnectorGateway() {
             headingRef={setDetailHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
-              {
-                label: t('layout.home', { defaultValue: 'Home' }),
-                onClick: navigateHome,
-              },
+              { label: t('layout.settings', { defaultValue: 'Settings' }) },
               {
                 label: t('layout.connectors'),
                 onClick: closeConnectorSubpage,
@@ -1854,10 +1846,7 @@ export default function ConnectorGateway() {
                   defaultValue: 'Breadcrumb',
                 })}
                 segments={[
-                  {
-                    label: t('layout.home', { defaultValue: 'Home' }),
-                    onClick: navigateHome,
-                  },
+                  { label: t('layout.settings', { defaultValue: 'Settings' }) },
                   {
                     label: t('layout.connectors'),
                     onClick: closeConnectorSubpage,
@@ -1919,10 +1908,7 @@ export default function ConnectorGateway() {
             <ContentBreadcrumb
               ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
               segments={[
-                {
-                  label: t('layout.home', { defaultValue: 'Home' }),
-                  onClick: navigateHome,
-                },
+                { label: t('layout.settings', { defaultValue: 'Settings' }) },
                 {
                   label: t('layout.connectors'),
                   onClick: closeConnectorSubpage,

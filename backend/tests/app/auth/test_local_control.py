@@ -365,6 +365,11 @@ def test_registered_legacy_routes_reject_pages_without_the_capability(
             "mcpServers": {}
         }
     assert client.post("/messages", json={"content": "hi"}).status_code == 401
+    assert client.get("/chat/project-1/status").status_code == 401
+    assert (
+        client.get("/chat/project-1/status", headers=headers).json()["status"]
+        == "offline"
+    )
 
     sub_agent = {
         "api_key": "key",
@@ -397,6 +402,7 @@ def test_registered_legacy_routes_stay_open_for_web_mode(monkeypatch):
     ):
         assert client.get("/mcp/list").json() == {"mcpServers": {}}
     assert client.get("/runs/missing").status_code == 503
+    assert client.get("/chat/project-1/status").json()["status"] == "offline"
 
 
 def test_command_result_maps_missing_command_to_not_found(monkeypatch):

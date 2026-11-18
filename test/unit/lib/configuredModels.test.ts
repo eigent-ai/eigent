@@ -108,6 +108,30 @@ describe('Configured model identity', () => {
     ]);
   });
 
+  it('names saved models without their gateway provider prefix', () => {
+    const choices = selectableConfiguredModels({
+      records: [
+        {
+          id: 21,
+          provider_name: 'openrouter',
+          model_type: 'google/gemini-4-carbon',
+          api_key: 'key',
+          endpoint_url: '',
+          is_valid: 2,
+        },
+      ],
+      cloudModels: [],
+      hidden: [],
+      cloudAvailable: false,
+      codexConnected: true,
+      codexModelType: 'gpt-5-codex',
+    });
+    expect(choices.map((choice) => choice.name)).toEqual([
+      'gemini-4-carbon',
+      'gpt-5-codex',
+    ]);
+  });
+
   it('names what sets repeated configurations apart', () => {
     const record = (id: number, endpoint_url: string, api_key: string) => ({
       id,
@@ -159,6 +183,33 @@ describe('Configured model identity', () => {
       planKey: null,
     });
     expect(choices.map((choice) => choice.id)).toEqual(['cloud:free']);
+  });
+  it('names Eigent Cloud models without a gateway provider prefix', () => {
+    const cloud = (id: string, display_name: string) => ({
+      id,
+      display_name,
+      model_type: id,
+      model_platform: 'openai-compatible-model',
+      provider_family: 'google',
+      kind: 'chat' as const,
+      min_plan_key: 'free',
+    });
+    const choices = selectableConfiguredModels({
+      records: [],
+      cloudModels: [
+        cloud('openai/gemini-4-carbon', 'openai/gemini-4-carbon'),
+        cloud('gpt-5.5', 'GPT-5.5'),
+      ],
+      hidden: [],
+      cloudAvailable: true,
+      codexConnected: false,
+      codexModelType: '',
+      planKey: 'free',
+    });
+    expect(choices.map((choice) => choice.name)).toEqual([
+      'gemini-4-carbon',
+      'GPT-5.5',
+    ]);
   });
   it('fails safely when a paginated endpoint repeats the same page', async () => {
     mocks.get.mockResolvedValue({ items: [{ id: 1 }], total: 200, pages: 2 });

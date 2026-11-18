@@ -100,6 +100,8 @@ const mocks = vi.hoisted(() => {
       },
     },
     projectsBySpaceId: {},
+    projectIdIndex: {} as Record<string, string>,
+    projectsSyncedAt: { 'space-1': 1 } as Record<string, number>,
     getProjectMeta: vi.fn(() => null),
     setActiveSpace: vi.fn(),
   };
@@ -112,6 +114,9 @@ const mocks = vi.hoisted(() => {
     }),
     handOffNewSessionDraft: vi.fn(),
     markSessionTaskStarted: vi.fn(),
+    openBrowserPreview: vi.fn(),
+    sessionPreviewOpeningByProject: {},
+    previewBrowserViewportByProject: {},
   };
 
   return {
@@ -120,7 +125,12 @@ const mocks = vi.hoisted(() => {
     spaceModelRef: null as string | null,
     managedSubmit: vi.fn(),
     modelType: 'local',
-    auth: { token: 'fixture-a', user_id: 101 as number | null },
+    auth: {
+      token: 'fixture-a',
+      user_id: 101 as number | null,
+      email: undefined as string | undefined,
+    },
+    fetchGitStatus: vi.fn(),
     modelConfig: { hasModel: true, cloudUsageLimitReached: false },
     newChatState,
     newStartTask,
@@ -130,8 +140,15 @@ const mocks = vi.hoisted(() => {
     pageState,
     projectState,
     spaceState,
+    sessionPane: undefined as
+      { projectId: string | null; previewScopeId: string | null } | undefined,
   };
 });
+
+vi.mock('@/hooks/useSessionPane', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/useSessionPane')>()),
+  useSessionPane: () => mocks.sessionPane,
+}));
 
 vi.mock('@/api/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/http')>()),
@@ -149,6 +166,11 @@ vi.mock('@/api/http', async (importOriginal) => ({
 vi.mock('@/service/sessionMessage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/service/sessionMessage')>()),
   submitWorkspaceSessionDraft: mocks.managedSubmit,
+}));
+
+vi.mock('@/service/workspaceGitApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/workspaceGitApi')>()),
+  fetchWorkspaceGitStatus: mocks.fetchGitStatus,
 }));
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -248,6 +270,7 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
         data-model-disabled={String(Boolean(modelSelectDisabled))}
       />
       {usageLimitBanner && <div role="alert">{usageLimitBanner.message}</div>}
+      {inputProps.leadingActions}
       {inputProps.files.map((file: { filePath: string; fileName: string }) => (
         <span key={file.filePath}>{file.fileName}</span>
       ))}
@@ -281,15 +304,6 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
 vi.mock('@/components/AddWorker', () => ({
   AddWorker: () => null,
 }));
-vi.mock('@/components/Workspace/SingleAgentList', () => ({
-  SingleAgentList: () => null,
-}));
-vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
-  WorkforceAgentList: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
-  WorkspaceProjectPicker: () => <div>Space switch</div>,
-}));
 const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
   render(
     <MemoryRouter>
@@ -320,7 +334,8 @@ describe('Workspace', () => {
     mocks.spaceModelRef = null;
     mocks.spaceState.spaces['space-1'].rootPath = undefined;
     mocks.managedSubmit.mockResolvedValue('managed-session');
-    mocks.auth = { token: 'fixture-a', user_id: 101 };
+    mocks.auth = { token: 'fixture-a', user_id: 101, email: undefined };
+    mocks.fetchGitStatus.mockResolvedValue({ blocked_operations: [] });
     mocks.modelConfig = { hasModel: true, cloudUsageLimitReached: false };
     mocks.spaceState.activeSpaceId = 'space-1';
     mocks.pageState.activeWorkspaceTab = 'workforce';
@@ -1128,45 +1143,167 @@ describe('Workspace', () => {
     );
   });
 
-  it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
+  it('centres one short welcome heading above the composer', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    const { container } = renderWorkspace();
+    random.mockRestore();
+
+    const welcome = screen.getByRole('heading', {
+      level: 1,
+      name: "Let's cowork on something",
+    });
+    expect(welcome).toHaveClass(
+      'justify-center',
+      'flex-col',
+      '@min-[40rem]:flex-row',
+      'mb-ds-24',
+      'text-ds-text-display'
+    );
+    // The Eigent icon leads the line and stays out of its accessible name.
+    const icon = welcome.querySelector('[data-eigent-app-icon]');
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    // Tile and mark use theme tokens, so they swap in dark mode.
+    expect(icon?.querySelector('.fill-ds-ink-default-default')).not.toBeNull();
+    expect(
+      icon?.querySelector('.fill-ds-neutral-subtle-default')
+    ).not.toBeNull();
+    expect(welcome.firstElementChild).toBe(icon);
+    expect(screen.getByText("Let's cowork on something")).toHaveClass(
+      'font-display'
+    );
+    expect(welcome.nextElementSibling).toBe(
+      container.querySelector('[data-workspace-bottom-box]')
+    );
+  });
+
+  it('fills the composer from a starter use case below it', () => {
+    const { container } = renderWorkspace();
+
+    const useCases = container.querySelector('[data-workspace-use-cases]');
+    expect(
+      container
+        .querySelector('[data-workspace-bottom-box]')
+        ?.compareDocumentPosition(useCases as Node)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Explore this folder/ })
+    );
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Go through the files in this folder and tell me what we could work on together.'
+    );
+  });
+
+  it('shows starter use cases only while the user has at most one Space', () => {
+    const spaces = mocks.spaceState.spaces as Record<string, unknown>;
+    const second = {
+      id: 'space-2',
+      sourceType: 'blank',
+      rootPath: undefined,
+      status: 'archived',
+    };
+    spaces['space-2'] = second;
+    try {
+      const archivedView = renderWorkspace();
+      expect(
+        archivedView.container.querySelector('[data-workspace-use-cases]')
+      ).not.toBeNull();
+      archivedView.unmount();
+
+      second.status = 'active';
+      const { container } = renderWorkspace();
+      expect(container.querySelector('[data-workspace-use-cases]')).toBeNull();
+
+      window.localStorage.setItem('eigent.starterUseCases', 'show');
+      const forced = renderWorkspace();
+      expect(
+        forced.container.querySelector('[data-workspace-use-cases]')
+      ).not.toBeNull();
+    } finally {
+      window.localStorage.removeItem('eigent.starterUseCases');
+      delete spaces['space-2'];
+    }
+  });
+
+  it('shows starter use cases only to a user with no Session yet', () => {
+    const state = mocks.spaceState;
+    try {
+      state.projectIdIndex = { 'project-old': 'space-1' };
+      const returning = renderWorkspace();
+      expect(
+        returning.container.querySelector('[data-workspace-use-cases]')
+      ).toBeNull();
+      returning.unmount();
+
+      // Until the Space's Sessions load, nobody is known to be new.
+      state.projectIdIndex = {};
+      state.projectsSyncedAt = {};
+      const loading = renderWorkspace();
+      expect(
+        loading.container.querySelector('[data-workspace-use-cases]')
+      ).toBeNull();
+      loading.unmount();
+
+      state.projectsSyncedAt = { 'space-1': 1 };
+      const { container } = renderWorkspace();
+      expect(
+        container.querySelector('[data-workspace-use-cases]')
+      ).not.toBeNull();
+    } finally {
+      state.projectIdIndex = {};
+      state.projectsSyncedAt = { 'space-1': 1 };
+    }
+  });
+
+  it('opens all use cases in the Session preview browser', () => {
+    mocks.sessionPane = {
+      projectId: null,
+      previewScopeId: 'new-session-draft',
+    };
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      renderWorkspace({ variant: 'new-project', embedded: true });
+      fireEvent.click(screen.getByRole('button', { name: 'View more' }));
+
+      expect(mocks.pageState.openBrowserPreview).toHaveBeenCalledWith(
+        'https://www.eigent.ai/use-cases',
+        'new-session-draft'
+      );
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      mocks.sessionPane = undefined;
+      open.mockRestore();
+    }
+  });
+
+  it('opens on the composer without a Cowork title row', () => {
     const { container } = renderWorkspace();
 
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
-    const coworkLabel = screen.getByText('Cowork with');
-    const coworkRow = coworkLabel.closest('[data-workspace-cowork-row]');
-    const agentList = container.querySelector('[data-workspace-agent-list]');
-    const bottomBox = container.querySelector('[data-workspace-bottom-box]');
-    const inputSection = container.querySelector(
-      '[data-workspace-input-section]'
-    );
-    const workspaceHeader = screen.getByLabelText('Workspace header');
-
-    expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
-    expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
-    expect(inputSection).toHaveClass('items-center', 'p-4');
-    expect(coworkRow).toHaveClass(
-      'min-h-[46px]',
+    expect(screen.queryByText('Cowork with')).not.toBeInTheDocument();
+    expect(
+      container.querySelector('[data-workspace-cowork-row]')
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace header')).toHaveClass(
+      'flex-1',
       'items-center',
-      'justify-start'
+      'gap-0'
     );
-    expect(agentList).toHaveClass(
-      'h-[46px]',
-      'min-h-[46px]',
-      'items-center',
-      'justify-start',
-      'overflow-visible'
-    );
-    expect(coworkRow?.nextElementSibling).toBe(bottomBox);
+    expect(
+      container.querySelector('[data-workspace-input-section]')
+    ).toHaveClass('items-center', 'p-4');
+    expect(
+      container.querySelector('[data-workspace-bottom-box]')
+    ).not.toBeNull();
   });
 
-  it('uses the same Cowork composer for the new-project variant', () => {
+  it('uses the same composer for the new-project variant', () => {
     const { container } = renderWorkspace({
       variant: 'new-project',
       embedded: true,
     });
 
-    expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.getByText('Single Agent')).toHaveClass('sr-only');
+    expect(screen.queryByText('Cowork with')).not.toBeInTheDocument();
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
     expect(container.querySelector('#workspace-bottom-group')).toBeNull();
     expect(screen.getByLabelText('Workspace header')).toHaveClass(
@@ -1176,37 +1313,57 @@ describe('Workspace', () => {
     );
   });
 
-  it('keeps the agent-list height fixed across Single Agent and Workforce modes', () => {
-    const singleAgentView = renderWorkspace({ sessionMode: 'single-agent' });
-    const singleAgentList = singleAgentView.container.querySelector(
-      '[data-workspace-agent-list]'
-    );
+  it('shows a blocked workspace operation in a new Session before its first message', async () => {
+    mocks.spaceState.spaces['space-1'].rootPath = '/tmp/space-1';
+    mocks.auth = { token: 'fixture-a', user_id: 101, email: 'u@example.com' };
+    mocks.fetchGitStatus.mockResolvedValue({
+      space_id: 'space-1',
+      enabled: true,
+      blocked_operations: [
+        {
+          intent_id: `gitintent_${'1'.repeat(32)}`,
+          run_id: 'run-1',
+          project_id: 'old-project',
+          status: 'needs_attention',
+          scope: 'exact_path',
+          relative_path: 'notes.md',
+          trigger: 'filesystem.edit',
+          created_at: 1,
+          updated_at: 2,
+          actionable: true,
+          can_checkpoint: true,
+          repo_state_digest: 'c'.repeat(64),
+        },
+      ],
+    });
 
-    expect(singleAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
+    renderWorkspace({ variant: 'new-project', embedded: true });
+
+    expect(
+      await screen.findByText('Blocked workspace operation')
+    ).toBeInTheDocument();
+    expect(mocks.fetchGitStatus).toHaveBeenCalledWith('space-1', {
+      email: 'u@example.com',
+      userId: 101,
+    });
+    expect(
+      screen.getByRole('button', { name: 'Save as checkpoint' })
+    ).toBeEnabled();
+  });
+
+  it('shows the agents button beside "+" only in Workforce mode', () => {
+    const singleAgentView = renderWorkspace({ sessionMode: 'single-agent' });
+    expect(
+      singleAgentView.container.querySelector('[data-workforce-agents-trigger]')
+    ).toBeNull();
 
     singleAgentView.unmount();
     const workforceView = renderWorkspace({ sessionMode: 'workforce' });
-    const workforceAgentList = workforceView.container.querySelector(
-      '[data-workspace-agent-list]'
+    const trigger = workforceView.container.querySelector(
+      '[data-workforce-agents-trigger]'
     );
-
-    expect(workforceAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
-  });
-
-  it('keeps the Single Agent mode accessible without restoring its heading', () => {
-    const { unmount } = renderWorkspace({ sessionMode: 'single-agent' });
-
-    expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.getByText('Single Agent')).toHaveClass('sr-only');
-    expect(
-      document.querySelector('[data-workspace-single-agent-label]')
-    ).not.toBeInTheDocument();
-
-    unmount();
-    renderWorkspace({ sessionMode: 'workforce' });
-
-    expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+    expect(trigger).not.toBeNull();
+    expect(trigger).toHaveAccessibleName(/\d+ agents?/);
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

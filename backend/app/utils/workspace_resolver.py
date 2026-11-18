@@ -36,6 +36,7 @@ from app.utils.workspace_paths import (
     run_output_root,
     runtime_owner_key,
     sanitize_identity,
+    space_folder_conflict,
     workspace_state_root,
 )
 
@@ -517,6 +518,29 @@ class WorkspaceStore:
         tmp_path.replace(path)
 
 
+class SpaceFolderNotUsableError(Exception):
+    """A Task cannot start because its Space folder holds Eigent's own data.
+
+    ``code`` is the stable reason a client branches on; the message is the
+    English fallback for clients that do not know the code.
+    """
+
+    _MESSAGES = {
+        "space_folder_is_home": (
+            "Eigent can't work directly in your home folder. Create a Space "
+            "from a folder inside it, such as Documents."
+        ),
+        "space_folder_holds_app_data": (
+            "Eigent can't work in a folder that holds its own app data. "
+            "Create a Space from another folder, such as Documents."
+        ),
+    }
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(self._MESSAGES.get(code, code))
+
+
 @dataclass(frozen=True)
 class FrozenTaskDirectories:
     working_directory: Path
@@ -717,6 +741,12 @@ class WorkspaceResolver:
             binding_source = "default"
             workdir_mode = getattr(task_lock, "workdir_mode", None)
             base_snapshot_id = None
+
+        # Refuse before anything is created, so the Task never gets as far as
+        # building agents whose runtime storage would overlap this folder.
+        conflict = space_folder_conflict(working_directory, email, user_id)
+        if conflict is not None:
+            raise SpaceFolderNotUsableError(conflict)
 
         working_directory.mkdir(parents=True, exist_ok=True)
         task_output.mkdir(parents=True, exist_ok=True)

@@ -40,6 +40,8 @@ export type ErrorReason =
   | 'model-restricted'
   | 'model-unavailable'
   | 'thinking-effort'
+  | 'space-folder-home'
+  | 'space-folder-app-data'
   | 'task';
 export interface ErrorContext {
   /** Routing selected for this request, never inferred from provider wording. */
@@ -64,10 +66,15 @@ const copyKeys: Record<ErrorReason, string> = {
   'model-restricted': 'chat.notice-model-restricted',
   'model-unavailable': 'chat.notice-model-unavailable',
   'thinking-effort': 'chat.notice-thinking-effort',
+  'space-folder-home': 'chat.notice-space-folder-home',
+  'space-folder-app-data': 'chat.notice-space-folder-app-data',
   task: 'chat.notice-task',
 };
 
 export const errorCopy = (reason: ErrorReason) => i18n.t(copyKeys[reason]);
+/** The Space's folder can't hold Tasks; a new folder Space is the way out. */
+export const isSpaceFolderReason = (reason: ErrorReason) =>
+  reason === 'space-folder-home' || reason === 'space-folder-app-data';
 export const isUsageReason = (reason: ErrorReason): reason is UsageReason =>
   [
     'credits',
@@ -170,6 +177,8 @@ export function classifyError(
   if (reason === 'trial_daily_exhausted') return 'trial-daily';
   if (reason === 'trial_total_exhausted') return 'trial-total';
   if (code === 'unsupported_thinking_effort') return 'thinking-effort';
+  if (code === 'space_folder_is_home') return 'space-folder-home';
+  if (code === 'space_folder_holds_app_data') return 'space-folder-app-data';
 
   const providerQuota =
     /insufficient_quota|insufficient[_ ]balance|余额不足|额度已用尽|quota.*exceed|credit.*(exhaust|insufficient)|run out of credit/.test(
@@ -254,6 +263,10 @@ export function errorPresentationReason(
         return 'model-access';
       case 'managed_service_unavailable':
         return 'service';
+      case 'space_folder_is_home':
+        return 'space-folder-home';
+      case 'space_folder_holds_app_data':
+        return 'space-folder-app-data';
       case '20':
       case '22':
       case 'budget_exceeded':

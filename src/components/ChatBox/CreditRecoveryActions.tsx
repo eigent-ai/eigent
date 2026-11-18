@@ -19,6 +19,8 @@ import { useTranslation } from 'react-i18next';
 export interface CreditRecoveryActionsProps {
   refreshing?: boolean;
   onRefresh: () => void;
+  /** False for a blocker that lifts on its own, such as the daily trial cap. */
+  upgrade?: boolean;
 }
 
 /**
@@ -28,13 +30,16 @@ export interface CreditRecoveryActionsProps {
 export function CreditRecoveryActions({
   refreshing,
   onRefresh,
+  upgrade = true,
 }: CreditRecoveryActionsProps) {
   const { t } = useTranslation();
   return (
     <>
-      <Button size="sm" variant="primary" onClick={openPricing}>
-        {t('chat.notice-upgrade-plan')}
-      </Button>
+      {upgrade && (
+        <Button size="sm" variant="primary" onClick={openPricing}>
+          {t('chat.notice-upgrade-plan')}
+        </Button>
+      )}
       <Button
         size="sm"
         variant="outline"
@@ -53,11 +58,17 @@ export function CreditRecoveryActions({
 /** Toast description with the same actions as the inline notices. */
 export function CreditRecoveryToastBody({
   description,
+  refreshError,
   ...actions
-}: CreditRecoveryActionsProps & { description: string }) {
+}: CreditRecoveryActionsProps & {
+  description: string;
+  /** Already translated, as the composer notice shows it. */
+  refreshError?: string;
+}) {
   return (
     <div className="flex flex-col gap-ds-8">
       <span>{description}</span>
+      {refreshError && <span>{refreshError}</span>}
       <div className="flex flex-wrap items-center gap-ds-control-gap">
         <CreditRecoveryActions {...actions} />
       </div>
