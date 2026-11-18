@@ -824,20 +824,25 @@ class ProviderModelCapability:
         self,
         requested: str | ThinkingEffort | None,
         *,
-        allow_dynamic_remap: bool = False,
+        # Models recognised by name (dynamic) have an inferred effort list, so
+        # an effort outside it runs at the nearest one instead of failing.
+        # Registered catalog models stay strict.
+        allow_dynamic_remap: bool = True,
     ) -> EffortResolution:
         if not self.supported_efforts:
-            if requested is not None:
-                raise UnsupportedThinkingEffortError(
-                    f"{self.diagnostic}; cannot honor effort "
-                    f"{str(requested)!r}. Register model capabilities or "
-                    "omit thinking_effort to use the provider default."
-                )
-            # MEDIUM is retained only as the legacy persisted enum sentinel.
-            # The capability advertises no supported choices, no parameter,
-            # and an explicit unknown_model diagnostic in its snapshot.
+            # Without registered efforts, a requested effort (composer,
+            # Session, Space or Bundle profile) never blocks the Run: the
+            # provider keeps its own default and no parameter is sent. The
+            # request is still recorded. MEDIUM is retained only as the
+            # legacy persisted enum sentinel for the effective effort; the
+            # capability advertises no supported choices, no parameter, and
+            # an explicit unknown_model diagnostic in its snapshot.
             return EffortResolution(
-                requested=self.default_effort,
+                requested=(
+                    normalize_thinking_effort(requested)
+                    if requested is not None
+                    else self.default_effort
+                ),
                 effective=self.default_effort,
                 provider_parameter_name=None,
                 provider_value="provider_default",
@@ -977,6 +982,25 @@ class LocalMaterialization(_StrictFrozenModel):
         }
 
 
+def bound_model_identity(semantic_spec: Any) -> dict[str, str] | None:
+    """Read the public model identity without exposing runtime auth details."""
+    if not isinstance(semantic_spec, dict):
+        return None
+    manifest = semantic_spec.get("runtime_capability_manifest")
+    if not isinstance(manifest, dict):
+        return None
+    model = manifest.get("model")
+    if not isinstance(model, dict):
+        return None
+    platform, model_type = model.get("platform"), model.get("type")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (platform, model_type)
+    ):
+        return None
+    return {"platform": platform, "type": model_type}
+
+
 class EffectiveEnvironmentSpec(_StrictFrozenModel):
     spec_id: str
     owner_type: Literal["run", "run_attempt"]
@@ -994,6 +1018,9 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
     provider_value: str
     provider_capability_revision: str
     redaction_schema_version: int = 1
+
+    def bound_model(self) -> dict[str, str] | None:
+        return bound_model_identity(self.semantic_spec)
 
     @classmethod
     def create(

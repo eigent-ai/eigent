@@ -19,6 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import { Bot, Eye, EyeOff } from 'lucide-react';
 import { FC, useEffect, useState } from 'react';
@@ -129,8 +130,22 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
+      return (
+        <DsIcon
+          icon={Bot}
+          recipe="illustration"
+          illustrationSize={40}
+          className="text-ds-ink-default-default"
+        />
+      );
+    return (
+      <DsIcon
+        icon={Bot}
+        recipe="illustration"
+        illustrationSize={40}
+        className="text-ds-ink-default-default"
+      />
+    );
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -360,9 +375,9 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
                     value={envValues[key]?.value || ''}
                     backIcon={
                       showKeys[key] ? (
-                        <Eye className="h-5 w-5" />
+                        <DsIcon icon={Eye} />
                       ) : (
-                        <EyeOff className="h-5 w-5" />
+                        <DsIcon icon={EyeOff} />
                       )
                     }
                     onBackIconClick={() =>

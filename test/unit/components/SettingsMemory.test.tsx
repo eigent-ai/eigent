@@ -386,10 +386,30 @@ describe('Memory Center', () => {
     }
   );
 
+  it.each([
+    ['user', 'user-1'],
+    ['space', 'space-1'],
+    ['project', 'project-1'],
+  ] as const)(
+    'shows the %s capacity token count once',
+    async (scopeType, scopeId) => {
+      render(
+        <Memory
+          fixedScope={{ type: scopeType, id: scopeId }}
+          showScopeSelector={false}
+        />
+      );
+
+      const tokenCount = await screen.findByText('10 / 1024 tokens');
+      expect(tokenCount.textContent).toBe('10 / 1024 tokens');
+      expect(screen.queryByText(/10 \/ 10 \//)).not.toBeInTheDocument();
+    }
+  );
+
   it('shows searchable Space and Project Memory directories', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/home?section=settings&tab=memory']}>
+      <MemoryRouter initialEntries={['/settings?tab=memory']}>
         <Memory homeOverview />
         <LocationProbe />
       </MemoryRouter>

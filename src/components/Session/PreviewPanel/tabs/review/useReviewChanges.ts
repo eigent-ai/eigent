@@ -12,8 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import { useHost } from '@/host';
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
+import { selectProjectSpaceId } from '@/lib/projectWorkspaceRoot';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   proxyFetchSpaceProjectOverlays,
@@ -31,7 +33,6 @@ import {
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
 import {
-  usePageTabStore,
   type SessionReviewIdentity,
   type SessionReviewTarget,
 } from '@/store/pageTabStore';
@@ -232,7 +233,9 @@ export function useReviewChanges(
   const host = useHost();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectId = useSessionPageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
   const reviewScope = reviewTarget.scope;
   const focusRequestId = reviewTarget.focusRequestId;
   const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;
@@ -242,15 +245,17 @@ export function useReviewChanges(
   const pinnedTargetCommit = pinnedIdentity?.targetCommit;
   const hasPinnedIdentity = Boolean(pinnedBaseCommit && pinnedTargetCommit);
   const projectStore = useProjectRuntimeStore();
-  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const projectMeta = useSpaceStore((state) =>
     projectId ? state.getProjectMeta(projectId) : null
   );
   const runtimeProject = projectId
     ? projectStore.getProjectById(projectId)
     : null;
-  const spaceId =
-    projectMeta?.spaceId ?? runtimeProject?.spaceId ?? activeSpaceId ?? null;
+  // Review must stay on the Project's own Space. Never borrow the active
+  // Space while the Project's owner is unresolved or conflicting.
+  const spaceId = useSpaceStore((state) =>
+    selectProjectSpaceId(state, projectId, runtimeProject?.spaceId)
+  );
   const projectSpace = useSpaceStore((state) =>
     spaceId ? state.spaces[spaceId] : null
   );

@@ -20,7 +20,8 @@ import {
   type SessionBrowserTab,
   usePageTabStore,
 } from '@/store/pageTabStore';
-import { useEffect, useRef, useState } from 'react';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getPreviewWebview,
   type PreviewWebviewElement,
@@ -45,8 +46,6 @@ import {
 
 /** Above page content, below portaled overlays (menus z-50, tooltips z-100). */
 const GUEST_Z_INDEX = 30;
-/** Matches the preview panel's rounded-xl browser container. */
-const GUEST_RADIUS = 12;
 /** Guest fade when (un)covering its viewport — softens show/park hops. */
 const GUEST_FADE_MS = 160;
 /**
@@ -79,7 +78,7 @@ function visibleStyle(
     width: viewport.width,
     height: viewport.height,
     zIndex: GUEST_Z_INDEX,
-    borderRadius: GUEST_RADIUS,
+    borderRadius: 0,
     overflow: 'hidden',
     opacity: shown ? 1 : 0,
     transition: `opacity ${GUEST_FADE_MS}ms ease`,
@@ -131,6 +130,20 @@ function PreviewGuest({
   useEffect(() => {
     tabIdRef.current = tab.id;
   }, [tab.id]);
+  // A New session draft tab moves to its Session when the first task starts;
+  // follow the owner without recreating (and reloading) the guest.
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
+  const focusOwner = useCallback(() => {
+    const ownerId = projectIdRef.current;
+    const projects = useProjectRuntimeStore.getState();
+    if (!projects.projects[ownerId]) return;
+    if (projects.activeProjectId !== ownerId)
+      projects.setActiveProject(ownerId);
+    usePageTabStore.getState().setSessionPreviewProject(ownerId);
+  }, []);
 
   // Show/park with a short opacity fade instead of an instant hop:
   // 'parked' → offscreen, 'faded' → over the viewport at opacity 0,
@@ -199,7 +212,7 @@ function PreviewGuest({
       lastUrl = url;
       usePageTabStore
         .getState()
-        .updateBrowserPreviewTabIn(projectId, tabIdRef.current, {
+        .updateBrowserPreviewTabIn(projectIdRef.current, tabIdRef.current, {
           title: browserTitle(
             state,
             i18n.t('layout.new-tab', { defaultValue: 'New tab' })
@@ -237,6 +250,8 @@ function PreviewGuest({
     element.addEventListener('did-start-loading', onStart);
     element.addEventListener('did-finish-load', onSuccess);
     element.addEventListener('did-fail-load', onFailure);
+    // Guest focus reaches the host during capture; guest pointer events do not bubble.
+    element.addEventListener('focus', focusOwner, true);
     const notifyLanguageChanged = () => notify();
 
     GUEST_EVENTS.forEach((event) => element.addEventListener(event, notify));
@@ -251,11 +266,12 @@ function PreviewGuest({
       element.removeEventListener('did-start-loading', onStart);
       element.removeEventListener('did-finish-load', onSuccess);
       element.removeEventListener('did-fail-load', onFailure);
+      element.removeEventListener('focus', focusOwner, true);
       i18n.off('languageChanged', notifyLanguageChanged);
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
     };
-  }, [projectId, tab.webviewId]);
+  }, [tab.webviewId, focusOwner]);
 
   const handledRetryRequest = useRef(tab.navigation.retryRequestId ?? 0);
   useEffect(() => {
@@ -278,6 +294,7 @@ function PreviewGuest({
     <div
       ref={containerRef}
       data-preview-webview-id={tab.webviewId}
+      onPointerDownCapture={focusOwner}
       style={
         tab.navigation.loadError || phase === 'parked' || !rect
           ? PARKED_STYLE
@@ -292,6 +309,7 @@ export function PreviewBrowserLayer() {
   const byProject = usePageTabStore((s) => s.sessionPreviewByProject);
   const scopeProjectId = usePageTabStore((s) => s.sessionPreviewProjectId);
   const viewport = usePageTabStore((s) => s.previewBrowserViewport);
+  const viewports = usePageTabStore((s) => s.previewBrowserViewportByProject);
 
   // Persisted slices may reference many projects; only mount guests for
   // projects the user has actually visited this run so startup stays light.
@@ -299,27 +317,28 @@ export function PreviewBrowserLayer() {
     () => new Set()
   );
   useEffect(() => {
-    if (!scopeProjectId) return;
+    const visibleIds = [
+      ...Object.keys(viewports),
+      ...(scopeProjectId ? [scopeProjectId] : []),
+    ];
     setActivatedProjects((current) => {
-      if (current.has(scopeProjectId)) return current;
-      const next = new Set(current);
-      next.add(scopeProjectId);
-      return next;
+      if (visibleIds.every((id) => current.has(id))) return current;
+      return new Set([...current, ...visibleIds]);
     });
-  }, [scopeProjectId]);
+  }, [scopeProjectId, viewports]);
 
   // Each guest is a full renderer process, so don't keep every visited
   // project's guests alive forever: track when a project leaves scope and
   // deactivate it (unmounting its guests) once it has idled long enough.
   const idleSinceRef = useRef(new Map<string, number>());
   useEffect(() => {
-    if (!scopeProjectId) return;
-    const idleSince = idleSinceRef.current;
-    idleSince.delete(scopeProjectId);
-    return () => {
-      idleSince.set(scopeProjectId, Date.now());
-    };
-  }, [scopeProjectId]);
+    for (const projectId of activatedProjects) {
+      if (projectId === scopeProjectId || viewports[projectId])
+        idleSinceRef.current.delete(projectId);
+      else if (!idleSinceRef.current.has(projectId))
+        idleSinceRef.current.set(projectId, Date.now());
+    }
+  }, [scopeProjectId, viewports, activatedProjects]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       setActivatedProjects((current) => {
@@ -347,11 +366,20 @@ export function PreviewBrowserLayer() {
 
   const guests: React.ReactNode[] = [];
   for (const [projectId, slice] of Object.entries(byProject)) {
-    if (!activatedProjects.has(projectId)) continue;
+    // The scoped Session counts as activated before the effect records it, so
+    // a handed-over guest never unmounts for a render.
+    if (
+      !activatedProjects.has(projectId) &&
+      projectId !== scopeProjectId &&
+      !viewports[projectId]
+    )
+      continue;
     for (const tab of slice.tabs) {
       if (tab.type !== 'browser' || !tab.url) continue;
       const visible =
-        projectId === scopeProjectId &&
+        Boolean(
+          viewports[projectId] || (projectId === scopeProjectId && viewport)
+        ) &&
         slice.open &&
         slice.activeTabId === tab.id;
       guests.push(
@@ -360,7 +388,10 @@ export function PreviewBrowserLayer() {
           projectId={projectId}
           tab={tab}
           visible={visible}
-          viewport={viewport}
+          viewport={
+            viewports[projectId] ??
+            (projectId === scopeProjectId ? viewport : null)
+          }
         />
       );
     }

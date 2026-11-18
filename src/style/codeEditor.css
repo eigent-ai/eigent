@@ -22,6 +22,13 @@
   font-family: var(--code-font-family, monospace);
 }
 
+/* Monaco 0.52 groups its focus-outline selectors so every `.monaco-editor`
+ * root keeps a 1px focus-coloured outline, visible through transparent
+ * gutters. Inner focus indicators are unaffected. */
+.code-editor-surface .monaco-editor {
+  outline: none;
+}
+
 /* File previews use one continuous editor surface. Keep this local so review
  * diffs retain the contrasting gutter that anchors line-level changes. */
 .file-source-surface .monaco-editor .margin {

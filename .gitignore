@@ -49,6 +49,9 @@ client_secret_*.json
 .cursor
 .agents/
 
+# Local session plans and verification artifacts
+/docs/plans/
+
 # Public directory (large media files)
 public/
 

@@ -15,3 +15,7 @@
 /** Session / tab name tooltips: narrower so they sit beside the row without covering it. */
 export const SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS =
   'max-w-[160px] break-words whitespace-normal';
+
+/** A destructive menu row: error ink for the label and icon in every state. */
+export const DESTRUCTIVE_MENU_ITEM_CLASS =
+  'gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default';

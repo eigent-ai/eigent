@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { formatAppDate } from '@/lib/appDate';
 import {
   completeProjectViewResync,
   importLegacyChatSteps,
@@ -146,7 +148,9 @@ export default function RemoteControlPage() {
         defaultValue: 'History resync required',
       });
     const syncedAt = projectView.lastSyncedAt
-      ? new Date(projectView.lastSyncedAt).toLocaleTimeString(
+      ? formatAppDate(
+          new Date(projectView.lastSyncedAt),
+          { timeStyle: 'medium' },
           i18n.resolvedLanguage || i18n.language
         )
       : t('layout.remote-control-not-synced', {
@@ -696,7 +700,7 @@ export default function RemoteControlPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default text-ds-ink-default-default">
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <DsIcon icon={Loader2} className="animate-spin" />
       </div>
     );
   }
@@ -780,7 +784,7 @@ export default function RemoteControlPage() {
                 )
               }
             >
-              <SkipForward className="h-4 w-4" />
+              <DsIcon icon={SkipForward} />
               {t('layout.remote-control-stop-task', {
                 defaultValue: 'Stop task',
               })}
@@ -801,7 +805,7 @@ export default function RemoteControlPage() {
                 )
               }
             >
-              <Ban className="h-4 w-4" />
+              <DsIcon icon={Ban} />
               {t('layout.remote-control-force-stop', {
                 defaultValue: 'Force stop',
               })}
@@ -812,7 +816,7 @@ export default function RemoteControlPage() {
               disabled={!!controlLoading || session.status !== 'active'}
               onClick={extendSession}
             >
-              <Clock3 className="h-4 w-4" />
+              <DsIcon icon={Clock3} />
               {t('layout.remote-control-extend-link', {
                 defaultValue: 'Extend link',
               })}
@@ -823,7 +827,7 @@ export default function RemoteControlPage() {
               disabled={!!controlLoading || session.status !== 'active'}
               onClick={revokeSession}
             >
-              <ShieldX className="h-4 w-4" />
+              <DsIcon icon={ShieldX} />
               {t('layout.remote-control-revoke-link', {
                 defaultValue: 'Revoke link',
               })}
@@ -878,7 +882,7 @@ export default function RemoteControlPage() {
                 size="sm"
                 onClick={() => submit(lastCommand.content)}
               >
-                <RefreshCw className="h-4 w-4" />
+                <DsIcon icon={RefreshCw} />
                 {t('layout.remote-control-resend', {
                   defaultValue: 'Resend',
                 })}
@@ -923,9 +927,9 @@ export default function RemoteControlPage() {
             aria-label={t('layout.send', { defaultValue: 'Send' })}
           >
             {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <DsIcon icon={Loader2} className="animate-spin" />
             ) : (
-              <SendHorizontal className="h-4 w-4" />
+              <DsIcon icon={SendHorizontal} />
             )}
           </Button>
         </form>

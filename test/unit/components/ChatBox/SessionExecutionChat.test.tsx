@@ -14,7 +14,9 @@
 
 import { useSessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
 import { SessionExecutionChat } from '@/components/ChatBox/SessionExecutionChat';
+import { resetSessionDrafts } from '@/store/sessionDraftStore';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -63,7 +65,10 @@ vi.mock('@/service/sessionMessage', () => ({
   sessionMessageConfiguration: () => ({}),
 }));
 vi.mock('@/service/executionApi', () => ({
-  assertExecutionScope: () => undefined,
+  assertExecutionScope: (scope: { signal?: AbortSignal }) => {
+    if (scope.signal?.aborted)
+      throw new DOMException('Session owner left', 'AbortError');
+  },
   createSessionMessageIntent: (scope: any, content: string, kind: string) => ({
     scope,
     content,
@@ -139,6 +144,7 @@ function type(text: string) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSessionDrafts();
   mocks.state = {
     route: { entry_enabled: true, eligible: true, has_requests: true },
     managed: true,
@@ -190,6 +196,64 @@ describe('managed Session composer and fixed artifact preview', () => {
       expect(mocks.hydrate).toHaveBeenCalled();
     }
   );
+  it('keeps each Session draft when switching Sessions remounts the composer', () => {
+    const view = render(<SessionExecutionChat key="a" projectId="session-a" />);
+    type('Unsent Session A draft');
+    const sessionAComposer = input();
+
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    expect(sessionAComposer).not.toBeInTheDocument();
+    expect(input()).toHaveTextContent('');
+    type('Unsent Session B draft');
+
+    view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
+    expect(input()).toHaveTextContent(/^Unsent Session A draft$/);
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    expect(input()).toHaveTextContent(/^Unsent Session B draft$/);
+  });
+  // Leaving a Session aborts its composer's request, as the real service does,
+  // so a send never settles successfully after the switch.
+  const rejectWhenSessionLeft = (deliveryStarted: boolean) =>
+    mocks.submit.mockImplementationOnce(
+      (intent: {
+        scope: { signal: AbortSignal };
+        deliveryAttempted: boolean;
+      }) =>
+        new Promise<void>((_, reject) => {
+          intent.deliveryAttempted = deliveryStarted;
+          intent.scope.signal.addEventListener('abort', () =>
+            reject(new DOMException('Session owner left', 'AbortError'))
+          );
+        })
+    );
+  it('does not offer a message again when its Session was left during delivery', async () => {
+    rejectWhenSessionLeft(true);
+    const view = render(<SessionExecutionChat key="a" projectId="session-a" />);
+    type('Sent from Session A');
+    fireEvent.keyDown(input(), { key: 'Enter', code: 'Enter' });
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1));
+
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    await act(async () => {});
+    type('Unsent Session B draft');
+
+    view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
+    expect(input()).toHaveTextContent('');
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    expect(input()).toHaveTextContent(/^Unsent Session B draft$/);
+  });
+  it('keeps the draft when leaving its Session stopped the send before delivery', async () => {
+    rejectWhenSessionLeft(false);
+    const view = render(<SessionExecutionChat key="a" projectId="session-a" />);
+    type('Not delivered from Session A');
+    fireEvent.keyDown(input(), { key: 'Enter', code: 'Enter' });
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1));
+
+    view.rerender(<SessionExecutionChat key="b" projectId="session-b" />);
+    await act(async () => {});
+    view.rerender(<SessionExecutionChat key="a" projectId="session-a" />);
+    expect(input()).toHaveTextContent(/^Not delivered from Session A$/);
+  });
   it('observes cancellation instead of removing the active task optimistically', async () => {
     mocks.state.requests = [
       {

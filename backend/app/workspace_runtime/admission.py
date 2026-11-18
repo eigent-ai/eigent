@@ -552,7 +552,8 @@ class AdmissionStore:
                 JOIN run_workspace_finalizations f ON f.run_id=l.run_id
                     AND f.owner_attempt_id=l.attempt_id AND f.generation=b.generation
                     AND f.state!='settled'
-                WHERE l.project_id=? AND r.status NOT IN ('completed','failed','cancelled')""",
+                WHERE l.project_id=?
+                  AND r.status NOT IN ('completed','failed','cancelled','timed_out')""",
                 (project_id,),
             ).fetchone()
             if target is not None:

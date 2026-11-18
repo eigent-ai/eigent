@@ -13,8 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
+import type { EditUserMessageSource } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import type {
   ProjectedArtifact,
   ProjectedArtifactManifest,
@@ -31,7 +34,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import type { ResolvedRunModel } from './ModelChangeDivider';
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
   return ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
@@ -42,7 +45,7 @@ export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
 export function isTerminalRunStatus(
   status: TimelineRunView['status']
 ): boolean {
-  return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
+  return isStoppedRunStatus(status);
 }
 
 /** A submitted query and a pending receipt are still startup state. */
@@ -115,32 +118,13 @@ export function StatusInline({
         className
       )}
     >
-      <Icon aria-hidden className={cn('size-3', animated && 'animate-spin')} />
+      <DsIcon
+        icon={Icon}
+        recipe="main-compact"
+        className={cn(animated && 'animate-spin')}
+      />
       {hideLabel ? null : <span>{statusLabel(status)}</span>}
     </span>
-  );
-}
-
-/**
- * Ephemeral tail marker for a progressing Run during quiet model/tool spans.
- * It is derived from projection state and never appended to durable history.
- */
-export function RunActivityIndicator() {
-  const { t } = useTranslation();
-
-  return (
-    <div
-      className="flex min-h-6 w-full items-center gap-2 text-ds-text-meta font-normal text-ds-ink-muted-default"
-      data-run-activity-indicator
-      role="status"
-      aria-live="polite"
-    >
-      <Loader2
-        aria-hidden
-        className="size-3.5 text-ds-icon-information-default-default motion-safe:animate-spin"
-      />
-      <span>{t('chat.run-working-indicator')}</span>
-    </div>
   );
 }
 
@@ -181,6 +165,16 @@ function usePausedOffsetMs(paused: boolean, now: number): number {
 export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
   const active = isActiveRunStatus(run.status) && !paused;
   const [now, setNow] = useState(() => Date.now());
+  const elapsedAnchor = run.timestamps.elapsedAnchor;
+  // While the Run waits for the user, its anchor holds the time worked before
+  // the wait: the measured total plus the wall time after it. A pause the user
+  // took before the wait comes off that wall time exactly as while running, so
+  // the value does not move when the wait starts or ends. A pause during the
+  // wait adds nothing.
+  const heldForUser =
+    run.status === 'waiting_for_user' &&
+    elapsedAnchor !== null &&
+    safeTimestamp(elapsedAnchor.anchoredAt) === null;
 
   useEffect(() => {
     if (!active) return;
@@ -189,10 +183,21 @@ export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
     return () => window.clearInterval(timer);
   }, [active]);
 
-  const pausedOffsetMs = usePausedOffsetMs(paused, now);
+  const pausedOffsetMs = usePausedOffsetMs(
+    paused && isActiveRunStatus(run.status) && !heldForUser,
+    now
+  );
 
-  if (run.timestamps.durationMs !== null) return run.timestamps.durationMs;
-  const elapsedAnchor = run.timestamps.elapsedAnchor;
+  if (run.timestamps.durationMs !== null) {
+    return Math.max(0, run.timestamps.durationMs - pausedOffsetMs);
+  }
+  if (heldForUser) {
+    return Math.max(
+      0,
+      elapsedAnchor.accumulatedMs +
+        Math.max(0, (elapsedAnchor.heldDeltaMs ?? 0) - pausedOffsetMs)
+    );
+  }
   if (elapsedAnchor) {
     const anchoredAt = safeTimestamp(elapsedAnchor.anchoredAt);
     const liveDelta =
@@ -266,6 +271,9 @@ export interface InteractiveTimelinePlan {
 
 export interface TimelineModeProps {
   runs: readonly TimelineRunView[];
+  /** Resolved from each Run's immutable attempt, never from composer state. */
+  resolvedModelsByRun?: Readonly<Record<string, ResolvedRunModel | null>>;
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   artifactManifestsByRun?: Readonly<Record<string, ProjectedArtifactManifest>>;
   projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
   /**

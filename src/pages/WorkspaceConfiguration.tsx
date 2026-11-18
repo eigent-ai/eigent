@@ -29,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -152,7 +153,7 @@ function RemoveButton({
       aria-label={label}
       onClick={onClick}
     >
-      <Trash2 className="h-4 w-4" aria-hidden />
+      <DsIcon icon={Trash2} aria-hidden />
     </Button>
   );
 }
@@ -180,7 +181,7 @@ function AddSectionButton({
       textWeight="semibold"
       onClick={onClick}
     >
-      <Plus className="h-4 w-4" aria-hidden />
+      <DsIcon icon={Plus} aria-hidden />
       {resolvedLabel}
     </Button>
   );
@@ -211,7 +212,7 @@ function CollectionActions({
           })}
           disabled={count === 0}
         >
-          <MoreHorizontal className="h-4 w-4" aria-hidden />
+          <DsIcon icon={MoreHorizontal} aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -219,7 +220,7 @@ function CollectionActions({
           className="!text-ds-text-status-error-strong-default focus:!text-ds-text-status-error-strong-default [&>svg]:!text-current"
           onSelect={onDeleteAll}
         >
-          <Trash2 className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Trash2} aria-hidden />
           {t('layout.workspace-configuration-delete-all', {
             defaultValue: 'Delete all',
           })}
@@ -1215,7 +1216,7 @@ export function WorkspaceConfigurationEditor({
                       onClick={() => setSaveDialogOpen(true)}
                       disabled={!draft?.persisted || saveState !== 'saved'}
                     >
-                      <ShareIcon className="h-4 w-4" aria-hidden />
+                      <DsIcon icon={ShareIcon} aria-hidden />
                     </Button>
                   </div>
                 </SettingRow>
@@ -1620,7 +1621,7 @@ export function WorkspaceConfigurationEditor({
               {environmentVariables.map((variable, index) => (
                 <WorkspaceResourceListItem
                   key={`${variable.name}-${index}`}
-                  leading={<KeyRound className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={KeyRound} aria-hidden />}
                   title={
                     variable.name ||
                     t('layout.workspace-configuration-variable-name', {
@@ -1718,7 +1719,7 @@ export function WorkspaceConfigurationEditor({
               {instructions.map(([role, ref]) => (
                 <WorkspaceResourceListItem
                   key={role}
-                  leading={<FileText className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={FileText} aria-hidden />}
                   title={humanizeIdentifier(role)}
                   subtitle={ref}
                   meta={t('layout.instruction', {
@@ -1788,7 +1789,7 @@ export function WorkspaceConfigurationEditor({
               {document.spec.context.map((item, index) => (
                 <WorkspaceResourceListItem
                   key={`${item.id}-${index}`}
-                  leading={<FileText className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={FileText} aria-hidden />}
                   title={humanizeIdentifier(item.id)}
                   subtitle={t(
                     'layout.workspace-configuration-context-item-summary',
@@ -1866,7 +1867,7 @@ export function WorkspaceConfigurationEditor({
               {document.spec.agents.map((item, index) => (
                 <WorkspaceResourceListItem
                   key={`${item.id}-${index}`}
-                  leading={<Bot className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={Bot} aria-hidden />}
                   title={humanizeIdentifier(item.id)}
                   subtitle={t(
                     'layout.workspace-configuration-agent-model-summary',
@@ -1949,7 +1950,7 @@ export function WorkspaceConfigurationEditor({
               {document.spec.skills.map((item, index) => (
                 <WorkspaceResourceListItem
                   key={`${item.ref}-${index}`}
-                  leading={<Package className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={Package} aria-hidden />}
                   title={
                     discovery.skills.items.find(
                       (candidate) => candidate.value === item.ref
@@ -2043,7 +2044,7 @@ export function WorkspaceConfigurationEditor({
               {document.spec.connectors.map((item, index) => (
                 <WorkspaceResourceListItem
                   key={`${item.id}-${index}`}
-                  leading={<Cable className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={Cable} aria-hidden />}
                   title={humanizeIdentifier(item.connector)}
                   subtitle={t(
                     'layout.workspace-configuration-connector-summary',
@@ -2116,7 +2117,7 @@ export function WorkspaceConfigurationEditor({
               {document.spec.mcpServers.map((item, index) => (
                 <WorkspaceResourceListItem
                   key={`${item.id}-${index}`}
-                  leading={<Server className="h-4 w-4" aria-hidden />}
+                  leading={<DsIcon icon={Server} aria-hidden />}
                   title={humanizeIdentifier(item.id)}
                   subtitle={t(
                     'layout.workspace-configuration-resource-assignment-summary',

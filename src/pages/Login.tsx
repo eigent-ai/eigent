@@ -232,7 +232,9 @@ export default function Login() {
       setGeneralError('');
       setIsLoading(true);
       setModelType('cloud');
-      setAuth({ email: '', token, username: '', user_id: 0 });
+      // Leave the user id to the token: a placeholder id would load Spaces
+      // for an account that doesn't exist and create a blank one.
+      setAuth({ email: '', token, username: '', user_id: null });
       setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
       try {
         const userInfo = await proxyFetchGet('/api/v1/user');
@@ -247,7 +249,7 @@ export default function Login() {
               userInfo.email?.split('@')[0] ||
               '',
             user_id:
-              userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
+              userInfo.id || JSON.parse(atob(token.split('.')[1])).id || null,
           });
         }
         navigate(redirectTo, { replace: true });

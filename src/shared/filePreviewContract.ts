@@ -57,8 +57,12 @@ export interface CsvFilePreview {
   totalBytes: number | null;
 }
 
-export interface TruncatedTextFilePreview {
-  kind: 'truncated-text';
+export type TextPreviewCompleteness = 'complete' | 'truncated' | 'unknown';
+
+export interface TextFilePreview {
+  kind: 'text';
+  // The bounded read policy does not imply that any content was omitted.
+  completeness: TextPreviewCompleteness;
   bytesRead: number;
   totalBytes: number | null;
 }
@@ -76,10 +80,7 @@ export interface BlockedFilePreview {
 }
 
 export type FilePreviewPayload =
-  | CsvFilePreview
-  | TruncatedTextFilePreview
-  | RangePdfFilePreview
-  | BlockedFilePreview;
+  CsvFilePreview | TextFilePreview | RangePdfFilePreview | BlockedFilePreview;
 
 export interface FilePreviewDecision {
   mode: FilePreviewMode;

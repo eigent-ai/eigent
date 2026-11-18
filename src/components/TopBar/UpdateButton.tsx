@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   installDesktopUpdate,
@@ -114,9 +115,9 @@ export default function UpdateButton() {
         aria-label={label}
       >
         {failed ? (
-          <RefreshCw className="h-4 w-4" aria-hidden />
+          <DsIcon icon={RefreshCw} aria-hidden />
         ) : (
-          <Download className="h-4 w-4" aria-hidden />
+          <DsIcon icon={Download} aria-hidden />
         )}
         {failed
           ? t('layout.retry', { defaultValue: 'Retry' })

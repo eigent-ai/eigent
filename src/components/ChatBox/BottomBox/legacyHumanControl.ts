@@ -12,11 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  approvalTargets,
+  type ApprovalTargetKind,
+} from '@/lib/approvalPresentation';
 import type { HumanInteractionPayload } from '@/service/humanInteractionApi';
 import type {
   BottomBoxApprovalOption,
   BottomBoxApprovalScope,
   BottomBoxApprovalVariant,
+  BottomBoxConfirmationVariant,
+  BottomBoxContextItem,
+  BottomBoxHeaderDetail,
 } from './types';
 
 /** Minimal shape of the i18next `t` returned by `useTranslation`. */
@@ -51,6 +58,79 @@ export function approvalScopeDescriptions(
   };
 }
 
+const targetContextKind: Record<
+  ApprovalTargetKind,
+  NonNullable<BottomBoxContextItem['kind']>
+> = {
+  path: 'file',
+  url: 'external-context',
+  command: 'command',
+};
+
+/**
+ * Context shown with a human control. The event-native controller and this
+ * legacy bridge share it, so the same request names the same target whether
+ * it arrived live or was restored from the journal.
+ */
+export function humanControlContextItems(source: {
+  agent?: string | null;
+  operation?: string | null;
+  targetResources?: readonly string[] | null;
+  displayArguments?: Record<string, unknown> | null;
+}): BottomBoxContextItem[] {
+  // The target leads: it is what tells two requests from the same tool apart.
+  const items: BottomBoxContextItem[] = approvalTargets(source).map(
+    (target, index) => ({
+      id: `target:${index}:${target.value}`,
+      label: target.value,
+      description: target.value,
+      kind: targetContextKind[target.kind],
+    })
+  );
+  if (source.agent) {
+    items.push({
+      id: `agent:${source.agent}`,
+      label: source.agent,
+      kind: 'agent',
+    });
+  }
+  if (source.operation) {
+    items.push({
+      id: `operation:${source.operation}`,
+      label: source.operation,
+      kind: 'operation',
+    });
+  }
+  return items;
+}
+
+const MAX_DISPLAY_ARGUMENT_CHARACTERS = 16_000;
+
+/** The collapsed Review details section for redacted tool arguments. */
+export function displayArgumentsDetails(
+  displayArguments: Record<string, unknown> | null | undefined,
+  t: HumanControlTranslate
+): BottomBoxHeaderDetail[] | undefined {
+  if (!displayArguments || Object.keys(displayArguments).length === 0)
+    return undefined;
+  let content: string;
+  try {
+    content = JSON.stringify(displayArguments, null, 2);
+  } catch {
+    content = t('chat.control-arguments-unavailable');
+  }
+  if (content.length > MAX_DISPLAY_ARGUMENT_CHARACTERS) {
+    content = `${content.slice(0, MAX_DISPLAY_ARGUMENT_CHARACTERS)}\n… truncated`;
+  }
+  return [
+    {
+      id: 'display-arguments',
+      label: t('chat.control-review-arguments'),
+      content,
+    },
+  ];
+}
+
 function approvalOptions(
   interaction: HumanInteractionPayload,
   t: HumanControlTranslate
@@ -77,21 +157,70 @@ export function createLegacyApprovalVariant(input: {
   onApprove: (scope: BottomBoxApprovalScope) => void;
   onReject: () => void;
 }): BottomBoxApprovalVariant | null {
-  if (input.interaction?.interaction_type !== 'approval') return null;
+  const { interaction } = input;
+  if (interaction?.interaction_type !== 'approval') return null;
 
+  // Same header as the event-native controller builds for this request.
   return {
     kind: 'approval',
     header: {
       eyebrow: input.t('chat.control-input-required'),
       title:
-        input.interaction.question ||
+        interaction.question ||
         input.fallbackQuestion ||
-        input.interaction.title ||
+        interaction.title ||
         input.t('chat.control-approval-required'),
+      contextItems: humanControlContextItems({
+        agent: interaction.agent,
+        operation: interaction.operation,
+        targetResources: interaction.target_resources,
+        displayArguments: interaction.display_arguments,
+      }),
+      details: displayArgumentsDetails(interaction.display_arguments, input.t),
     },
     submitting: input.submitting,
-    options: approvalOptions(input.interaction, input.t),
+    options: approvalOptions(interaction, input.t),
     onApprove: input.onApprove,
+    onReject: input.onReject,
+  };
+}
+
+/**
+ * Requests answered with Confirm or Reject, such as a Memory change review.
+ * A text reply cannot satisfy their decision, so they never use the question
+ * composer.
+ */
+export function isLegacyConfirmationInteraction(
+  interaction?: HumanInteractionPayload
+): boolean {
+  return (
+    interaction?.interaction_type === 'memory_change_review' ||
+    interaction?.interaction_type === 'confirmation'
+  );
+}
+
+export function createLegacyConfirmationVariant(input: {
+  interaction?: HumanInteractionPayload;
+  fallbackQuestion?: string;
+  submitting?: boolean;
+  t: HumanControlTranslate;
+  onConfirm: () => void;
+  onReject: () => void;
+}): BottomBoxConfirmationVariant | null {
+  const { interaction } = input;
+  if (!interaction || !isLegacyConfirmationInteraction(interaction))
+    return null;
+
+  return {
+    kind: 'confirmation',
+    header: {
+      eyebrow: input.t('chat.control-input-required'),
+      title: interaction.title || input.t('chat.control-input-required'),
+      description: interaction.question || input.fallbackQuestion,
+      details: displayArgumentsDetails(interaction.display_arguments, input.t),
+    },
+    submitting: input.submitting,
+    onConfirm: input.onConfirm,
     onReject: input.onReject,
   };
 }

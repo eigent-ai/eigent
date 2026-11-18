@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
-import datetime
 import logging
 import platform
 from functools import partial
@@ -58,6 +57,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.agent.utils import agent_current_time
 from app.hands.interface import IHands
 from app.memory import (
     build_durable_context_projection_for_task_lock,
@@ -66,11 +66,17 @@ from app.memory import (
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
 from app.run_journal.context_projection import (
+    ResumeContextError,
     build_project_execution_context_projection,
+    is_explicit_resume_attempt,
     persist_context_projection_diagnostic,
 )
 from app.run_journal.runtime import get_default_run_journal
-from app.run_runtime.admission import activate_improve_admission
+from app.run_runtime.admission import (
+    abort_pending_warm_admission,
+    activate_improve_admission,
+    skip_targets_current_turn,
+)
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -485,8 +491,12 @@ def _build_question_context(
     project_context: str | None,
     *,
     header: str = "=== Previous Conversation ===",
+    recovery_context: str | None = None,
 ) -> str:
     """Return the best available context for routing and direct answers.
+
+    Explicit Resume uses the validated canonical projection shared by all
+    initial Workforce calls. For ordinary questions, preserve legacy routing.
 
     A Project TaskLock is process-local, so its conversation history is empty
     after an app/backend restart even though the Renderer can rebuild prior
@@ -494,6 +504,11 @@ def _build_question_context(
     projection sent with the request instead of classifying an anaphoric
     prompt (for example, "optimize its lighting") in isolation.
     """
+
+    if recovery_context is None:
+        recovery_context = _build_workforce_resume_context(task_lock)
+    if recovery_context is not None:
+        return recovery_context
 
     in_process = build_conversation_context(task_lock, header=header)
     if getattr(task_lock, "conversation_history", None):
@@ -515,9 +530,12 @@ async def _answer_simple_question(
     *,
     question: str,
     context: str,
+    reset_conversation: bool = False,
 ) -> str:
     """Generate one direct answer and fully consume streaming responses."""
 
+    if reset_conversation:
+        agent.reset()
     prompt = (
         f"{context}"
         f"User Query: {question}\n\n"
@@ -532,7 +550,7 @@ async def _answer_simple_question(
 
 def build_context_for_workforce(
     task_lock: TaskLock,
-    options: Chat,
+    options: Chat | None = None,
     task_content: str | None = None,
 ) -> str:
     """Build context information for workforce.
@@ -554,9 +572,12 @@ def build_context_for_workforce(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
+                current_attempt_id=getattr(run_context, "attempt_id", None),
             )
             canonical_execution = execution_projection.text
             execution_event_ids = execution_projection.source_event_ids
+        except ResumeContextError:
+            raise
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",
@@ -599,6 +620,23 @@ def build_context_for_workforce(
         projected = "\n\n".join(durable_parts) + "\n\n"
         return record_projection(projected)
     return record_projection(in_process)
+
+
+def _build_workforce_resume_context(task_lock: TaskLock) -> str | None:
+    """Validate recovery before any inference; fresh routing stays unchanged.
+
+    The caller holds this projection for one admitted action and passes the
+    same text to routing, direct answering, and coordinator decomposition.
+    Never cache it on the reusable TaskLock across Attempts or Runs.
+    """
+    context = getattr(task_lock, "run_context", None)
+    if not is_explicit_resume_attempt(
+        get_default_run_journal(),
+        attempt_id=getattr(context, "attempt_id", None),
+        run_id=getattr(context, "run_id", None),
+    ):
+        return None
+    return build_context_for_workforce(task_lock)
 
 
 @sync_step
@@ -647,6 +685,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Other variables
     camel_task = None
     workforce = None
+    workforce_options = options
     mcp = None
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
@@ -751,7 +790,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # tracer = VizTracer()
                 # tracer.start()
-                if start_event_loop is True:
+                # Resolve once before routing (or the attachments shortcut).
+                # Resume uses the controller's queued recovery instruction;
+                # its original objective is already in canonical context.
+                recovery_context = _build_workforce_resume_context(task_lock)
+                if start_event_loop is True and recovery_context is None:
                     question = options.question
                     attaches_to_use = options.attaches
                     project_context = options.project_context
@@ -760,7 +803,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         " from options.question: "
                         f"'{question[:100]}...'"
                     )
-                    start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data.question
@@ -778,6 +820,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "ActionImproveData: "
                         f"'{question[:100]}...'"
                     )
+
+                # Warm streams keep the initial Chat; factories need the
+                # admitted task identity to use its immutable clock snapshot.
+                workforce_options = options.model_copy(
+                    update={
+                        "task_id": getattr(item, "new_task_id", None)
+                        or options.task_id
+                    }
+                )
+                start_event_loop = False
 
                 is_exceeded, total_length = check_conversation_history_length(
                     task_lock
@@ -834,6 +886,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         question,
                         task_lock,
                         project_context=project_context,
+                        recovery_context=recovery_context,
                     )
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
@@ -850,6 +903,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     conv_ctx = _build_question_context(
                         task_lock,
                         project_context,
+                        recovery_context=recovery_context,
                     )
 
                     try:
@@ -857,6 +911,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             question_agent,
                             question=question,
                             context=conv_ctx,
+                            reset_conversation=recovery_context is not None,
                         )
 
                         record_agent_memory_snapshot(
@@ -947,8 +1002,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     yield sse_json("confirmed", {"question": question})
 
-                    context_for_coordinator = build_context_for_workforce(
-                        task_lock, options
+                    context_for_coordinator = (
+                        recovery_context
+                        if recovery_context is not None
+                        else build_context_for_workforce(task_lock, options)
                     )
 
                     # Check if workforce exists - reuse
@@ -964,13 +1021,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
                         (workforce, mcp) = await construct_workforce(
-                            options, hands=hands
+                            workforce_options, hands=hands
                         )
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
                                 await new_agent_model(
-                                    new_agent, options, hands=hands
+                                    new_agent, workforce_options, hands=hands
                                 ),
                             )
                     task_lock.status = Status.confirmed
@@ -1233,12 +1290,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
-                if (
-                    item.expected_task_id
-                    and item.expected_task_id != task_lock.current_task_id
-                ):
+                if not skip_targets_current_turn(task_lock, item):
                     logger.info(
                         "Ignoring stop for a task that is no longer current"
+                    )
+                    continue
+                if await abort_pending_warm_admission(task_lock):
+                    yield sse_json(
+                        "end",
+                        "<summary>Task stopped</summary>Task stopped by user",
                     )
                     continue
                 logger.info("=" * 80)
@@ -1919,7 +1979,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                     workforce.add_single_agent_worker(
                         format_agent_description(item),
-                        await new_agent_model(item, options, hands=hands),
+                        await new_agent_model(
+                            item, workforce_options, hands=hands
+                        ),
                     )
                     workforce.resume()
             elif item.action == Action.timeout:
@@ -2124,6 +2186,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     Action.budget_not_enough, {"message": "budget not enouth"}
                 )
             elif item.action == Action.stop:
+                if await abort_pending_warm_admission(task_lock):
+                    await delete_task_lock(task_lock.id)
+                    break
                 logger.info("=" * 80)
                 logger.info(
                     "[LIFECYCLE] STOP action received"
@@ -2213,6 +2278,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     and workforce._running
                 ):
                     workforce.stop()
+        except ResumeContextError as e:
+            logger.error(
+                f"Resume context rejected for task {options.task_id}: {e}",
+                exc_info=True,
+            )
+            yield sse_json("error", {"message": str(e), "reason": e.reason})
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="failed",
+                error=str(e),
+            )
         except Exception as e:
             logger.error(
                 "Unhandled exception for task "
@@ -2324,16 +2400,27 @@ async def question_confirm(
     task_lock: TaskLock | None = None,
     *,
     project_context: str | None = None,
+    recovery_context: str | None = None,
 ) -> bool:
     """Simple question confirmation - returns True
     for complex tasks, False for simple questions."""
 
     context_prompt = ""
     if task_lock:
+        if recovery_context is None:
+            recovery_context = _build_workforce_resume_context(task_lock)
         context_prompt = _build_question_context(
             task_lock,
             project_context,
+            recovery_context=recovery_context,
         )
+
+    if recovery_context is not None:
+        # A warm routing agent may retain the prior Attempt. The next direct
+        # answer also resets before receiving this projection, exactly once.
+        reset = getattr(agent, "reset", None)
+        if callable(reset):
+            reset()
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
@@ -2728,7 +2815,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 {remote_sub_agent_planning_notice}
@@ -2742,7 +2829,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 {remote_sub_agent_planning_notice}
@@ -2790,7 +2877,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
         """
@@ -3005,7 +3092,7 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """

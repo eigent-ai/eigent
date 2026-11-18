@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
 
-import type { ProjectViewState } from '@/lib/projector';
+import type {
+  ProjectedRun,
+  ProjectedWriterWait,
+  ProjectViewState,
+} from '@/lib/projector';
 import { useCallback, useSyncExternalStore } from 'react';
 import { runProjectionStore } from './projectionStore';
 
@@ -33,4 +37,30 @@ export function useRunProjectionSelector<T>(
     [projectId, selector]
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Why a Run is still queued for its Space writer, or null once it is not. */
+export function useRunWriterWait(
+  projectId: string | null,
+  runId: string | null | undefined
+): ProjectedWriterWait | null {
+  const select = useCallback(
+    (state: ProjectViewState | null) =>
+      (runId && state?.runs[runId]?.writerWait) || null,
+    [runId]
+  );
+  return useRunProjectionSelector(projectId, select);
+}
+
+/** The canonical status of a Run, or null before it is projected. */
+export function useProjectedRunStatus(
+  projectId: string | null,
+  runId: string | null | undefined
+): ProjectedRun['status'] | null {
+  const select = useCallback(
+    (state: ProjectViewState | null) =>
+      (runId && state?.runs[runId]?.status) || null,
+    [runId]
+  );
+  return useRunProjectionSelector(projectId, select);
 }

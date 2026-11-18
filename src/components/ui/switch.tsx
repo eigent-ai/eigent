@@ -20,7 +20,7 @@ import { DS_FOCUS_RING } from './semanticProps';
 import { mergeAliasStyles, switchTokenAliases } from './tokenAliases';
 
 export type SwitchSize = 'default' | 'sm';
-export type SwitchVariant = 'default' | 'outline';
+export type SwitchVariant = 'default' | 'solid' | 'outline';
 
 type SwitchProps = React.ComponentPropsWithoutRef<
   typeof SwitchPrimitives.Root
@@ -43,6 +43,11 @@ const sizeClasses = {
 const variantClasses: Record<SwitchVariant, { root: string; thumb: string }> = {
   default: {
     root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-subtle-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+  },
+  solid: {
+    root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default',
     thumb:
       'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },
@@ -76,7 +81,7 @@ const Switch = React.forwardRef<
     >
       <SwitchPrimitives.Thumb
         className={cn(
-          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0',
+          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0 motion-reduce:transition-none',
           sizeClasses[size].thumb,
           variantClasses[variant].thumb
         )}

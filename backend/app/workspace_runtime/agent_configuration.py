@@ -162,6 +162,7 @@ class FrozenAgentConfiguration:
         ):
             raise AgentConfigurationUnavailable("model_constructor_invalid")
         from app.model.effort import resolve_model_effort_config
+        from app.model.model_platform import is_eigent_cloud_model_endpoint
 
         try:
             effort = provider_capability.resolve(thinking_effort)
@@ -174,14 +175,21 @@ class FrozenAgentConfiguration:
                 pinned_value=effort.provider_value,
                 pinned_capability=provider_capability,
                 has_function_tools=True,
+                is_cloud=is_eigent_cloud_model_endpoint(api_url),
             )
         except (ValueError, RuntimeError) as error:
             raise AgentConfigurationUnavailable(
                 "model_effort_unsupported"
             ) from error
-        if "reasoning_effort" in parameters and (
-            effort.provider_parameter_name != "reasoning_effort"
-            or parameters["reasoning_effort"] != effort.provider_value
+        # Without registered efforts nothing is admitted, and the check above
+        # accepted the provider's own effort to be sent as written.
+        if (
+            "reasoning_effort" in parameters
+            and provider_capability.supported_efforts
+            and (
+                effort.provider_parameter_name != "reasoning_effort"
+                or parameters["reasoning_effort"] != effort.provider_value
+            )
         ):
             raise AgentConfigurationUnavailable("model_effort_conflict")
         for value in (

@@ -297,7 +297,9 @@ class BoundRuntime:
         self.cancelled = asyncio.Event()
         self._lock = asyncio.Lock()
         self._mutation_lock = asyncio.Lock()
-        self._stop_lock = asyncio.Lock()
+        # Stop is runtime-owned: callers only join its shielded active attempt.
+        self._stop_task_lock = asyncio.Lock()
+        self._stop_task: asyncio.Task[VerifiedSettlement] | None = None
         self._sealed = False
         self._unknown_writer = False
         self._proof: VerifiedSettlement | None = None
@@ -431,13 +433,16 @@ class BoundRuntime:
                     os.close(descriptor)
                 os.close(parent)
 
+    @staticmethod
+    def _observe_completion(task: asyncio.Task[Any]) -> None:
+        if not task.cancelled():
+            task.exception()
+
     def _track(self, task: asyncio.Task[Any]) -> asyncio.Task[Any]:
         self._tasks.add(task)
         # Observe abandoned handler exceptions without dropping the owned task.
         # A caller cancelling its wait must not cancel or orphan its writer.
-        task.add_done_callback(
-            lambda done: None if done.cancelled() else done.exception()
-        )
+        task.add_done_callback(self._observe_completion)
         return task
 
     async def run(
@@ -587,74 +592,107 @@ class BoundRuntime:
             raise UnsettledWriters(
                 "a writer cannot certify its own completion"
             )
-        async with self._stop_lock:
-            self._sealed = True
-            self.cancelled.set()
-            for task in self._authorization_tasks:
-                self._cancel_authorization(task)
-            async with self._lock:
-                # A read can hold _lock while awaiting authorization. Cancel
-                # its owned request first so it can release the lock. In-flight
-                # file dispatch still finishes recording its child under this
-                # lock before we capture and terminate concrete process handles.
-                processes = tuple(self._processes)
-                if self._root_fd is not None:
-                    # Every admitted child has inherited its own fd; queued
-                    # programs now fail closed. Also release on failed stop.
-                    os.close(self._root_fd)
-                    self._root_fd = None
-            # Never cancel arbitrary handler tasks and treat CancelledError as
-            # proof: cancellation can abandon a to_thread writer. Trusted
-            # handlers must finish after the cancellation signal or block finalization.
+        async with self._stop_task_lock:
+            task = self._stop_task
+            if task is None or (
+                task.done()
+                and (task.cancelled() or task.exception() is not None)
+            ):
+                task = asyncio.create_task(self._stop_once())
+                task.add_done_callback(self._observe_completion)
+                self._stop_task = task
+        return await asyncio.shield(task)
+
+    async def _stop_once(self) -> VerifiedSettlement:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.stop_timeout
+        force_stop_reserve = min(1.0, self.stop_timeout / 2)
+        grace_deadline = deadline - force_stop_reserve
+
+        def remaining_timeout(until: float) -> float:
+            return max(0.0, until - loop.time())
+
+        self._sealed = True
+        self.cancelled.set()
+        for task in self._authorization_tasks:
+            self._cancel_authorization(task)
+        try:
+            await asyncio.wait_for(
+                self._lock.acquire(),
+                timeout=remaining_timeout(grace_deadline),
+            )
+        except TimeoutError:
+            raise UnsettledWriters(
+                "writer dispatch did not quiesce before force-stop window"
+            ) from None
+        try:
+            # A read can hold _lock while awaiting authorization. Cancel
+            # its owned request first so it can release the lock. In-flight
+            # file dispatch still finishes recording its child under this
+            # lock before we capture and terminate concrete process handles.
+            processes = tuple(self._processes)
+            if self._root_fd is not None:
+                # Every admitted child has inherited its own fd; queued
+                # programs now fail closed. Also release on failed stop.
+                os.close(self._root_fd)
+                self._root_fd = None
+        finally:
+            self._lock.release()
+        # Never cancel arbitrary handler tasks and treat CancelledError as
+        # proof: cancellation can abandon a to_thread writer. Trusted handlers
+        # must finish after cancellation or block finalization.
+        for owned in processes:
+            if owned.process.returncode is None:
+                try:
+                    owned.process.terminate()
+                except ProcessLookupError:
+                    pass
+        pending = {task for task in self._tasks if not task.done()}
+        if pending:
+            _done, pending = await asyncio.wait(
+                pending, timeout=remaining_timeout(grace_deadline)
+            )
+        if pending or any(p.process.returncode is None for p in processes):
             for owned in processes:
                 if owned.process.returncode is None:
                     try:
-                        owned.process.terminate()
+                        owned.process.kill()
                     except ProcessLookupError:
                         pass
-            pending = {task for task in self._tasks if not task.done()}
-            if pending:
-                _done, pending = await asyncio.wait(
-                    pending, timeout=self.stop_timeout
+            process_waits = {
+                asyncio.create_task(p.process.wait()) for p in processes
+            }
+            for wait in process_waits:
+                wait.add_done_callback(self._observe_completion)
+            draining = pending | process_waits
+            if draining:
+                _done, waiting = await asyncio.wait(
+                    draining, timeout=remaining_timeout(deadline)
                 )
-            if pending or any(p.process.returncode is None for p in processes):
-                for owned in processes:
-                    if owned.process.returncode is None:
-                        try:
-                            owned.process.kill()
-                        except ProcessLookupError:
-                            pass
-                waits = [
-                    asyncio.create_task(p.process.wait()) for p in processes
-                ]
-                if waits:
-                    _done, waiting = await asyncio.wait(
-                        waits, timeout=self.stop_timeout
-                    )
-                    if waiting:
-                        raise UnsettledWriters("owned child did not exit")
-                if pending:
-                    _done, pending = await asyncio.wait(
-                        pending, timeout=self.stop_timeout
-                    )
-            if pending or self._unknown_writer:
-                raise UnsettledWriters("writer ownership has not settled")
-            if any(p.process.returncode is None for p in self._processes):
-                raise UnsettledWriters("owned process has not been reaped")
-            self._check_root()
-            if self._proof is None:
-                self._proof = VerifiedSettlement(
-                    runtime_id=self.runtime_id,
-                    run_id=self.binding.run_id,
-                    attempt_id=self.binding.attempt_id,
-                    generation=self.binding.generation,
-                    workspace_id=self.binding.workspace.workspace_id,
-                    process_instances=tuple(
-                        (p.instance_id, p.process.returncode)
-                        for p in self._processes
-                    ),
-                )
-            return self._proof
+                unreaped = process_waits & waiting
+                pending &= waiting
+                if unreaped:
+                    for wait in unreaped:
+                        wait.cancel()
+                    raise UnsettledWriters("owned child did not exit")
+        if pending or self._unknown_writer:
+            raise UnsettledWriters("writer ownership has not settled")
+        if any(p.process.returncode is None for p in self._processes):
+            raise UnsettledWriters("owned process has not been reaped")
+        self._check_root()
+        if self._proof is None:
+            self._proof = VerifiedSettlement(
+                runtime_id=self.runtime_id,
+                run_id=self.binding.run_id,
+                attempt_id=self.binding.attempt_id,
+                generation=self.binding.generation,
+                workspace_id=self.binding.workspace.workspace_id,
+                process_instances=tuple(
+                    (p.instance_id, p.process.returncode)
+                    for p in self._processes
+                ),
+            )
+        return self._proof
 
     def verify_settlement(self, proof: VerifiedSettlement) -> dict[str, Any]:
         if (

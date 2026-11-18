@@ -290,12 +290,122 @@ def test_unfinished_handler_cannot_be_settled_by_timeout(make_runtime):
         await entered.wait()
         with pytest.raises(runtime.UnsettledWriters):
             await bound.stop()
+        failed_stop = bound._stop_task
+        assert failed_stop is not None and failed_stop.done()
         assert bound.sealed and not job.done()
         with pytest.raises(runtime.UnsettledWriters):
             bound.path_provenance(())
         release.set()
         await job
         bound.verify_settlement(await bound.stop())
+        assert bound._stop_task is not failed_stop
+
+    asyncio.run(scenario())
+
+
+def test_stop_shares_one_timeout_budget_across_handler_waits(
+    make_runtime, monkeypatch
+):
+    bound = make_runtime(timeout=0.02)
+    observed_timeouts = []
+    original_wait = asyncio.wait
+
+    async def recording_wait(
+        futures, *, timeout=None, return_when=asyncio.ALL_COMPLETED
+    ):
+        observed_timeouts.append(timeout)
+        return await original_wait(
+            futures, timeout=timeout, return_when=return_when
+        )
+
+    monkeypatch.setattr(runtime.asyncio, "wait", recording_wait)
+
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def handler(_active):
+            entered.set()
+            await release.wait()
+
+        job = asyncio.create_task(bound.run(handler))
+        await entered.wait()
+        with pytest.raises(runtime.UnsettledWriters):
+            await bound.stop()
+        assert not job.done()
+        assert len(observed_timeouts) == 2
+        assert all(value is not None for value in observed_timeouts)
+        assert sum(observed_timeouts) <= bound.stop_timeout + 0.005
+        release.set()
+        await job
+        bound.verify_settlement(await bound.stop())
+
+    asyncio.run(scenario())
+
+
+def test_stop_reserves_time_to_kill_and_reap_after_term(
+    make_runtime, monkeypatch
+):
+    bound = make_runtime(timeout=0.1)
+    handler_release = asyncio.Event()
+    observed_timeouts = []
+    observed_widths = []
+    original_wait = asyncio.wait
+
+    class TermResistantProcess:
+        def __init__(self):
+            self.returncode = None
+            self.terminated = False
+            self.killed = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            assert self.terminated
+            self.killed = True
+
+        async def wait(self):
+            assert self.killed
+            self.returncode = -9
+            handler_release.set()
+            await asyncio.sleep(0)
+            return self.returncode
+
+    async def recording_wait(
+        futures, *, timeout=None, return_when=asyncio.ALL_COMPLETED
+    ):
+        observed_timeouts.append(timeout)
+        observed_widths.append(len(futures))
+        return await original_wait(
+            futures, timeout=timeout, return_when=return_when
+        )
+
+    monkeypatch.setattr(runtime.asyncio, "wait", recording_wait)
+
+    async def scenario():
+        entered = asyncio.Event()
+        process = TermResistantProcess()
+        bound._processes.append(runtime._Process("term-resistant", process))
+
+        async def handler(_active):
+            entered.set()
+            await handler_release.wait()
+
+        job = asyncio.create_task(bound.run(handler))
+        await entered.wait()
+        started = asyncio.get_running_loop().time()
+        proof = await bound.stop()
+        elapsed = asyncio.get_running_loop().time() - started
+        await job
+
+        assert process.terminated and process.killed
+        assert proof.process_instances == (("term-resistant", -9),)
+        assert bound.verify_settlement(proof)["outcome"] == "stopped"
+        assert len(observed_timeouts) == 2
+        assert observed_widths == [1, 2]
+        assert observed_timeouts[0] <= bound.stop_timeout / 2
+        assert observed_timeouts[1] > 0
+        assert elapsed <= bound.stop_timeout * 2
 
     asyncio.run(scenario())
 
@@ -366,12 +476,17 @@ def test_authorization_cleanup_is_joined_through_repeated_cancel_and_stop(
         await entered.wait()
         stopping = asyncio.create_task(bound.stop())
         await asyncio.wait_for(cleaning.wait(), 1)
+        owned_stop = bound._stop_task
+        assert owned_stop is not None and not owned_stop.done()
         request.cancel()
         stopping.cancel()
         await asyncio.gather(request, stopping, return_exceptions=True)
+        assert stopping.cancelled()
+        assert bound._stop_task is owned_stop and not owned_stop.done()
         again = asyncio.create_task(bound.stop())
         await asyncio.sleep(0)
         assert not again.done() and not closed
+        assert bound._stop_task is owned_stop
         assert all(
             not task.done() and task.cancelling() == 1
             for task in bound._authorization_tasks
@@ -381,6 +496,9 @@ def test_authorization_cleanup_is_joined_through_repeated_cancel_and_stop(
         assert closed == [True]
         assert all(task.done() for task in bound._tasks)
         bound.verify_settlement(proof)
+        assert owned_stop.done()
+        assert await bound.stop() is proof
+        assert bound._stop_task is owned_stop
 
     asyncio.run(scenario())
 

@@ -154,10 +154,16 @@ describe('Session submission configuration and observation', () => {
       'follow_up'
     );
     await prepareSessionMessage(intent, configuration);
-    http.fetchPost.mockRejectedValueOnce(new TypeError('response lost'));
+    http.fetchPost.mockImplementationOnce(
+      async (_url, _body, _headers, options) => {
+        options?.beforeRequest?.();
+        throw new TypeError('response lost');
+      }
+    );
     await expect(deliverSessionMessage(intent)).rejects.toThrow(
       'response lost'
     );
+    expect(intent.deliveryAttempted).toBe(true);
     http.fetchGet.mockResolvedValue({
       project_id: 'session',
       request_id: intent.requestId,
@@ -170,6 +176,37 @@ describe('Session submission configuration and observation', () => {
       source_follow_up_request_id: intent.requestId,
       follow_up_content: 'follow up',
     });
+  });
+  it('posts again when the previous attempt failed before the request was sent', async () => {
+    const intent = createSessionMessageIntent(
+      executionScope('session'),
+      'follow up',
+      'follow_up'
+    );
+    await prepareSessionMessage(intent, configuration);
+    // For example the connection details could not be read.
+    http.fetchPost.mockRejectedValueOnce(new Error('not sent'));
+    await expect(deliverSessionMessage(intent)).rejects.toThrow('not sent');
+    expect(intent.deliveryAttempted).toBe(false);
+
+    http.fetchPost.mockImplementationOnce(
+      async (_url, _body, _headers, options) => {
+        options?.beforeRequest?.();
+        return {
+          project_id: 'session',
+          request_id: intent.requestId,
+          kind: 'follow_up',
+        };
+      }
+    );
+    await deliverSessionMessage(intent);
+    expect(http.fetchGet).not.toHaveBeenCalledWith(
+      `/executions/${intent.requestId}`,
+      undefined,
+      undefined,
+      expect.anything()
+    );
+    expect(intent.deliveryAttempted).toBe(true);
   });
   it('rejects an unsaved configuration and a late result after account changes without registration', async () => {
     http.proxyFetchPatch.mockResolvedValueOnce({

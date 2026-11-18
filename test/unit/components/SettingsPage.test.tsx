@@ -12,14 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { usePinnedSpacesChooser } from '@/components/Layout/AppRail/pinnedSpaces';
 import SettingsSection from '@/components/Settings/SettingsSection';
+import HomePage from '@/pages/Home';
 import SettingsPage from '@/pages/Settings';
+import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import { pinnedSpaceOwnerKey, useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -28,9 +33,14 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The Space page's composer is the full chat composer, covered by its own
+// tests; here it only needs to be on the page.
+vi.mock('@/components/Home/SpaceQuickComposer', () => ({
+  SpaceQuickComposer: () => <div data-testid="space-quick-composer" />,
+}));
 vi.mock('@/api/brain', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/brain')>()),
   skillRead: vi
@@ -143,17 +153,6 @@ vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useUserTriggerCountQuery: () => ({ data: 0 }),
 }));
 
-function openDropdown(trigger: HTMLElement) {
-  const event = new MouseEvent('pointerdown', {
-    bubbles: true,
-    cancelable: true,
-    button: 0,
-    ctrlKey: false,
-  });
-  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
-  fireEvent(trigger, event);
-}
-
 vi.mock('@/service/historyApi', () => ({
   fetchGroupedHistoryTasks: vi.fn(() => new Promise(() => undefined)),
 }));
@@ -175,6 +174,19 @@ vi.mock('@/components/Settings/Privacy', () => ({
 }));
 
 // These tests exercise navigation and the real Skills surface, not model APIs.
+// Home's sidebar refreshes Session leads from the Brain; not under test here.
+vi.mock('@/hooks/useSessionNavStatuses', () => ({
+  useSessionNavStatuses: () => {},
+}));
+
+// Home's sidebar starts New session through the app command provider.
+vi.mock('@/components/Layout/AppCommandProvider', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/components/Layout/AppCommandProvider')
+  >()),
+  useAppCommand: () => () => {},
+}));
+
 vi.mock('@/components/Settings/Models', () => ({
   default: () => <div data-testid="models-settings" />,
 }));
@@ -219,8 +231,7 @@ function LocationProbe() {
 
 function renderSettingsPage(
   initialEntry:
-    | SettingsInitialEntry
-    | SettingsInitialEntry[] = '/home?section=settings&tab=models'
+    SettingsInitialEntry | SettingsInitialEntry[] = '/settings?tab=models'
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -239,7 +250,11 @@ function renderSettingsPage(
         initialEntries={initialEntries}
         initialIndex={initialEntries.length - 1}
       >
-        <SettingsPage />
+        <Routes>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={null} />
+        </Routes>
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
@@ -262,6 +277,32 @@ describe('SettingsPage', () => {
     });
     useSettingsResourceCountsStore.setState({
       counts: { 'browser-connections': null, cookies: null },
+    });
+    useCloudModelStore.setState({
+      models: [
+        {
+          id: 'gpt',
+          display_name: 'GPT',
+          model_type: 'gpt',
+          model_platform: 'openai',
+          provider_family: 'openai',
+          kind: 'chat',
+        },
+        {
+          id: 'claude',
+          display_name: 'Claude',
+          model_type: 'claude',
+          model_platform: 'anthropic',
+          provider_family: 'anthropic',
+          kind: 'chat',
+        },
+      ],
+      lastFetchedAt: Date.now(),
+      source: 'server',
+      status: 'ready',
+    });
+    useModelVisibilityStore.setState({
+      hiddenByAccount: { '7': ['claude'] },
     });
     homeOverviewMocks.fetchConnectedProviders.mockResolvedValue([
       { service: 'github' },
@@ -304,6 +345,30 @@ describe('SettingsPage', () => {
       return {};
     });
     homeOverviewMocks.proxyFetchGet.mockImplementation(async (path: string) => {
+      if (path === '/api/v1/providers') {
+        return {
+          items: [
+            {
+              id: 11,
+              provider_name: 'openai',
+              model_type: 'gpt-work',
+              is_valid: 2,
+            },
+            {
+              id: 12,
+              provider_name: 'anthropic',
+              model_type: 'claude-personal',
+              is_valid: 2,
+            },
+            {
+              id: 13,
+              provider_name: 'openai',
+              model_type: 'gpt-expired',
+              is_valid: 1,
+            },
+          ],
+        };
+      }
       if (path === '/api/v1/server/capabilities') {
         return { features: { connector_gateway: { enabled: true } } };
       }
@@ -337,7 +402,8 @@ describe('SettingsPage', () => {
     const bundleOptions = screen.getByRole('group', {
       name: 'Bundle import options',
     });
-    expect(bundleOptions).toHaveClass('grid-cols-1');
+    // Choices stack as rows, one per line, whatever their number.
+    expect(bundleOptions).toHaveClass('flex', 'flex-col');
     expect(
       within(bundleOptions).queryByRole('button', {
         name: 'Import Agent Plugin as Bundle',
@@ -351,40 +417,17 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const main = screen.getByRole('main');
     const sidebar = screen.getByRole('complementary', {
-      name: 'Home',
+      name: 'Settings',
     });
-    const contentShell = document.querySelector('.scrollbar-always-visible');
-    expect(contentShell).toHaveClass(
-      'overflow-y-scroll',
-      '[scrollbar-gutter:stable]'
-    );
-    expect(contentShell?.firstElementChild).toHaveClass('px-8');
+    const modelsSettings = await screen.findByTestId('models-settings');
+    expect(main).toContainElement(modelsSettings);
     expect(
-      within(sidebar).getByRole('navigation', { name: 'Home' })
+      within(sidebar).getByRole('navigation', { name: 'Settings' })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Workspace Bundle' })
     ).not.toBeInTheDocument();
     const selectedTab = screen.getByRole('button', { name: 'Models' });
-    const header = getSettingsHeader();
-    const heading = within(header).getByRole('heading', {
-      name: 'Models',
-      level: 1,
-    });
-    expect(main).toContainElement(header);
-    expect(heading).toHaveFocus();
-    expect(header).toHaveClass('min-h-ds-layout-row-header');
-    expect(header.lastElementChild).toHaveClass('h-ds-layout-row-header');
-    expect(header.closest('[data-home-space-content-pane]')).toBeNull();
-    expect(within(header).getByText('Models')).toHaveClass(
-      'text-ds-text-body-large',
-      'font-bold'
-    );
-    expect(
-      within(header).queryByRole('button', {
-        name: 'Back',
-      })
-    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', {
         name: 'layout.workspace-active-scope',
@@ -397,23 +440,14 @@ describe('SettingsPage', () => {
       'h-8',
       'w-full'
     );
-    const homeLabel = within(sidebar).getByText('Home');
     const globalSettingLabel = within(sidebar).getByText('Global Settings');
+    // Home has its own page; Settings lists only app-wide sections.
+    expect(within(sidebar).queryByText('Home')).not.toBeInTheDocument();
     expect(
-      homeLabel.compareDocumentPosition(globalSettingLabel) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      within(sidebar).getByRole('button', { name: 'Spaces' })
-    ).toBeInTheDocument();
+      within(sidebar).queryByRole('button', { name: 'Spaces' })
+    ).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Sessions' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Tasks' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Automations' })
     ).not.toBeInTheDocument();
     expect(globalSettingLabel).toBeInTheDocument();
     expect(
@@ -437,24 +471,25 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Extension' }).querySelector('svg')
     ).toHaveClass('lucide-puzzle');
+    // App-wide settings are the General tab, with no group heading of its own.
     expect(
       within(sidebar)
-        .getByRole('button', { name: 'Settings' })
+        .getByRole('button', { name: 'General' })
         .querySelector('svg')
     ).toHaveClass('lucide-settings');
     expect(
-      within(sidebar).queryByRole('button', { name: 'General' })
+      within(sidebar).queryByRole('button', { name: 'Settings' })
     ).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText('Settings')).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Appearance' })
     ).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Privacy' })
     ).not.toBeInTheDocument();
-    expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
   });
 
-  it('shows live resource counts on the Skills, Connectors, Browser, and Cookies tabs', async () => {
+  it('shows live resource counts on the Models, Skills, Connectors, Browser, and Cookies tabs', async () => {
     useSkillsStore.setState({
       skills: [
         {
@@ -473,9 +508,14 @@ describe('SettingsPage', () => {
 
     renderSettingsPage();
 
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    const sidebar = screen.getByRole('complementary', { name: 'Settings' });
 
     await waitFor(() => {
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Models' })
+        ).getByText('3')
+      ).toBeVisible();
       expect(
         within(
           within(sidebar).getByRole('button', { name: 'Skills' })
@@ -499,20 +539,20 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('switches between Home and Settings sections in the same shell', async () => {
+  it('shows the Spaces hub on its own Home page', async () => {
     const user = userEvent.setup();
 
-    renderSettingsPage();
+    renderSettingsPage('/home?section=spaces');
     const settingsFrame = getSettingsHeader();
 
-    const spacesTab = screen.getByRole('button', { name: 'Spaces' });
-    const modelsTab = screen.getByRole('button', { name: 'Models' });
-    await user.click(spacesTab);
-
-    await waitFor(() => {
-      expect(spacesTab).toHaveAttribute('aria-current', 'page');
-      expect(modelsTab).not.toHaveAttribute('aria-current');
+    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    const allSpacesTab = within(sidebar).getByRole('button', {
+      name: 'All Spaces',
     });
+    expect(allSpacesTab).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Models' })
+    ).not.toBeInTheDocument();
 
     const overview = document.querySelector(
       '[data-home-spaces-overview]'
@@ -523,6 +563,8 @@ describe('SettingsPage', () => {
     const collectionHeader = toolbar.closest('header');
     const list = document.querySelector('[data-home-spaces-list]');
     expect(collectionHeader).toBe(settingsFrame);
+    // The page is named like the sidebar tab that opens it.
+    expect(collectionHeader).toHaveTextContent('All Spaces');
     expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
     expect(
       collectionHeader?.querySelector('[data-content-header-divider]')
@@ -580,7 +622,13 @@ describe('SettingsPage', () => {
     const newSpaceOptions = within(newSpaceDialog).getByRole('group', {
       name: 'New Space options',
     });
-    expect(newSpaceOptions).toHaveClass('grid-cols-3');
+    // A short list of rows in a medium dialog, not three wide cards.
+    expect(newSpaceOptions).toHaveClass('flex', 'flex-col');
+    expect(newSpaceDialog).toHaveClass('max-w-[600px]');
+    for (const row of within(newSpaceOptions).getAllByRole('button')) {
+      expect(row).toHaveAttribute('data-new-space-option');
+      expect(row).toHaveClass('flex', 'items-center', 'w-full');
+    }
     expect(
       within(newSpaceOptions).getByRole('button', {
         name: 'Start from scratch',
@@ -603,7 +651,7 @@ describe('SettingsPage', () => {
     const bundleOptions = within(bundleOptionsDialog).getByRole('group', {
       name: 'Bundle import options',
     });
-    expect(bundleOptions).toHaveClass('grid-cols-2');
+    expect(bundleOptions).toHaveClass('flex', 'flex-col');
     expect(
       within(bundleOptions).getByRole('button', {
         name: 'Import Agent Plugin as Bundle',
@@ -655,13 +703,6 @@ describe('SettingsPage', () => {
     await user.click(
       within(agentPluginDialog).getByRole('button', { name: 'Close' })
     );
-
-    await user.click(modelsTab);
-
-    await waitFor(() => {
-      expect(modelsTab).toHaveAttribute('aria-current', 'page');
-      expect(spacesTab).not.toHaveAttribute('aria-current');
-    });
   });
 
   it('combines the app settings categories into one vertical page', async () => {
@@ -669,9 +710,12 @@ describe('SettingsPage', () => {
 
     renderSettingsPage();
 
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
-    await user.click(within(sidebar).getByRole('button', { name: 'Settings' }));
+    const sidebar = screen.getByRole('complementary', { name: 'Settings' });
+    await user.click(within(sidebar).getByRole('button', { name: 'General' }));
 
+    expect(
+      await screen.findByRole('heading', { name: 'General', level: 1 })
+    ).toBeInTheDocument();
     const general = await screen.findByTestId('general-settings');
     const appearance = screen.getByTestId('appearance-settings');
     const privacy = screen.getByTestId('privacy-settings');
@@ -688,11 +732,13 @@ describe('SettingsPage', () => {
     expect(
       privacy.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    // One page: its title is the only heading, with none per category.
     expect(
-      screen.queryByRole('heading', {
-        name: /general|appearance|privacy|about/i,
-      })
+      screen.queryByRole('heading', { name: /appearance|privacy|about/i })
     ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: /general/i })).toHaveLength(
+      1
+    );
   });
 
   it('shows one Skills overview with source filters instead of ownership tabs', async () => {
@@ -761,9 +807,7 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Skills', level: 1 })
     ).toHaveFocus();
-    await user.click(
-      screen.getByRole('button', { name: 'Spaces', exact: true })
-    );
+    await user.click(screen.getByRole('button', { name: 'Channels' }));
     await user.click(screen.getByRole('button', { name: 'Skills' }));
 
     expect(
@@ -816,7 +860,7 @@ describe('SettingsPage', () => {
     );
     expect(skillLink).toHaveAttribute(
       'href',
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
+      '/settings?tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
     );
     await user.click(skillLink);
     await waitFor(() =>
@@ -875,7 +919,7 @@ describe('SettingsPage', () => {
       await screen.findByRole('combobox', { name: 'Skill source' })
     ).toHaveTextContent('Global');
     expect(screen.getByTestId('settings-location')).toHaveTextContent(
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+      '/settings?tab=skills&skillSearch=research&skillFilter=global'
     );
     unmount();
     sync.mockRestore();
@@ -980,7 +1024,7 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('returns from Space detail to its workspace origin', async () => {
+  it("opens a Space's Workspace page from the Home sidebar", async () => {
     const user = userEvent.setup();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
@@ -1010,23 +1054,94 @@ describe('SettingsPage', () => {
 
     renderSettingsPage([
       '/',
-      {
-        pathname: '/home',
-        search: '?section=spaces&spaceId=origin-space&spaceTab=projects',
-        state: { from: '/' },
-      },
+      { pathname: '/home', search: '?section=spaces', state: { from: '/' } },
     ]);
 
-    const spaceSidebar = await screen.findByRole('complementary', {
-      name: 'Spaces',
+    const homeSidebar = await screen.findByRole('complementary', {
+      name: 'Home',
     });
     await user.click(
-      within(spaceSidebar).getByRole('button', { name: 'Back' })
+      within(homeSidebar).getByRole('button', { name: 'Origin Space' })
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId('settings-location')).toHaveTextContent(/^\/$/)
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(
+        '/home?section=spaces&spaceId=origin-space'
+      )
     );
+    expect(
+      await screen.findByRole('heading', { name: 'Origin Space', level: 1 })
+    ).toBeInTheDocument();
+    expect(
+      within(homeSidebar).getByRole('button', { name: 'Origin Space' })
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('pins a Space from its Workspace page, or opens the chooser when 10 are pinned', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const makeSpace = (id: string, name: string) => ({
+      id,
+      name,
+      sourceType: 'folder' as const,
+      rootPath: `/work/${id}`,
+      status: 'active' as const,
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // One short of the ten-pin limit.
+    const pinnedIds = Array.from({ length: 9 }, (_, index) => `p-${index + 1}`);
+    // The mocked account is user 7.
+    const ownerKey = pinnedSpaceOwnerKey(7);
+    usePinnedSpacesChooser.setState({ open: false });
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'pin-space': makeSpace('pin-space', 'Pin Me'),
+        'extra-space': makeSpace('extra-space', 'Extra'),
+        ...Object.fromEntries(
+          pinnedIds.map((id) => [id, makeSpace(id, `Pinned ${id}`)])
+        ),
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        ...Object.fromEntries(
+          ['pin-space', 'extra-space', ...pinnedIds].map((id) => [id, {}])
+        ),
+      },
+      // Synced already, so later Spaces hub renders don't sync them.
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        ...Object.fromEntries(
+          ['pin-space', 'extra-space', ...pinnedIds].map((id) => [id, now])
+        ),
+      },
+      pinnedSpaceIdsByUser: { [ownerKey]: pinnedIds },
+    }));
+
+    renderSettingsPage('/home?section=spaces&spaceId=pin-space');
+    const header = document.querySelector(
+      '[data-content-header-frame]'
+    ) as HTMLElement;
+
+    await user.click(within(header).getByRole('button', { name: 'Pin Space' }));
+    expect(
+      within(header).getByRole('button', { name: 'Unpin Space' })
+    ).toBeInTheDocument();
+    expect(usePinnedSpacesChooser.getState().open).toBe(false);
+
+    act(() => {
+      useSpaceStore.setState((state) => ({
+        pinnedSpaceIdsByUser: {
+          [ownerKey]: [...pinnedIds, 'extra-space'],
+        },
+        spaces: state.spaces,
+      }));
+    });
+    await user.click(within(header).getByRole('button', { name: 'Pin Space' }));
+    expect(usePinnedSpacesChooser.getState().open).toBe(true);
   });
 
   it('switches to the Space detail layout without changing the shared shell', () => {
@@ -1085,122 +1200,52 @@ describe('SettingsPage', () => {
       'Last updated:'
     );
 
-    const homeSpaceCard = screen
+    const homeSpaceCard = within(screen.getByRole('main'))
       .getByText('Design Space')
       .closest('button') as HTMLElement;
     expect(homeSpaceCard).toBeInTheDocument();
     fireEvent.pointerDown(homeSpaceCard, { pointerType: 'mouse' });
     fireEvent.click(homeSpaceCard);
 
-    const detailSidebar = screen.getByRole('complementary', {
-      name: 'Spaces',
-    });
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-direction', 'forward');
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
+    const homeSidebar = screen.getByRole('complementary', { name: 'Home' });
     const detailContent = document.querySelector(
       '[data-home-space-content-pane="detail"]'
     ) as HTMLElement;
+    expect(detailContent).toHaveAttribute(
+      'data-space-navigation-direction',
+      'forward'
+    );
     expect(detailContent).toHaveAttribute(
       'data-space-navigation-motion',
       'full'
     );
     expect(
-      within(detailSidebar).getByRole('button', { name: 'Design Space' })
+      within(homeSidebar).getByRole('button', { name: 'Design Space' })
     ).toHaveAttribute('aria-current', 'page');
-    const detailSidebarHeader = detailSidebar.querySelector(
-      'header'
-    ) as HTMLElement;
-    expect(detailSidebarHeader).not.toHaveClass('border-b');
     expect(
-      within(detailSidebarHeader).getByRole('button', { name: 'Back' })
-    ).toBeInTheDocument();
-    const newSpaceTab = within(detailSidebarHeader).getByRole('button', {
-      name: 'New Space',
-    });
-    expect(newSpaceTab).toHaveAttribute('data-variant', 'primary');
-    expect(newSpaceTab).toHaveClass('!rounded-full');
-    expect(newSpaceTab.querySelector('svg')).toHaveClass('lucide-plus');
-    const spaceSearch = within(detailSidebar).getByRole('searchbox', {
-      name: 'Search spaces...',
-    });
-    expect(spaceSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
-    expect(
-      newSpaceTab.compareDocumentPosition(spaceSearch) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(detailSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
-    expect(
-      within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
+      within(homeSidebar).queryByRole('button', { name: 'Untitled Space' })
     ).not.toBeInTheDocument();
-    fireEvent.change(spaceSearch, { target: { value: 'missing' } });
-    expect(
-      within(detailSidebar).queryByRole('button', { name: 'Design Space' })
-    ).not.toBeInTheDocument();
-    expect(detailSidebar).toHaveTextContent('No results match your search.');
-    fireEvent.change(spaceSearch, { target: { value: '' } });
-    fireEvent.click(newSpaceTab);
-    expect(
-      screen.getByRole('dialog', { name: 'Create a new Space' })
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(
-      detailSidebar.querySelector('.lucide-check')
-    ).not.toBeInTheDocument();
-    const designSpaceTab = within(detailSidebar).getByRole('button', {
-      name: 'Design Space',
-    });
-    const spaceMoreButton = within(detailSidebar).getByRole('button', {
-      name: 'More actions: Design Space',
-    });
-    expect(spaceMoreButton.closest('.group')).toContainElement(designSpaceTab);
-
-    openDropdown(spaceMoreButton);
-    fireEvent.click(
-      within(screen.getByRole('menu')).getByRole('menuitem', {
-        name: 'Rename Space',
-      })
-    );
-    const renameDialog = screen.getByRole('alertdialog', {
-      name: 'Rename Space',
-    });
-    expect(within(renameDialog).getByPlaceholderText('Space name')).toHaveValue(
-      'Design Space'
-    );
-    fireEvent.click(
-      within(renameDialog).getByRole('button', { name: 'Cancel' })
-    );
-
-    openDropdown(spaceMoreButton);
-    fireEvent.click(
-      within(screen.getByRole('menu')).getByRole('menuitem', {
-        name: 'Delete',
-      })
-    );
-    const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
-    expect(deleteDialog).toHaveTextContent(
-      'Are you sure you want to delete this space and all its sessions?'
-    );
-    fireEvent.click(
-      within(deleteDialog).getByRole('button', { name: 'Cancel' })
-    );
     const detailHeader = document.querySelector(
       '[data-content-header-frame]'
     ) as HTMLElement;
     expect(detailHeader.querySelector('.px-ds-16')).toBeInTheDocument();
+    // The title is the Space's name, and it opens the Space menu.
     const detailHeading = within(detailHeader).getByRole('heading', {
       name: 'Design Space',
       level: 1,
     });
-    expect(detailHeading).toHaveClass('!text-ds-text-base');
-    const openWorkspaceButton = within(detailHeader).getByRole('button', {
+    expect(detailHeading).toHaveClass('!text-ds-text-body-large');
+    expect(
+      within(detailHeading).getByRole('button', { name: 'Design Space' })
+    ).toHaveAttribute('aria-haspopup', 'menu');
+    expect(
+      within(detailHeader).getByRole('button', { name: 'Pin Space' })
+    ).toHaveAttribute('data-variant', 'ghost');
+    const openInSpaceViewButton = within(detailHeader).getByRole('button', {
       name: 'Open workspace',
     });
-    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
-    expect(openWorkspaceButton).toHaveClass('!rounded-full');
+    expect(openInSpaceViewButton).toHaveAttribute('data-variant', 'primary');
+    expect(openInSpaceViewButton).toHaveClass('!rounded-full');
     expect(
       within(detailContent).getByText('Product design work')
     ).toBeInTheDocument();
@@ -1210,7 +1255,7 @@ describe('SettingsPage', () => {
       'Sessions',
       'Tasks',
       'Automations',
-      'Context',
+      'Files',
       'Memory',
       'Space settings',
     ]) {
@@ -1236,8 +1281,8 @@ describe('SettingsPage', () => {
       document.querySelector('[data-space-stat="Sessions"] svg')
     ).toHaveClass('lucide-message-circle');
     expect(
-      screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
-    ).toHaveClass('lucide-library');
+      screen.getByRole('tab', { name: 'Files' }).querySelector('svg')
+    ).toHaveClass('lucide-inbox');
     expect(
       screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
@@ -1266,7 +1311,11 @@ describe('SettingsPage', () => {
     for (const rail of detailRails) {
       expect(rail).toHaveClass('mx-auto', 'w-full', 'max-w-[1100px]');
     }
-    expect(detailRails[2]?.parentElement).toHaveClass('px-8');
+    // In Home the content lines up with the header, not a fixed 32px inset.
+    expect(detailRails[2]?.parentElement).toHaveClass(
+      'pl-[calc(var(--ds-ref-space-16)_-_var(--ds-ref-space-8)_+_var(--ds-button-sm-padding-inline))]',
+      'pr-[calc(var(--ds-ref-space-16)_-_var(--scrollbar-size))]'
+    );
     expect(detailRails[2]).not.toHaveClass('px-8');
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
@@ -1344,35 +1393,22 @@ describe('SettingsPage', () => {
 
     const { unmount } = renderSettingsPage('/home?section=spaces');
 
-    const spaceCard = screen
+    const spaceCard = within(screen.getByRole('main'))
       .getByText('Motion Space')
       .closest('button') as HTMLElement;
     fireEvent.pointerDown(spaceCard, { pointerType: 'mouse' });
     fireEvent.click(spaceCard);
 
-    const detailSidebar = screen.getByRole('complementary', {
-      name: 'Spaces',
-    });
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'fade');
     expect(
       document.querySelector('[data-home-space-content-pane="detail"]')
     ).toHaveAttribute('data-space-navigation-motion', 'fade');
 
-    const backButton = within(detailSidebar).getByRole('button', {
-      name: 'Back',
-    });
-    backButton.focus();
-    fireEvent.keyDown(backButton, { key: 'Enter' });
-    fireEvent.click(backButton);
-    expect(
+    const allSpacesTab = within(
       screen.getByRole('complementary', { name: 'Home' })
-    ).toBeInTheDocument();
-
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'instant');
+    ).getByRole('button', { name: 'All Spaces' });
+    allSpacesTab.focus();
+    fireEvent.keyDown(allSpacesTab, { key: 'Enter' });
+    fireEvent.click(allSpacesTab);
     expect(
       document.querySelector('[data-home-space-content-pane="home"]')
     ).toHaveAttribute('data-space-navigation-motion', 'instant');

@@ -60,6 +60,14 @@ export function terminalContinuationAdmissionRejection(
   };
 }
 
+/** A busy Session is a retryable queue wait, never a rejected instruction. */
+export function isQueueAdmissionWait(error: unknown): boolean {
+  const value = error as any;
+  const detail = value?.response?.data?.detail;
+  const code = detail?.code ?? value?.code ?? value?.error_code;
+  return ['project_run_active', 'project_consumer_active'].includes(code);
+}
+
 export interface DurableFollowUpRequest {
   request_id: string;
   project_id: string;

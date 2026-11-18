@@ -20,6 +20,8 @@ import { useTranslation } from 'react-i18next';
 import { groupRepeatedToolCalls } from './activityGrouping';
 import { EventRenderer } from './EventRenderer';
 import type { EventRendererErrorHandler } from './EventRendererBoundary';
+import { HistoryEvidence } from './HistoryEvidence';
+import { partitionLegacyReplyEvidence } from './legacyReplyEvidence';
 import {
   defaultChatTimelinePresentationPolicyRegistry,
   resolveChatTimelinePresentation,
@@ -65,74 +67,89 @@ export function EventTimeline({
   const resolvedAriaLabel =
     ariaLabel ??
     t('chat.event-timeline-label', { defaultValue: 'Chat event timeline' });
+  const conversation = partitionLegacyReplyEvidence(nodes);
   const presentation = resolveChatTimelinePresentation(
     presentationPolicies,
     detailLevel,
-    nodes
+    conversation.nodes
   );
   const displayRows = groupRepeatedToolCalls(presentation.nodes);
 
-  if (displayRows.length === 0) return <>{emptyState}</>;
+  if (displayRows.length === 0)
+    return (
+      <>
+        {emptyState}
+        <HistoryEvidence entries={conversation.evidence} />
+      </>
+    );
 
   return (
-    <ol
-      aria-label={resolvedAriaLabel}
-      className={cn('m-0 flex w-full list-none flex-col gap-3 p-0', className)}
-      data-effective-detail-level={presentation.effectiveDetailLevel}
-      data-requested-detail-level={presentation.requestedDetailLevel}
-    >
-      {displayRows.map((row) => {
-        if (row.rowKind === 'repeated-tool-calls') {
+    <>
+      <ol
+        aria-label={resolvedAriaLabel}
+        className={cn(
+          'm-0 flex w-full list-none flex-col gap-3 p-0',
+          className
+        )}
+        data-effective-detail-level={presentation.effectiveDetailLevel}
+        data-requested-detail-level={presentation.requestedDetailLevel}
+      >
+        {displayRows.map((row) => {
+          if (row.rowKind === 'repeated-tool-calls') {
+            return (
+              <li
+                className="min-w-0"
+                data-event-node-id={row.id}
+                data-event-node-kind="activity"
+                data-run-id={row.runId}
+                data-tool-call-count={row.calls.length}
+                key={row.id}
+              >
+                <RepeatedToolCallGroup group={row} />
+              </li>
+            );
+          }
+
+          const node = row.node;
           return (
             <li
               className="min-w-0"
-              data-event-node-id={row.id}
-              data-event-node-kind="activity"
-              data-run-id={row.runId}
-              data-tool-call-count={row.calls.length}
+              data-event-node-id={node.id}
+              data-event-node-kind={node.kind}
+              data-message-role={
+                node.kind === 'message' ? node.role : undefined
+              }
+              data-interaction-id={
+                node.kind === 'interaction' ? node.interactionId : undefined
+              }
+              data-interaction-request-event-id={
+                node.kind === 'interaction'
+                  ? node.requestEventId ||
+                    (node.status === 'requested' ? node.eventId : undefined)
+                  : undefined
+              }
+              data-interaction-resolution-event-id={
+                node.kind === 'interaction' ? node.resolutionEventId : undefined
+              }
+              data-interaction-status={
+                node.kind === 'interaction' ? node.status : undefined
+              }
+              data-run-id={node.runId}
               key={row.id}
             >
-              <RepeatedToolCallGroup group={row} />
+              <EventRenderer
+                detailLevel={presentation.effectiveDetailLevel}
+                eventTypeRegistry={eventTypeRegistry}
+                node={node}
+                onRendererError={onRendererError}
+                registry={registry}
+              />
             </li>
           );
-        }
-
-        const node = row.node;
-        return (
-          <li
-            className="min-w-0"
-            data-event-node-id={node.id}
-            data-event-node-kind={node.kind}
-            data-message-role={node.kind === 'message' ? node.role : undefined}
-            data-interaction-id={
-              node.kind === 'interaction' ? node.interactionId : undefined
-            }
-            data-interaction-request-event-id={
-              node.kind === 'interaction'
-                ? node.requestEventId ||
-                  (node.status === 'requested' ? node.eventId : undefined)
-                : undefined
-            }
-            data-interaction-resolution-event-id={
-              node.kind === 'interaction' ? node.resolutionEventId : undefined
-            }
-            data-interaction-status={
-              node.kind === 'interaction' ? node.status : undefined
-            }
-            data-run-id={node.runId}
-            key={row.id}
-          >
-            <EventRenderer
-              detailLevel={presentation.effectiveDetailLevel}
-              eventTypeRegistry={eventTypeRegistry}
-              node={node}
-              onRendererError={onRendererError}
-              registry={registry}
-            />
-          </li>
-        );
-      })}
-    </ol>
+        })}
+      </ol>
+      <HistoryEvidence entries={conversation.evidence} />
+    </>
   );
 }
 

@@ -44,6 +44,9 @@ export interface ProjectGroup {
   project_id: string;
   space_id?: string;
   project_name?: string;
+  /** Client only: the Session meta's `metadata.nameSource`, set when the
+   * name was chosen rather than defaulted. */
+  nameSource?: unknown;
   total_tokens: number;
   task_count: number;
   total_triggers: number;

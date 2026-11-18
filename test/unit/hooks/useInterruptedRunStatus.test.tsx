@@ -29,7 +29,7 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { useAuthStore } from '@/store/authStore';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +61,70 @@ describe('useInterruptedRunStatus', () => {
     runProjectionStore.clear();
     listeners.clear();
     fetchGetMock.mockResolvedValue({ runs: [] });
+  });
+
+  it('carries the journal outcome into the recovery explanation after refresh', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          run_id: 'run-1',
+          project_id: 'project_one',
+          status: 'interrupted',
+          version: 3,
+          updated_at: 100,
+          terminal_reason: 'approval_expired',
+          terminal_detail: 'approval_expired',
+          latest_attempt: { attempt_number: 1, status: 'interrupted' },
+        },
+      ])
+    );
+    expect(result.current.run?.terminalReason).toBe('approval_expired');
+  });
+
+  it('carries the Tool calls that make Resume unsafe', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          run_id: 'run-1',
+          project_id: 'project_one',
+          status: 'interrupted',
+          version: 3,
+          updated_at: 100,
+          latest_attempt: { attempt_number: 1, status: 'interrupted' },
+          unsafe_resume_blockers: [
+            {
+              tool_call_id: 'shell-call',
+              tool_name: 'shell_exec',
+              display_title: 'Ran command',
+            },
+            // Malformed entries never become blockers.
+            { tool_name: 'missing_id' } as never,
+          ],
+        },
+      ])
+    );
+    expect(result.current.run?.unsafeResumeBlockers).toEqual([
+      {
+        toolCallId: 'shell-call',
+        toolName: 'shell_exec',
+        displayTitle: 'Ran command',
+      },
+    ]);
+    expect(result.current.run?.resume_blocked_reason).toBeNull();
   });
 
   it.each([
@@ -284,6 +348,156 @@ describe('useInterruptedRunStatus', () => {
       await Promise.resolve();
     });
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps queue settlement false until reconciliation finishes and an interruption is resolved', async () => {
+    let release!: (value: unknown) => void;
+    fetchGetMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    expect(result.current.settled).toBe(false);
+    await act(async () => {
+      release({ runs: [] });
+    });
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const interrupted = {
+      run_id: 'failed-task',
+      version: 1,
+      project_id: 'project_one',
+      status: 'interrupted',
+      updated_at: 100,
+      latest_attempt: { attempt_number: 1, status: 'interrupted' },
+    };
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [interrupted])
+    );
+    expect(result.current.settled).toBe(false);
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          ...interrupted,
+          version: 2,
+          status: 'cancelled',
+          updated_at: 200,
+          latest_attempt: { attempt_number: 1, status: 'cancelled' },
+        },
+      ])
+    );
+    expect(result.current.settled).toBe(true);
+    fetchGetMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refresh();
+    });
+    expect(result.current.settled).toBe(false);
+    await act(async () => {
+      release({ runs: [] });
+      await refresh;
+    });
+    expect(result.current.settled).toBe(true);
+  });
+
+  it('keeps the last settled state when a later status check fails', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    fetchGetMock.mockRejectedValueOnce(new Error('Brain timed out'));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.settled).toBe(true);
+  });
+
+  it('retries a failed first status check with backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchGetMock
+        .mockRejectedValueOnce(new Error('Brain timed out'))
+        .mockRejectedValueOnce(new Error('Brain timed out'))
+        .mockResolvedValue({ runs: [] });
+      const { result } = renderHook(
+        () => useInterruptedRunStatus('project_one'),
+        { wrapper }
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.settled).toBe(false);
+      expect(fetchGetMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      expect(result.current.settled).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1999);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(fetchGetMock).toHaveBeenCalledTimes(3);
+      expect(result.current.settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('only re-subscribes to backend-ready when the host object changes', async () => {
+    let host = { electronAPI: null, ipcRenderer };
+    const hostWrapper = ({ children }: { children: ReactNode }) => (
+      <HostProvider host={host}>{children}</HostProvider>
+    );
+    const { result, rerender } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper: hostWrapper }
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    const firstListener = listeners.get('backend-ready');
+    expect(firstListener).toBeDefined();
+
+    // A provider that hands out a new host object must not start another
+    // load; a load marks the status unsettled and would re-render in a loop.
+    const nextIpcRenderer = {
+      on: vi.fn((channel: string, listener: (...args: any[]) => void) => {
+        listeners.set(channel, listener);
+      }),
+      off: vi.fn(),
+    };
+    host = { electronAPI: null, ipcRenderer: nextIpcRenderer };
+    rerender();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(result.current.settled).toBe(true);
+    expect(ipcRenderer.off).toHaveBeenCalledWith(
+      'backend-ready',
+      firstListener
+    );
+    expect(nextIpcRenderer.on).toHaveBeenCalledWith(
+      'backend-ready',
+      expect.any(Function)
+    );
+
+    await act(async () => {
+      listeners.get('backend-ready')?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(fetchGetMock).toHaveBeenCalledTimes(2));
   });
 
   it('coalesces overlapping refreshes for the same Project', async () => {

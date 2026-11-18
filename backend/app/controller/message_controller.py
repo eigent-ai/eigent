@@ -18,13 +18,14 @@ import inspect
 import json
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.auth import require_local_control_if_configured
 from app.router_layer.interface import InboundMessage
 from app.router_layer.message_router import DefaultMessageRouter
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_if_configured)])
 message_logger = logging.getLogger("message_controller")
 
 # Singleton router instance

@@ -50,6 +50,11 @@ const TERMINAL_EVENT_STATUS: Record<string, HumanControlStatus> = {
   'approval.canceled': 'cancelled',
 };
 
+/** Whether a canonical event closes its HumanInteraction, whatever the outcome. */
+export function isTerminalHumanControlEvent(eventType: string): boolean {
+  return own(TERMINAL_EVENT_STATUS, eventType);
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

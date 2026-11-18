@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import {
   Tooltip,
   TooltipContent,
@@ -83,8 +84,8 @@ export function TaskLogPanelContent({
                   >
                     <div className="flex w-full items-center justify-start gap-sm">
                       {toolkit.toolkitStatus === AgentStatusValue.RUNNING ? (
-                        <LoaderCircle
-                          size={16}
+                        <DsIcon
+                          icon={LoaderCircle}
                           className={
                             chatStore.tasks[activeTaskId]?.status ===
                             ChatTaskStatus.RUNNING
@@ -168,7 +169,7 @@ export function TaskLogPanelContent({
               }}
               className="text-ds-text-meta"
             >
-              <Copy className="text-ds-ink-muted-default" />
+              <DsIcon icon={Copy} className="text-ds-ink-muted-default" />
               <span className="text-ds-ink-muted-default">
                 {t('setting.copy', { defaultValue: 'Copy' })}
               </span>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -97,14 +98,16 @@ export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
       >
         <span className="flex min-w-0 items-center gap-2">
           {open ? (
-            <ChevronDown
+            <DsIcon
+              icon={ChevronDown}
               aria-hidden
-              className="size-4 shrink-0 text-ds-ink-subtle-default opacity-100 transition-opacity duration-200"
+              className="shrink-0 text-ds-ink-subtle-default opacity-100 transition-opacity duration-200"
             />
           ) : (
-            <ChevronRight
+            <DsIcon
+              icon={ChevronRight}
               aria-hidden
-              className="size-4 shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
+              className="shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
             />
           )}
           <span className="truncate text-ds-text-base font-medium text-ds-ink-default-default">

@@ -17,7 +17,6 @@ import {
   resolveAgentAvatarKind,
 } from '@/components/Workspace/AgentAvatar';
 import { FoldedAgentCard } from '@/components/Workspace/FoldedAgentCard';
-import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -81,16 +80,20 @@ describe('AgentAvatar', () => {
     );
   });
 
-  it('uses the camel image in the single-agent list', () => {
-    const { container } = render(<SingleAgentList />);
-    const surface = container.firstElementChild;
-
-    expect(surface).toHaveClass('size-10', 'overflow-hidden');
-    expect(surface).not.toHaveClass('p-2');
-    expect(container.querySelector('[data-agent-avatar="single"]')).toHaveClass(
-      'size-full',
-      'object-cover'
+  it('uses the ModelArk provider logo for ModelArk-backed subagents', () => {
+    const { container } = render(
+      <AgentAvatar
+        agentType="subagent"
+        agentName="Researcher"
+        provider="modelark_agents"
+        avatarSeed="remote-call"
+        size="sm"
+      />
     );
+
+    expect(
+      container.querySelector('[data-agent-avatar="modelark"]')
+    ).toHaveClass('size-4', 'object-contain');
   });
 
   it('uses a full-bleed workforce image in the compact agent card', () => {

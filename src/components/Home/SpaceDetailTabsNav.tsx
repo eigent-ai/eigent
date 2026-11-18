@@ -12,11 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import {
   Brain,
-  Library,
+  Inbox,
   ListChecks,
   MessageCircle,
   Settings,
@@ -76,9 +77,9 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'context',
-    labelKey: 'layout.context-heading',
-    defaultLabel: 'Context',
-    icon: Library,
+    labelKey: 'layout.files-tab',
+    defaultLabel: 'Files',
+    icon: Inbox,
   },
   {
     id: 'memory',
@@ -209,7 +210,7 @@ export function SpaceDetailTabsNav({
                 />
               ) : null}
               <span className={iconSlotClass} aria-hidden>
-                <Icon />
+                <DsIcon icon={Icon} />
               </span>
               <span className="relative z-10 !text-ds-text-base font-bold">
                 {label}

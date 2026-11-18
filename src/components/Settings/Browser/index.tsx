@@ -21,10 +21,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -38,6 +39,19 @@ interface CdpBrowser {
   isExternal: boolean;
   name?: string;
   addedAt: number;
+}
+
+/**
+ * Parses a remote debugging port typed by the user. The whole value, ignoring
+ * surrounding whitespace, must be a decimal integer from 1 to 65535, so input
+ * such as "65535abc", "1.5", "1e3" or "+9222" is rejected instead of being
+ * truncated to a different port.
+ */
+function parseCdpPort(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const port = Number(trimmed);
+  return port >= 1 && port <= 65535 ? port : null;
 }
 
 export default function CDP() {
@@ -57,6 +71,8 @@ export default function CDP() {
   const [connectPort, setConnectPort] = useState('');
   const [connectChecking, setConnectChecking] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const connectTriggerRef = useRef<HTMLButtonElement>(null);
+  const connectErrorId = useId();
   const setResourceCount = useSettingsResourceCountsStore(
     (state) => state.setCount
   );
@@ -213,8 +229,8 @@ export default function CDP() {
   };
 
   const handleCheckAndConnect = async () => {
-    const portNum = parseInt(connectPort, 10);
-    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    const portNum = parseCdpPort(connectPort);
+    if (portNum === null) {
       setConnectError(t('layout.invalid-port'));
       return;
     }
@@ -316,10 +332,11 @@ export default function CDP() {
                 textWeight="semibold"
                 onClick={handleOpenNewBrowser}
               >
-                <Plus className="h-4 w-4" />
+                <DsIcon icon={Plus} />
                 {t('layout.open-new-browser')}
               </Button>
               <Button
+                ref={connectTriggerRef}
                 variant="outline"
                 textWeight="semibold"
                 buttonContent="text"
@@ -328,7 +345,7 @@ export default function CDP() {
                 size="sm"
                 onClick={handleConnectExistingBrowser}
               >
-                <Link2 />
+                <DsIcon icon={Link2} />
                 {t('layout.connect-existing-browser')}
               </Button>
             </div>
@@ -412,8 +429,10 @@ export default function CDP() {
                     className="ml-3 shrink-0"
                     aria-label={t('layout.remove-browser')}
                   >
-                    <Trash2
-                      className="h-4 w-4 text-ds-text-error-default-default"
+                    <DsIcon
+                      recipe="main-compact"
+                      icon={Trash2}
+                      className="text-ds-text-error-default-default"
                       aria-hidden
                     />
                   </Button>
@@ -422,7 +441,12 @@ export default function CDP() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Globe className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+              <DsIcon
+                icon={Globe}
+                recipe="illustration"
+                illustrationSize={48}
+                className="mb-4 text-ds-ink-muted-default opacity-50"
+              />
               <span className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
                 {t('layout.no-browsers-in-pool')}
               </span>
@@ -452,6 +476,12 @@ export default function CDP() {
           onPointerDownOutside={(event) => {
             if (connectChecking) event.preventDefault();
           }}
+          onCloseAutoFocus={(event) => {
+            // The trigger lives outside this Dialog, so Radix has no trigger
+            // to restore focus to. Return focus to the button that opened it.
+            event.preventDefault();
+            connectTriggerRef.current?.focus();
+          }}
         >
           <DialogTitle asChild>
             <span className="mb-2 block text-ds-text-base font-bold text-ds-ink-default-default">
@@ -471,13 +501,18 @@ export default function CDP() {
               setConnectError('');
             }}
             placeholder={t('layout.enter-port-number')}
+            aria-invalid={connectError ? true : undefined}
+            aria-describedby={connectError ? connectErrorId : undefined}
             className="w-full rounded-lg border border-x border-y border-ds-hairline-muted-disabled bg-ds-neutral-default-default px-4 py-2 text-ds-text-base text-ds-ink-default-default outline-none focus:border-ds-ring-focus"
             onKeyDown={(event) => {
               if (event.key === 'Enter') void handleCheckAndConnect();
             }}
           />
           {connectError && (
-            <span className="mt-2 block text-ds-text-meta text-ds-text-status-error-strong-default">
+            <span
+              id={connectErrorId}
+              className="mt-2 block text-ds-text-meta text-ds-text-status-error-strong-default"
+            >
               {connectError}
             </span>
           )}
@@ -497,9 +532,9 @@ export default function CDP() {
               disabled={connectChecking}
             >
               {connectChecking ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <DsIcon icon={Loader2} className="animate-spin" aria-hidden />
               ) : (
-                <Link2 className="h-4 w-4" aria-hidden />
+                <DsIcon icon={Link2} aria-hidden />
               )}
               {t('layout.check-and-connect')}
             </Button>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import { Minus, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -53,7 +54,7 @@ export default function WindowControls() {
         className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.minimizeWindow()}
       >
-        <Minus className="h-4 w-4" aria-hidden />
+        <DsIcon icon={Minus} aria-hidden />
       </button>
       <button
         type="button"
@@ -61,7 +62,7 @@ export default function WindowControls() {
         className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
       >
-        <Square className="h-4 w-4" aria-hidden />
+        <DsIcon icon={Square} aria-hidden />
       </button>
       <button
         type="button"
@@ -78,7 +79,7 @@ export default function WindowControls() {
           e.stopPropagation();
         }}
       >
-        <X className="h-4 w-4" aria-hidden />
+        <DsIcon icon={X} aria-hidden />
       </button>
     </div>
   );

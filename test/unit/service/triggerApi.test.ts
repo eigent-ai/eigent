@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   addLog: vi.fn(),
   modifyLog: vi.fn(() => false),
   proxyFetchPut: vi.fn(),
+  proxyFetchPost: vi.fn(),
   fetchGet: vi.fn(),
   auth: { user_id: 1, email: 'one@example.invalid' },
 }));
@@ -27,7 +28,7 @@ vi.mock('@/api/http', () => ({
   fetchGet: mocks.fetchGet,
   proxyFetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
-  proxyFetchPost: vi.fn(),
+  proxyFetchPost: mocks.proxyFetchPost,
   proxyFetchPut: mocks.proxyFetchPut,
 }));
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => mocks.auth }));
@@ -65,6 +66,29 @@ describe('trigger execution status delivery', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('requests a manual execution with a unique identity without changing the schedule', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockResolvedValue({ execution_id: 'accepted' });
+    await proxyRunTriggerNow(12);
+    await proxyRunTriggerNow(12);
+    const [first, second] = mocks.proxyFetchPost.mock.calls;
+    expect(first[0]).toBe('/api/v1/execution/');
+    expect(first[1]).toEqual({
+      trigger_id: 12,
+      execution_id: expect.any(String),
+      execution_type: 'manual',
+      input_data: {},
+    });
+    expect(first[1].execution_id).not.toBe(second[1].execution_id);
+    expect(mocks.proxyFetchPut).not.toHaveBeenCalled();
+  });
+
+  it('propagates a rejected run request so the page can report failure', async () => {
+    const { proxyRunTriggerNow } = await import('@/service/triggerApi');
+    mocks.proxyFetchPost.mockRejectedValueOnce(new Error('Offline'));
+    await expect(proxyRunTriggerNow(12)).rejects.toThrow('Offline');
   });
 
   describe('unobserved durable terminal recovery', () => {
@@ -907,5 +931,47 @@ describe('trigger execution status delivery', () => {
       output_data: { result: 'accepted' },
     });
     expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+});
+
+describe('Space trigger listing on older servers', () => {
+  it('filters all pages locally when the server ignores space_id', async () => {
+    const http = await import('@/api/http');
+    const get = vi.mocked(http.proxyFetchGet);
+    get.mockReset();
+    const { useSpaceStore } = await import('@/store/spaceStore');
+    vi.spyOn(useSpaceStore.getState(), 'getProjectMeta').mockImplementation(
+      (id) => (id === 'legacy-session' ? ({ spaceId: 'space-1' } as any) : null)
+    );
+    get.mockResolvedValueOnce({
+      items: Array.from({ length: 100 }, (_, id) => ({
+        id,
+        space_id: 'space-2',
+      })),
+      total: 102,
+    });
+    get.mockResolvedValueOnce({
+      items: [
+        { id: 100, space_id: 'space-1' },
+        { id: 101, space_id: null, project_id: 'legacy-session' },
+      ],
+      total: 102,
+    });
+    const { proxyFetchSpaceTriggers } = await import('@/service/triggerApi');
+    const result = await proxyFetchSpaceTriggers('space-1');
+    expect(result.items.map((item) => item.id)).toEqual([100, 101]);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Automation Session name', () => {
+  it('saves the shown name through the Session name route', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxySaveAutomationSessionName } =
+      await import('@/service/triggerApi');
+    await proxySaveAutomationSessionName('session-1', 'Automation: A & B');
+    expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
+      '/api/v1/chat/project/session-1/name?new_name=Automation%3A%20A%20%26%20B'
+    );
   });
 });

@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { shellDetailBackState } from '@/lib/shellRoutes';
 import { Ellipsis, MessageSquare, Settings, Trash2 } from 'lucide-react';
@@ -51,7 +52,7 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
           disabled={disabled}
           aria-label={t('agents.library-actions', { name: entry.name })}
         >
-          <Ellipsis />
+          <DsIcon icon={Ellipsis} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -66,7 +67,7 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
               })
             }
           >
-            <Settings />
+            <DsIcon icon={Settings} />
             {t('agents.library-manage-profile')}
           </DropdownMenuItem>
         ) : (
@@ -80,7 +81,7 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
                 );
               }}
             >
-              <MessageSquare />
+              <DsIcon icon={MessageSquare} />
               {t('agents.try-in-chat')}
             </DropdownMenuItem>
             {entry.kind === 'global' && (
@@ -89,7 +90,10 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
                 disabled={disabled}
                 onSelect={() => setDeleteTarget(entry.skill)}
               >
-                <Trash2 className="text-ds-icon-error-default-default" />
+                <DsIcon
+                  icon={Trash2}
+                  className="text-ds-icon-error-default-default"
+                />
                 {t('agents.delete-skill')}
               </DropdownMenuItem>
             )}

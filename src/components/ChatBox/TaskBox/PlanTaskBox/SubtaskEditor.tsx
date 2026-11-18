@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { CircleDashed } from 'lucide-react';
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -79,8 +80,8 @@ export function SubtaskEditor({
           className="flex items-start gap-2 p-1"
         >
           <div className="flex h-6 shrink-0 items-center justify-center">
-            <CircleDashed
-              size={16}
+            <DsIcon
+              icon={CircleDashed}
               className="mt-0.5 fill-current text-ds-icon-status-splitting-default-default"
             />
           </div>

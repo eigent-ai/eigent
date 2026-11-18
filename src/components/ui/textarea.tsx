@@ -14,6 +14,7 @@
 
 import * as React from 'react';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
@@ -24,10 +25,11 @@ import {
   formFieldTextareaStateClasses,
   type TextareaFormFieldState,
 } from './formFieldSurface';
+import { DS_FOCUS_RING } from './semanticProps';
 import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
-export type TextareaVariant = 'none' | 'enhanced' | 'outlined';
+export type TextareaVariant = 'none' | 'plain' | 'enhanced' | 'outlined';
 export type TextareaSize = 'default' | 'sm';
 export type TextareaState =
   'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
@@ -78,19 +80,27 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     } = props;
     const [isComposing, setIsComposing] = React.useState(false);
     // Original "none" variant - keep the original styling
-    if (variant === 'none') {
+    if (variant === 'none' || variant === 'plain') {
       return (
         <>
           <textarea
             {...textareaProps}
             data-scrollbar="ui-textarea"
             className={cn(
-              'flex min-h-[4rem] w-full [scrollbar-gutter:stable] rounded-ds-field border border-x border-y border-ds-hairline-default-default bg-transparent py-2 pr-3 pl-3 text-ds-text-base shadow-sm placeholder:text-ds-ink-muted-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              variant === 'plain'
+                ? cn(
+                    'flex w-full [scrollbar-gutter:stable] rounded-none border-0 border-x-0 border-y-0 bg-transparent p-0 text-ds-text-base text-ds-ink-default-default shadow-none placeholder:text-ds-ink-muted-default disabled:cursor-not-allowed disabled:opacity-50',
+                    size === 'sm'
+                      ? 'min-h-[var(--ds-textarea-sm-min-height)]'
+                      : 'min-h-[var(--ds-textarea-md-min-height)]',
+                    DS_FOCUS_RING
+                  )
+                : 'flex min-h-[4rem] w-full [scrollbar-gutter:stable] rounded-ds-field border border-x border-y border-ds-hairline-default-default bg-transparent py-2 pr-3 pl-3 text-ds-text-base shadow-sm placeholder:text-ds-ink-muted-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
               isComposing && 'placeholder:opacity-0',
               className
             )}
             style={mergeAliasStyles(formControlTokenAliases, {
-              paddingRight: '4px',
+              ...(variant === 'plain' ? {} : { paddingRight: '4px' }),
               ...(style as React.CSSProperties),
             })}
             ref={ref}
@@ -149,8 +159,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
               )}
               {tooltip && (
                 <TooltipSimple content={tooltip}>
-                  <CircleAlert
-                    size={16}
+                  <DsIcon
+                    icon={CircleAlert}
                     className="text-ds-ink-default-default"
                   />
                 </TooltipSimple>

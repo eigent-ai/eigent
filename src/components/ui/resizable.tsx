@@ -14,6 +14,7 @@
 
 'use client';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { GripVerticalIcon } from 'lucide-react';
 import * as React from 'react';
 import * as ResizablePrimitive from 'react-resizable-panels';
@@ -69,7 +70,7 @@ function ResizableHandle({
     >
       {withHandle && (
         <div className="z-10 flex h-4 w-3 items-center justify-center rounded-xs border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default">
-          <GripVerticalIcon className="size-2.5" />
+          <DsIcon icon={GripVerticalIcon} recipe="main-compact" />
         </div>
       )}
     </ResizablePrimitive.PanelResizeHandle>

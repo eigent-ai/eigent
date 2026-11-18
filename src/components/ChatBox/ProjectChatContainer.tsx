@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { useResolvedRunModels } from '@/hooks/useResolvedRunModels';
+import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
+import {
+  useIsFocusedSessionPane,
+  useSessionProjectId,
+} from '@/hooks/useSessionProjectId';
+import { ChatTaskStatus, type SessionModeType } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -26,22 +32,37 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
+import type { EditUserMessageSource } from './MessageItem/UserMessageCard';
 import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
+import { previousRecordedRunModel } from './TimelineModes/ModelChangeDivider';
+
+const ACTIVE_LEGACY_TASK_STATUSES = new Set<string>([
+  ChatTaskStatus.PENDING,
+  ChatTaskStatus.RUNNING,
+  ChatTaskStatus.PAUSE,
+]);
 
 interface ProjectChatContainerProps {
+  onEditUserMessage?: (message: EditUserMessageSource) => void;
   className?: string;
   /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
   scrollBottomInsetPx: number;
+  /** The Session's mode, for Tasks that record none of their own. */
+  sessionMode?: SessionModeType;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
+  onEditUserMessage,
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
+  sessionMode,
 }) => {
   const { projectStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
+  const isFocusedPane = useIsFocusedSessionPane();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [, setChatRevision] = useState(0);
   const anchorFrameRef = useRef<number | null>(null);
@@ -49,7 +70,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Get all chat stores for the active project
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = sessionProjectId;
   const chatStores = useMemo(
     () =>
       activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
@@ -78,6 +99,19 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       taskSections.push({ chatId, chatStore, taskId });
     }
   }
+  // A legacy Task id is its durable Run id.
+  const sectionRunIds = taskSections.map(({ taskId }) => taskId);
+  const resolvedModelsByRun = useResolvedRunModels(
+    activeProjectId,
+    taskSections.map(({ chatStore, taskId }) => {
+      const status = String(chatStore.getState().tasks[taskId]?.status ?? '');
+      return {
+        runId: taskId,
+        status,
+        active: ACTIVE_LEGACY_TASK_STATUSES.has(status),
+      };
+    })
+  );
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
     const scheduleRefresh = () => {
@@ -157,8 +191,8 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   );
 
   // The first query follows the existing bottom reveal. From the second query
-  // onward, keep the new user box at the top of the ChatBox viewport so it sits
-  // below the fixed Session header with the standard 44px top gap.
+  // onward, keep the new user box flush with the top of the ChatBox viewport,
+  // just below the fixed Session header.
   useEffect(() => {
     if (previousQueryProjectIdRef.current !== activeProjectId) {
       previousQueryProjectIdRef.current = activeProjectId;
@@ -251,11 +285,23 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   }, [chatStores, scrollContainerRef]);
 
   // Scroll to a specific query group when triggered from the sidebar
-  const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
-  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+  const scrollToQueryProjectId = useSessionPageTabStore(
+    (s) => s.scrollToQueryProjectId
+  );
+  const scrollToQueryId = useSessionPageTabStore((s) => s.scrollToQueryId);
+  const setScrollToQueryId = useSessionPageTabStore(
+    (s) => s.setScrollToQueryId
+  );
 
   useEffect(() => {
-    if (!scrollToQueryId || !scrollContainerRef.current) return;
+    if (
+      !scrollToQueryId ||
+      !scrollContainerRef.current ||
+      (scrollToQueryProjectId
+        ? scrollToQueryProjectId !== activeProjectId
+        : !isFocusedPane)
+    )
+      return;
 
     const el = scrollContainerRef.current.querySelector(
       `[data-query-id="${scrollToQueryId}"]`
@@ -269,11 +315,20 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }
 
     setScrollToQueryId(null);
-  }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
+  }, [
+    scrollToQueryId,
+    scrollToQueryProjectId,
+    isFocusedPane,
+    activeProjectId,
+    setScrollToQueryId,
+    scrollContainerRef,
+  ]);
 
   // Scroll to a historical Run when requested by the Session side panel.
-  const scrollToTurnRequest = usePageTabStore((s) => s.scrollToTurnRequest);
-  const setScrollToTurnRequest = usePageTabStore(
+  const scrollToTurnRequest = useSessionPageTabStore(
+    (s) => s.scrollToTurnRequest
+  );
+  const setScrollToTurnRequest = useSessionPageTabStore(
     (s) => s.setScrollToTurnRequest
   );
 
@@ -309,13 +364,24 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   // TaskCard listens to the same counter to expand itself; we own the
   // scroll. The `data-task-card="true"` attribute is set on a query
   // group's outer wrapper only when its TaskCard is currently visible.
-  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
-  const taskBoxFocusProjectId = usePageTabStore((s) => s.taskBoxFocusProjectId);
-  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
+  const taskBoxFocusRequestId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusRequestId
+  );
+  const taskBoxFocusProjectId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusProjectId
+  );
+  const taskBoxFocusTaskId = useSessionPageTabStore(
+    (s) => s.taskBoxFocusTaskId
+  );
+  const handledTaskBoxFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
+    if (handledTaskBoxFocusRef.current === taskBoxFocusRequestId) return;
+    handledTaskBoxFocusRef.current = taskBoxFocusRequestId;
     if (
       !taskBoxFocusRequestId ||
-      (taskBoxFocusProjectId && taskBoxFocusProjectId !== activeProjectId)
+      (taskBoxFocusProjectId
+        ? taskBoxFocusProjectId !== activeProjectId
+        : !isFocusedPane)
     ) {
       return;
     }
@@ -338,6 +404,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
   }, [
     activeProjectId,
+    isFocusedPane,
     taskBoxFocusProjectId,
     taskBoxFocusRequestId,
     taskBoxFocusTaskId,
@@ -348,19 +415,31 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     <div className={`relative z-10 w-full ${className}`}>
       <div
         ref={contentRef}
-        className="mx-auto w-full max-w-[600px] pt-0"
+        className="mx-auto w-full max-w-[736px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">
-          {taskSections.map(({ chatId, chatStore, taskId }) => {
+          {taskSections.map(({ chatId, chatStore, taskId }, index) => {
             return (
               <ProjectSection
                 key={`${chatId}-${taskId}`}
                 chatId={chatId}
                 chatStore={chatStore}
                 taskId={taskId}
+                previousModel={
+                  index > 0
+                    ? previousRecordedRunModel(
+                        sectionRunIds,
+                        index,
+                        resolvedModelsByRun
+                      )
+                    : undefined
+                }
+                model={resolvedModelsByRun[taskId]}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
+                onEditUserMessage={onEditUserMessage}
+                sessionMode={sessionMode}
               />
             );
           })}

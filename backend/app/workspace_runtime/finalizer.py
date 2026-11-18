@@ -27,6 +27,11 @@ import sqlite3
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from app.run_journal.transitions import (
+    RUN_STOPPED_STATES,
+    RUN_TERMINAL_STATES,
+)
+
 from .admission import ExecutionRequest
 from .bound_runtime import BoundRuntime, VerifiedSettlement
 from .content import ContentIntegrityError, canonical_json, content_digest
@@ -41,16 +46,20 @@ if TYPE_CHECKING:
     from app.run_journal.store import SQLiteRunJournal
 
 
-_OUTCOMES = {"completed", "failed", "cancelled", "interrupted"}
-_TERMINAL = {"completed", "failed", "cancelled"}
 _ARTIFACT_SCHEMA = "isolated_artifacts.v1"
 
 
 class WorkspaceFinalizer:
+    """Publish one fenced runtime's immutable outcome.
+
+    ``ExecutionService`` owns process-local single-flight finalization. Durable
+    owner checks and the atomic commit below remain authoritative for recovery
+    or retries from another process.
+    """
+
     def __init__(self, journal: SQLiteRunJournal) -> None:
         self.journal = journal
         self.state = WorkspaceStateStore(journal)
-        self._locks: dict[tuple[str, str, int], asyncio.Lock] = {}
 
     def _owner(
         self,
@@ -127,72 +136,67 @@ class WorkspaceFinalizer:
         terminal facts stay unchanged; recovery adds the settled manifest. Any
         failure retains the barrier and execution/admission ownership.
         """
-        if outcome not in _OUTCOMES or not isinstance(result, str):
+        if outcome not in RUN_STOPPED_STATES or not isinstance(result, str):
             raise ValueError(
                 "finalization requires a result and supported outcome"
             )
         owner = runtime.binding
-        key = (owner.run_id, owner.attempt_id, owner.generation)
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
+        try:
+            with self.journal._lock:
+                previous = self._owner(
+                    self.journal._connection, request, runtime
+                )
+            if previous["state"] == "settled":
+                provider.store.read_blob(previous["manifest_digest"])
+                provider.store.get_manifest(previous["checkpoint_revision"])
+                return str(previous["checkpoint_revision"])
+            proof = await runtime.stop()
+            receipt = runtime.verify_settlement(proof)
+            await asyncio.to_thread(
+                self.state.record_writer_settlement,
+                run_id=owner.run_id,
+                attempt_id=owner.attempt_id,
+                generation=owner.generation,
+                process_receipt=receipt,
+            )
+            checkpoint, provenance = await asyncio.to_thread(
+                self._checkpoint, request, runtime, provider, proof
+            )
+            payload, manifest_digest = await asyncio.to_thread(
+                self._artifact_payload,
+                runtime,
+                provider,
+                checkpoint,
+                provenance,
+            )
+            # A child terminated by stop did not successfully complete its
+            # program. Its partial bytes remain recovery artifacts only.
+            if outcome == "completed" and any(
+                code != 0 for _, code in proof.process_instances
+            ):
+                outcome = "failed"
+            return await asyncio.to_thread(
+                self._commit,
+                request,
+                runtime,
+                checkpoint,
+                provenance,
+                payload,
+                manifest_digest,
+                result,
+                outcome,
+            )
+        except BaseException as exc:
             try:
-                with self.journal._lock:
-                    previous = self._owner(
-                        self.journal._connection, request, runtime
-                    )
-                if previous["state"] == "settled":
-                    provider.store.read_blob(previous["manifest_digest"])
-                    provider.store.get_manifest(
-                        previous["checkpoint_revision"]
-                    )
-                    return str(previous["checkpoint_revision"])
-                proof = await runtime.stop()
-                receipt = runtime.verify_settlement(proof)
-                await asyncio.to_thread(
-                    self.state.record_writer_settlement,
+                self.mark_needs_attention(
                     run_id=owner.run_id,
                     attempt_id=owner.attempt_id,
                     generation=owner.generation,
-                    process_receipt=receipt,
+                    reason=type(exc).__name__,
                 )
-                checkpoint, provenance = await asyncio.to_thread(
-                    self._checkpoint, request, runtime, provider, proof
-                )
-                payload, manifest_digest = await asyncio.to_thread(
-                    self._artifact_payload,
-                    runtime,
-                    provider,
-                    checkpoint,
-                    provenance,
-                )
-                # A child terminated by stop did not successfully complete its
-                # program. Its partial bytes remain recovery artifacts only.
-                if outcome == "completed" and any(
-                    code != 0 for _, code in proof.process_instances
-                ):
-                    outcome = "failed"
-                return await asyncio.to_thread(
-                    self._commit,
-                    request,
-                    runtime,
-                    checkpoint,
-                    provenance,
-                    payload,
-                    manifest_digest,
-                    result,
-                    outcome,
-                )
-            except BaseException as exc:
-                try:
-                    self.mark_needs_attention(
-                        run_id=owner.run_id,
-                        attempt_id=owner.attempt_id,
-                        generation=owner.generation,
-                        reason=type(exc).__name__,
-                    )
-                except WorkspaceFenceLost:
-                    pass
-                raise
+            except WorkspaceFenceLost:
+                pass
+            raise
 
     def _checkpoint(
         self,
@@ -313,7 +317,7 @@ class WorkspaceFinalizer:
                 "SELECT status,cancel_request_id FROM runs WHERE run_id=?",
                 (owner.run_id,),
             ).fetchone()
-            existing_terminal = run["status"] in _TERMINAL
+            existing_terminal = run["status"] in RUN_TERMINAL_STATES
             effective = (
                 run["status"]
                 if existing_terminal
