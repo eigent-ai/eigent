@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { exec } from 'child_process';
 import log from 'electron-log';
-import * as net from 'net';
+import { exec } from 'node:child_process';
+import * as net from 'node:net';
 
 /**
  * Local promise wrapper for `child_process.exec`.
