@@ -29,6 +29,7 @@ vi.mock('@/hooks/useSessionExecution', () => ({
 }));
 
 import Session from '@/components/Session';
+import { SUMMARY_WIDTH } from '@/components/Session/layout/sessionColumns';
 import {
   act,
   fireEvent,
@@ -74,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     }),
     previewSlice: { open: true, tabs: [], activeTabId: null },
   },
+  historyLoadingProjectIds: {} as Record<string, boolean>,
   projectState: {
     chatStoreAvailable: true,
     activeProjectId: 'project-1',
@@ -107,11 +109,9 @@ vi.mock('@/components/Session/HeaderBox', () => ({
     totalTokens,
     projectName,
     summary,
-    showBack = true,
   }: {
     totalTokens?: number;
     projectName?: string | null;
-    showBack?: boolean;
     summary?: {
       open: boolean;
       onToggle: () => void;
@@ -123,7 +123,6 @@ vi.mock('@/components/Session/HeaderBox', () => ({
       data-testid="session-header"
       data-total-tokens={totalTokens ?? 'unset'}
       data-project-name={projectName ?? 'unset'}
-      data-show-back={showBack}
     >
       <button
         aria-label="Summary"
@@ -176,7 +175,11 @@ vi.mock('@/store/projectRuntimeStore', () => ({
       selector: (state: {
         historyLoadingProjectIds: Record<string, boolean>;
       }) => unknown
-    ) => selector({ ...mocks.projectState, historyLoadingProjectIds: {} }),
+    ) =>
+      selector({
+        ...mocks.projectState,
+        historyLoadingProjectIds: mocks.historyLoadingProjectIds,
+      }),
     { getState: () => mocks.projectState }
   ),
 }));
@@ -222,6 +225,14 @@ vi.mock('framer-motion', () => ({
     },
   },
 }));
+
+/** The Preview column's own entrance: the one that grows its width. */
+const previewColumnEntrance = () =>
+  mocks.entrances.findLast(
+    (entrance) =>
+      (entrance.transition as { flexGrow?: unknown } | undefined)?.flexGrow !==
+      undefined
+  );
 
 let scheduledFrame: FrameRequestCallback | null = null;
 
@@ -316,6 +327,7 @@ describe('Session preview resize', () => {
     mocks.pageState.activeWorkspaceTab = 'project';
     mocks.projectState.chatStoreAvailable = true;
     sessionExecutionMocks.routeLoading = false;
+    mocks.historyLoadingProjectIds = {};
     scheduledFrame = null;
 
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
@@ -334,6 +346,7 @@ describe('Session preview resize', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('holds viewports until the 200ms geometry entrance completes', () => {
@@ -342,15 +355,68 @@ describe('Session preview resize', () => {
       'data-settled',
       'false'
     );
-    expect(mocks.entrances.at(-1)?.transition).toMatchObject({
+    expect(previewColumnEntrance()?.transition).toMatchObject({
       flexGrow: { type: 'tween', duration: 0.2, ease: [0.23, 1, 0.32, 1] },
       transform: { type: 'tween', duration: 0.2 },
     });
-    act(() => mocks.entrances.at(-1)?.complete?.());
+    act(() => previewColumnEntrance()?.complete?.());
     expect(screen.getByTestId('preview-panel')).toHaveAttribute(
       'data-settled',
       'true'
     );
+  });
+
+  it('brings Preview content in from the right, out of a blur, at its open width', () => {
+    render(<Session />);
+
+    const content = document.querySelector(
+      '[data-preview-column-content]'
+    ) as HTMLElement;
+    // Laid out at the open width while the column grows, so it slides in
+    // rather than reflowing from the left.
+    expect(content).toHaveAttribute('data-preview-entering', 'true');
+    expect(content.style.width).toMatch(
+      /^calc\(\d+(\.\d+)?px - var\(--ds-border-thin\)\)$/
+    );
+    // Only the width is held; it still fills the column's height, so
+    // vertically centred content opens centred instead of dropping into place.
+    expect(content.style.flex).toBe('');
+    expect(content).toHaveClass('flex-1');
+    const contentEntrance = mocks.entrances.find(
+      (entrance) =>
+        (entrance.initial as { filter?: string } | undefined)?.filter ===
+        'blur(6px)'
+    );
+    expect(contentEntrance?.initial).toEqual({ x: 16, filter: 'blur(6px)' });
+    expect(contentEntrance?.transition).toMatchObject({
+      type: 'tween',
+      duration: 0.2,
+      ease: [0.23, 1, 0.32, 1],
+    });
+
+    // Once open, it sizes with the column again, so the divider still works.
+    act(() => previewColumnEntrance()?.complete?.());
+    expect(content).toHaveAttribute('data-preview-entering', 'false');
+    expect(content.style.width).toBe('');
+  });
+
+  it('opens Preview content in place from a shortcut', () => {
+    mocks.pageState.sessionPreviewOpening = {
+      projectId: 'project-1',
+      requestId: 1,
+      immediate: true,
+    };
+    render(<Session />);
+
+    const content = document.querySelector('[data-preview-column-content]');
+    expect(content).toHaveAttribute('data-preview-entering', 'false');
+    expect(
+      mocks.entrances.some(
+        (entrance) =>
+          (entrance.initial as { filter?: string } | undefined)?.filter ===
+          'blur(6px)'
+      )
+    ).toBe(false);
   });
 
   it.each(['shortcut', 'reduced motion'])(
@@ -368,7 +434,7 @@ describe('Session preview resize', () => {
         'data-settled',
         'false'
       );
-      expect(mocks.entrances.at(-1)?.transition).toMatchObject({
+      expect(previewColumnEntrance()?.transition).toMatchObject({
         flexGrow: { duration: 0 },
         transform: { duration: 0 },
         opacity: { duration: input === 'shortcut' ? 0 : 0.2 },
@@ -387,7 +453,7 @@ describe('Session preview resize', () => {
 
   it('rejects stale completion after close/reopen and Session changes', () => {
     const { rerender } = render(<Session />);
-    const firstComplete = mocks.entrances.at(-1)?.complete;
+    const firstComplete = previewColumnEntrance()?.complete;
     mocks.pageState.previewSlice.open = false;
     rerender(<Session />);
     mocks.pageState.previewSlice.open = true;
@@ -402,7 +468,7 @@ describe('Session preview resize', () => {
       'data-settled',
       'false'
     );
-    const secondComplete = mocks.entrances.at(-1)?.complete;
+    const secondComplete = previewColumnEntrance()?.complete;
     mocks.projectState.activeProjectId = 'project-2';
     mocks.pageState.sessionPreviewProjectId = 'project-2';
     mocks.pageState.sessionPreviewOpening = null;
@@ -412,7 +478,7 @@ describe('Session preview resize', () => {
       'data-settled',
       'false'
     );
-    act(() => mocks.entrances.at(-1)?.complete?.());
+    act(() => previewColumnEntrance()?.complete?.());
     expect(screen.getByTestId('preview-panel')).toHaveAttribute(
       'data-settled',
       'true'
@@ -436,6 +502,30 @@ describe('Session preview resize', () => {
     unmount();
     act(() => lastFrame?.(0));
     expect(window.cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it('opens without waiting for the legacy history replay in the event-native view', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+    mocks.historyLoadingProjectIds = { 'project-1': true };
+
+    render(<Session />);
+
+    // The event-native timeline reports its own first load; the replay only
+    // feeds the legacy view, so it must not hold the whole page.
+    expect(
+      document.querySelector('[data-session-loading-cover]')
+    ).toHaveAttribute('data-session-loading-cover', 'shown');
+  });
+
+  it('waits for the history replay in the legacy view, which shows it', () => {
+    vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'false');
+    mocks.historyLoadingProjectIds = { 'project-1': true };
+
+    render(<Session />);
+
+    expect(
+      document.querySelector('[data-session-loading-cover]')
+    ).toHaveAttribute('data-session-loading-cover', 'hidden');
   });
 
   it('renders while the active chat store rebuilds during route loading', () => {
@@ -499,10 +589,6 @@ describe('Session preview resize', () => {
       'data-total-tokens',
       '0'
     );
-    expect(screen.getByTestId('session-header')).toHaveAttribute(
-      'data-show-back',
-      'false'
-    );
     expect(screen.getByTestId('workspace')).toBeInTheDocument();
     expect(screen.queryByTestId('chat-box')).not.toBeInTheDocument();
     expect(screen.getByTestId('preview-panel')).toBeInTheDocument();
@@ -529,6 +615,19 @@ describe('Session preview resize', () => {
     expect(
       screen.getByTestId('session-side-panel-content')
     ).toBeInTheDocument();
+
+    // Activity opens by width with Preview's tween, so the chat column and
+    // its composer narrow smoothly; its content keeps full width meanwhile.
+    expect(
+      mocks.entrances.find(
+        (entrance) =>
+          (entrance.initial as { width?: number } | undefined)?.width === 0
+      )?.transition
+    ).toMatchObject({ type: 'tween', duration: 0.2, ease: [0.23, 1, 0.32, 1] });
+    const panel = document.querySelector('[data-session-side-panel]');
+    expect(panel?.firstElementChild).toHaveStyle({
+      width: `${SUMMARY_WIDTH}px`,
+    });
   });
 
   it('never shows the previous Session Preview on the New session page', () => {
@@ -540,10 +639,6 @@ describe('Session preview resize', () => {
 
   it('starts with Summary closed and leaves no folded rail', () => {
     render(<Session />);
-    expect(screen.getByTestId('session-header')).toHaveAttribute(
-      'data-show-back',
-      'true'
-    );
     expect(
       screen.queryByTestId('session-side-panel-content')
     ).not.toBeInTheDocument();

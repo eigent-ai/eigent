@@ -14,6 +14,7 @@
 
 import {
   APP_SHELL_COLUMN_GAP_PX,
+  APP_SHELL_RAIL_WIDTH_PX,
   APP_SHELL_SIDEBAR_TAB_INSET_PX,
   APP_SHELL_SIDEBAR_WIDTH_PX,
 } from '@/components/Layout/AppShellLayout';
@@ -29,9 +30,24 @@ interface TopBarPrimaryNavigationProps {
 }
 
 /**
+ * Width of the top-bar span above the rail and sidebar, after the leading
+ * inset. Open, it ends at the sidebar edge; folded, at the rail edge. The
+ * macOS traffic lights are wider than the rail, so a folded span can be 0.
+ */
+export function getTopBarSidebarControlsWidth(
+  sidebarHidden: boolean,
+  leadingInset: number
+): number {
+  const shellSpan =
+    APP_SHELL_RAIL_WIDTH_PX + (sidebarHidden ? 0 : APP_SHELL_SIDEBAR_WIDTH_PX);
+  return Math.max(0, shellSpan - leadingInset);
+}
+
+/**
  * Aligns global navigation to the shell grid below it. Expanded: sidebar
- * controls end at the rail edge and content controls begin at the content
- * edge. Collapsed: the fixed rail span disappears and everything stays left.
+ * controls end at the sidebar edge and content controls begin at the content
+ * edge. Collapsed: the span covers only the rail, and grows past it when its
+ * controls need more room.
  */
 export function TopBarPrimaryNavigation({
   sidebarHidden,
@@ -39,6 +55,11 @@ export function TopBarPrimaryNavigation({
   sidebarControls,
   contentControls,
 }: TopBarPrimaryNavigationProps) {
+  const sidebarControlsWidth = getTopBarSidebarControlsWidth(
+    sidebarHidden,
+    leadingInset
+  );
+
   return (
     <div className="no-drag relative z-50 flex min-w-0 items-center">
       <div
@@ -49,9 +70,11 @@ export function TopBarPrimaryNavigation({
         )}
         style={
           sidebarHidden
-            ? undefined
+            ? sidebarControlsWidth > 0
+              ? { minWidth: sidebarControlsWidth }
+              : undefined
             : {
-                width: Math.max(0, APP_SHELL_SIDEBAR_WIDTH_PX - leadingInset),
+                width: sidebarControlsWidth,
                 paddingRight: APP_SHELL_SIDEBAR_TAB_INSET_PX,
               }
         }

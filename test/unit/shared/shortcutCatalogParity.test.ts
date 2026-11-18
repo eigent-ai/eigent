@@ -41,6 +41,15 @@ const MENU_ITEM_TO_SHORTCUT_ID: Record<string, string> = {
   'view.navigate-scheduled': 'navigate-scheduled',
   'view.navigate-dispatch': 'navigate-dispatch',
   'view.navigate-configuration': 'navigate-configuration',
+  'view.navigate-pinned-space-1': 'navigate-pinned-space-1',
+  'view.navigate-pinned-space-2': 'navigate-pinned-space-2',
+  'view.navigate-pinned-space-3': 'navigate-pinned-space-3',
+  'view.navigate-pinned-space-4': 'navigate-pinned-space-4',
+  'view.navigate-pinned-space-5': 'navigate-pinned-space-5',
+  'view.navigate-pinned-space-6': 'navigate-pinned-space-6',
+  'view.navigate-pinned-space-7': 'navigate-pinned-space-7',
+  'view.navigate-pinned-space-8': 'navigate-pinned-space-8',
+  'view.navigate-pinned-space-9': 'navigate-pinned-space-9',
   'view.toggle-workspace-sidebar': 'toggle-workspace-sidebar',
   'view.toggle-timeline-view': 'toggle-timeline-view',
   'view.toggle-preview-panel': 'toggle-preview-panel',
@@ -112,6 +121,7 @@ describe.each(PLATFORMS)('shortcut catalog parity on %s', (platform) => {
           .replace(/⌘/g, 'Command+')
           .replace(/⌃/g, 'Control+')
           .replace(/⇧/g, 'Shift+')
+          .replace(/⌥/g, 'Alt+')
           .replace(/\+$/, ''),
         platform
       );

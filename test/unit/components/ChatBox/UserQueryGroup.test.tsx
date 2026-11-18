@@ -32,6 +32,7 @@ import { UserQueryGroup } from '@/components/ChatBox/UserQueryGroup';
 import { SessionPaneProvider } from '@/hooks/useSessionPane';
 
 const navigation = vi.hoisted(() => ({
+  historyLoadingProjectIds: {} as Record<string, true>,
   setActiveProject: vi.fn(),
   setActiveWorkspaceTab: vi.fn(),
   ensureProjectRuntimeLoaded: vi.fn(async () => undefined),
@@ -57,7 +58,10 @@ vi.mock('@/store/pageTabStore', () => ({
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: Object.assign(
     (selector: (state: any) => unknown) =>
-      selector({ activeProjectId: 'session-waiting' }),
+      selector({
+        activeProjectId: 'session-waiting',
+        historyLoadingProjectIds: navigation.historyLoadingProjectIds,
+      }),
     { getState: () => ({ setActiveProject: navigation.setActiveProject }) }
   ),
 }));
@@ -927,5 +931,144 @@ describe('UserQueryGroup restored Run requests', () => {
 
     expect(screen.queryByText('Which colour?')).toBeNull();
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
+});
+
+describe('UserQueryGroup reloaded history', () => {
+  const answered = [
+    { id: 'user-1', role: 'user', content: 'what model are you' },
+    {
+      id: 'end-1',
+      role: 'agent',
+      step: AgentStep.END,
+      content: 'I am a language model.',
+      agent_name: 'single_agent',
+    },
+  ];
+  // A reloaded Task records no mode and, for a direct answer, no assignment.
+  const reloaded = {
+    type: 'replay',
+    sessionMode: undefined,
+    activeAsk: '',
+    status: ChatTaskStatus.FINISHED,
+    durableRunStatus: 'completed',
+  };
+
+  const sessionTree = (
+    messages: any[],
+    overrides: any,
+    sessionMode?: (typeof SessionMode)[keyof typeof SessionMode]
+  ) => {
+    const store = createStore(messages, overrides);
+    return (
+      <>
+        {groupMessagesByQuery(messages).map((group, index) => (
+          <UserQueryGroup
+            key={group.queryId}
+            chatId="chat-1"
+            chatStore={store}
+            queryGroup={group}
+            isActive={false}
+            onQueryActive={() => undefined}
+            index={index}
+            taskId="run-1"
+            sessionMode={sessionMode}
+          />
+        ))}
+      </>
+    );
+  };
+  const renderSession = (
+    messages: any[],
+    overrides: any,
+    sessionMode?: (typeof SessionMode)[keyof typeof SessionMode]
+  ) => render(sessionTree(messages, overrides, sessionMode));
+  const messageWrapper = () =>
+    screen.getByText('what model are you').parentElement as HTMLElement;
+
+  afterEach(() => {
+    cleanup();
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+  });
+
+  it('shows a reloaded single-agent answer as its message and work log only', () => {
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(screen.getByText('what model are you')).toBeInTheDocument();
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+  });
+
+  it('shows no splitting box while the history is loading', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    renderSession([answered[0]], {
+      ...reloaded,
+      status: ChatTaskStatus.PENDING,
+      durableRunStatus: undefined,
+    });
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('shows no splitting box for a reloaded Task that already ended', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    const { rerender } = renderSession([answered[0]], reloaded);
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+    rerender(sessionTree([answered[0]], reloaded));
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('shows no splitting box for a reloaded Run that stopped before planning', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    const interrupted = {
+      type: 'replay',
+      sessionMode: SessionMode.WORKFORCE,
+      activeAsk: '',
+      status: ChatTaskStatus.PENDING,
+      durableRunStatus: 'interrupted',
+    };
+    const { rerender } = renderSession([answered[0]], interrupted);
+    delete navigation.historyLoadingProjectIds['session-waiting'];
+    rerender(sessionTree([answered[0]], interrupted));
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('treats a still-running reloaded Task as the Session mode, not as planning', () => {
+    renderSession(
+      [answered[0]],
+      {
+        ...reloaded,
+        status: ChatTaskStatus.PENDING,
+        durableRunStatus: 'running',
+      },
+      SessionMode.SINGLE_AGENT
+    );
+
+    expect(screen.queryByTestId('plan-task-box')).toBeNull();
+  });
+
+  it('keeps the planning state of a Workforce Task that is still planning', () => {
+    renderSession([answered[0]], {
+      sessionMode: SessionMode.WORKFORCE,
+      activeAsk: '',
+      status: ChatTaskStatus.PENDING,
+    });
+
+    expect(screen.getByTestId('plan-task-box')).toBeInTheDocument();
+  });
+
+  it('does not animate reloaded history in again', () => {
+    navigation.historyLoadingProjectIds['session-waiting'] = true;
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(messageWrapper().style.opacity).not.toBe('0');
+  });
+
+  it('still animates new activity in', () => {
+    renderSession(answered, reloaded, SessionMode.SINGLE_AGENT);
+
+    expect(messageWrapper().style.opacity).toBe('0');
   });
 });

@@ -19,7 +19,7 @@ import {
   useIsFocusedSessionPane,
   useSessionProjectId,
 } from '@/hooks/useSessionProjectId';
-import { ChatTaskStatus } from '@/types/constants';
+import { ChatTaskStatus, type SessionModeType } from '@/types/constants';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -49,6 +49,8 @@ interface ProjectChatContainerProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
   scrollBottomInsetPx: number;
+  /** The Session's mode, for Tasks that record none of their own. */
+  sessionMode?: SessionModeType;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
@@ -56,6 +58,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
+  sessionMode,
 }) => {
   const { projectStore } = useChatStoreAdapter();
   const sessionProjectId = useSessionProjectId();
@@ -436,6 +439,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
                 onEditUserMessage={onEditUserMessage}
+                sessionMode={sessionMode}
               />
             );
           })}

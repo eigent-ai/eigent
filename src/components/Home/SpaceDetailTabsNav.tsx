@@ -17,7 +17,7 @@ import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import {
   Brain,
-  Library,
+  Inbox,
   ListChecks,
   MessageCircle,
   Settings,
@@ -77,9 +77,9 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'context',
-    labelKey: 'layout.context-heading',
-    defaultLabel: 'Context',
-    icon: Library,
+    labelKey: 'layout.files-tab',
+    defaultLabel: 'Files',
+    icon: Inbox,
   },
   {
     id: 'memory',

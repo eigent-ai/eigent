@@ -1098,7 +1098,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 {formData.name}
               </div>
               {formData.description && (
-                <div className="line-clamp-2 max-w-md text-sm text-ds-ink-muted-default">
+                <div className="line-clamp-2 text-sm text-ds-ink-muted-default">
                   {formData.description}
                 </div>
               )}

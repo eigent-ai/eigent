@@ -24,11 +24,13 @@ from fastapi.testclient import TestClient
 from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import workspace_git_controller
 from app.router import register_routers
-from app.run_journal import SQLiteRunJournal
+from app.run_context import RunContext
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
     WorkspaceGitCoordinator,
+    WorkspaceMutationService,
 )
 
 
@@ -849,3 +851,152 @@ def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
     assert response.status_code == 200
     assert response.json()["integration_head"] == run_head
     assert response.json()["run"] is None
+
+
+def _blocked_direct_write(service, space: Path, *, content: str) -> str:
+    """Leave a stopped Task's direct write quarantined, as after a restart."""
+    journal = service.journal
+    coordinator = WorkspaceGitCoordinator(
+        journal, state_root=service.state_root, git_backend=service.git
+    )
+    mutations = WorkspaceMutationService(
+        journal, state_root=service.state_root, coordinator=coordinator
+    )
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    assert coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        session_mode="single-agent",
+    )
+    context = RunContext(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        email="user@example.com",
+        user_id="user-1",
+        working_directory=space,
+        task_output_root=space,
+        camel_log_dir=space / ".logs",
+        binding_source="test",
+        workdir_mode="direct-write",
+        browser_port=9222,
+        session_mode="single-agent",
+    )
+    prepared = mutations.prepare_file_write(
+        context=context,
+        filename="notes.md",
+        operation_request_id="edit-1",
+        actor_id="developer-agent",
+        trigger="filesystem.edit",
+    )
+    assert prepared is not None
+    prepared.target_path.write_text(content, encoding="utf-8")
+    mutations.reconcile_startup()
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-failed",
+            event_type="run.failed",
+            payload={"reason": "test"},
+        ),
+    )
+    coordinator.writer_scheduler.finish_task(run_id="run-1")
+    return prepared.intent.intent_id
+
+
+def _enable_git(client: TestClient, space: Path) -> None:
+    (space / "notes.md").write_text("seed\n", encoding="utf-8")
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+
+
+def test_status_lists_blocked_operation_and_dismiss_leaves_files(git_api):
+    client, service, _, space = git_api
+    _enable_git(client, space)
+    assert _status(client)["blocked_operations"] == []
+    intent_id = _blocked_direct_write(service, space, content="half\n")
+
+    (blocked,) = _status(client)["blocked_operations"]
+    assert blocked["intent_id"] == intent_id
+    assert blocked["status"] == "needs_attention"
+    assert blocked["project_id"] == "project-1"
+    assert blocked["relative_path"] == "notes.md"
+    assert blocked["actionable"] is True
+    assert blocked["can_checkpoint"] is True
+    assert str(space) not in str(blocked)
+    url = f"/api/v1/spaces/space-1/git/blocked-operations/{intent_id}:dismiss"
+    body = {"email": "user@example.com"}
+
+    assert client.post(url, json=body).status_code == 401
+    response = client.post(url, headers=_headers(), json=body)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "intent_id": intent_id,
+        "status": "abandoned",
+        "files_untouched": True,
+    }
+    assert (space / "notes.md").read_text() == "half\n"
+    assert _status(client)["blocked_operations"] == []
+    again = client.post(url, headers=_headers(), json=body)
+    assert again.status_code == 409
+    unknown = client.post(
+        "/api/v1/spaces/space-1/git/blocked-operations/"
+        f"gitintent_{'0' * 32}:dismiss",
+        headers=_headers(),
+        json=body,
+    )
+    assert unknown.status_code == 404
+    malformed = client.post(
+        "/api/v1/spaces/space-1/git/blocked-operations/other:dismiss",
+        headers=_headers(),
+        json=body,
+    )
+    assert malformed.status_code == 422
+
+
+def test_checkpoint_blocked_operation_requires_the_reviewed_state(git_api):
+    client, service, _, space = git_api
+    _enable_git(client, space)
+    intent_id = _blocked_direct_write(service, space, content="keep\n")
+    (blocked,) = _status(client)["blocked_operations"]
+    url = (
+        f"/api/v1/spaces/space-1/git/blocked-operations/{intent_id}:checkpoint"
+    )
+
+    stale = client.post(
+        url,
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "user-save-stale",
+            "expected_repo_state_digest": "0" * 64,
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "repo_state_changed"
+
+    response = client.post(
+        url,
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "user-save-1",
+            "expected_repo_state_digest": blocked["repo_state_digest"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert len(response.json()["commit_oids"]) == 1
+    assert _status(client)["blocked_operations"] == []
+    assert _status(client)["pending_managed_paths"] == []

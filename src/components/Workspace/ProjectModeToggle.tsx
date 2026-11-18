@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { FOOTER_COMPACT_TRIGGER_CLASS } from '@/components/ChatBox/BottomBox/footerCompact';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
@@ -64,7 +65,7 @@ export interface ProjectModeToggleProps {
    * bar (see model read-only chip).
    */
   readOnly?: boolean;
-  /** When true, hides the text label and shows only the leading icon (narrow footer). */
+  /** When true, shows only the leading icon: no label, no chevron (narrow footer). */
   compact?: boolean;
 }
 
@@ -100,6 +101,7 @@ export function ProjectModeToggle({
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
     'bg-ds-neutral-subtle-default text-ds-ink-default-default',
+    compact && FOOTER_COMPACT_TRIGGER_CLASS,
     className
   );
 
@@ -139,7 +141,7 @@ export function ProjectModeToggle({
         'cursor-pointer border-0 border-x-0 border-y-0 text-left',
         'hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-none'
       )}
-      onPointerDown={pulseChevrons}
+      onPointerDown={compact ? undefined : pulseChevrons}
       onClick={toggle}
     >
       <span className="relative inline-flex min-w-0 flex-1 items-center overflow-hidden">
@@ -162,13 +164,15 @@ export function ProjectModeToggle({
         </AnimatePresence>
       </span>
 
-      <motion.span
-        className="inline-flex origin-center will-change-transform"
-        initial={{ scale: 1 }}
-        animate={chevronScale}
-      >
-        {endChevrons}
-      </motion.span>
+      {!compact && (
+        <motion.span
+          className="inline-flex origin-center will-change-transform"
+          initial={{ scale: 1 }}
+          animate={chevronScale}
+        >
+          {endChevrons}
+        </motion.span>
+      )}
     </motion.button>
   );
 }

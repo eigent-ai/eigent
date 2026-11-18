@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { SessionArtifactPreview } from '@/components/ChatBox/SessionArtifactPreview';
+import { SessionLoadingCover } from '@/components/ChatBox/SessionLoadingHalo';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -30,6 +31,7 @@ import { isProjectAchieved } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { getSessionMetaDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import {
   getSessionPreviewSlice,
   NEW_SESSION_DRAFT_SCOPE,
@@ -37,13 +39,14 @@ import {
   WorkspaceTab,
 } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSessionStartStore } from '@/store/sessionStartStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChatTaskStatus,
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   useCallback,
   useEffect,
@@ -54,7 +57,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PreviewColumn } from './layout/PreviewColumn';
+import { PREVIEW_ENTRANCE_TWEEN, PreviewColumn } from './layout/PreviewColumn';
 import { getSessionColumnLayout, SUMMARY_WIDTH } from './layout/sessionColumns';
 import { usePreviewEntrance } from './layout/usePreviewEntrance';
 import {
@@ -69,6 +72,11 @@ import { SessionSidePanel } from './SidePanel';
  * centered composer; its Preview and Summary state live in a draft scope that
  * moves to the Session created by the first task.
  */
+export interface NewSessionComposerSlots {
+  /** First control in the composer toolbar, for example a Space chip. */
+  footerLeading?: ReactNode;
+}
+
 interface SessionProps {
   /** New session page: no Project until the first task creates one. */
   isNewProject?: boolean;
@@ -76,12 +84,15 @@ interface SessionProps {
   projectId?: string | null;
   /** Extra controls at the right end of the Session header (split panes). */
   headerActions?: ReactNode;
+  /** New session only: extra controls in the composer's toolbar. */
+  newSessionComposer?: NewSessionComposerSlots;
 }
 
 export default function Session({
   projectId,
   isNewProject = false,
   headerActions,
+  newSessionComposer,
 }: SessionProps) {
   const inheritedProjectId = useSessionProjectId();
   const id = projectId === undefined ? inheritedProjectId : projectId;
@@ -107,13 +118,18 @@ export default function Session({
         <SessionContent
           isNewProject={isNewProject}
           headerActions={headerActions}
+          newSessionComposer={newSessionComposer}
         />
       </div>
     </SessionPaneProvider>
   );
 }
 
-function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
+function SessionContent({
+  isNewProject = false,
+  headerActions,
+  newSessionComposer,
+}: SessionProps) {
   const { t } = useTranslation();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -148,6 +164,9 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
     sessionPreviewProjectId === scopeId;
   const previewOpening = useSessionPageTabStore((s) => s.sessionPreviewOpening);
   const sessionExecution = useSessionExecution(activeProjectId);
+  const isSessionStarting = useSessionStartStore((s) =>
+    activeProjectId ? Boolean(s.startingProjectIds[activeProjectId]) : false
+  );
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
       ? Boolean(s.historyLoadingProjectIds[activeProjectId])
@@ -498,13 +517,21 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (
+  // A legacy Session renders once its chat store exists.
+  const waitingForChatStore =
     !isNewProject &&
     !chatStore &&
-    sessionExecution.state.route?.route === 'legacy'
-  ) {
-    return null;
-  }
+    sessionExecution.state.route?.route === 'legacy';
+  // The page's own waits; the chat timeline reports its first history load.
+  // Only the legacy view shows the history that `loadProjectFromHistory`
+  // replays, so only it waits for that replay here. In the event-native view
+  // ChatBox reports the replay itself, and only while it is what's shown.
+  const pageLoading =
+    !isNewProject &&
+    !sessionExecution.state.error &&
+    (!sessionExecution.state.route ||
+      waitingForChatStore ||
+      (!isChatEventTimelineEnabled() && isHistoryLoadingActiveProject));
 
   const sessionSidePanel =
     displaySessionMode &&
@@ -562,7 +589,6 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
           }
           totalTokens={isNewProject ? 0 : (activeTask?.tokens ?? 0)}
           showTimelineStyle={!isNewProject}
-          showBack={!isNewProject}
           summary={{
             open: showSummary,
             onToggle: toggleSidePanel,
@@ -571,6 +597,7 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
             onPopoverOpenChange: setSummaryPopoverOpen,
             popoverBoundary: chatSideElement,
           }}
+          atWindowEdge={!showPreview}
           className={showPreview ? 'pr-ds-4' : undefined}
           trailingActions={headerActions}
         />
@@ -582,20 +609,37 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
                 embedded
                 sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
                 onSessionModeChange={handleNewProjectSessionModeChange}
+                composerFooterLeading={newSessionComposer?.footerLeading}
               />
             ) : (
               <ChatBox />
             )}
           </div>
-          {showSummary ? (
-            <div
-              data-session-side-panel
-              style={{ width: SUMMARY_WIDTH }}
-              className="flex min-h-0 shrink-0 flex-col overflow-hidden"
-            >
-              {sessionSidePanel}
-            </div>
-          ) : null}
+          {/* Activity opens and closes by width, like Preview, so the chat
+              column and its composer resize smoothly beside it. Its content
+              keeps its full width, so it never reflows mid-animation. */}
+          <AnimatePresence initial={false}>
+            {showSummary ? (
+              <motion.div
+                key="session-side-panel"
+                data-session-side-panel
+                className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+                initial={{ width: 0 }}
+                animate={{ width: SUMMARY_WIDTH }}
+                exit={{ width: 0 }}
+                transition={
+                  shouldReduceMotion ? { duration: 0 } : PREVIEW_ENTRANCE_TWEEN
+                }
+              >
+                <div
+                  className="flex min-h-0 flex-1 flex-col"
+                  style={{ width: SUMMARY_WIDTH }}
+                >
+                  {sessionSidePanel}
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </div>
       {showPreview ? (
@@ -603,6 +647,9 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
           key={`${scopeId}:${previewOpening?.requestId ?? 0}`}
           immediateOpening={previewEntrance.immediateOpening}
           immediateGeometry={previewEntrance.immediateGeometry}
+          settledWidth={
+            paneWidth !== null ? paneWidth - visibleChatSideWidth : null
+          }
           onEntranceComplete={previewEntrance.finishEntrance}
           resizeHandle={{
             isResizing: previewResize.isResizing,
@@ -634,21 +681,34 @@ function SessionContent({ isNewProject = false, headerActions }: SessionProps) {
     );
   }
 
+  // Opening a Session shows one halo over the whole Session area until it is
+  // ready, or nothing if it is ready almost at once. A Session the user has
+  // just started from a composer shows at once instead.
   return (
-    <ProjectEventRuntimeProvider
-      key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
-      projectId={activeProjectId}
-      expectedAccountKey={sessionExecution.scope.accountKey}
-      enabled={
-        Boolean(sessionExecution.state.route) && !sessionExecution.state.error
-      }
+    <SessionLoadingCover
+      sessionKey={`${sessionExecution.scope.accountKey}:${activeProjectId ?? ''}`}
+      loading={pageLoading}
+      skip={isSessionStarting}
+      label={t('chat.timeline-history-loading')}
     >
-      <SessionArtifactPreview
-        scope={sessionExecution.scope}
-        enabled={sessionExecution.state.managed}
-      >
-        {layout}
-      </SessionArtifactPreview>
-    </ProjectEventRuntimeProvider>
+      {waitingForChatStore ? null : (
+        <ProjectEventRuntimeProvider
+          key={`${sessionExecution.scope.accountKey}:${activeProjectId}`}
+          projectId={activeProjectId}
+          expectedAccountKey={sessionExecution.scope.accountKey}
+          enabled={
+            Boolean(sessionExecution.state.route) &&
+            !sessionExecution.state.error
+          }
+        >
+          <SessionArtifactPreview
+            scope={sessionExecution.scope}
+            enabled={sessionExecution.state.managed}
+          >
+            {layout}
+          </SessionArtifactPreview>
+        </ProjectEventRuntimeProvider>
+      )}
+    </SessionLoadingCover>
   );
 }

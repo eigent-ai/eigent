@@ -12,15 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   proxyFetchGet: vi.fn(),
+  route: { route: 'legacy' },
+  knownRoute: null as { route: string } | null,
 }));
 
 vi.mock('@/api/http', () => ({ proxyFetchGet: mocks.proxyFetchGet }));
 vi.mock('@/store/sessionExecutionStore', () => ({
-  readSessionExecutionRoute: async () => ({ route: 'legacy' }),
+  readSessionExecutionRoute: async () => mocks.route,
+  getSessionExecutionState: () => ({ route: mocks.knownRoute }),
 }));
 
 import {
@@ -101,5 +104,52 @@ describe('ensureProjectRuntimeLoaded with only the placeholder', () => {
       [task],
       'Hello'
     );
+  });
+});
+
+describe('ensureProjectRuntimeLoaded for a Session known to run elsewhere', () => {
+  const projectStore = () => ({
+    getProjectById: vi.fn(() => ({
+      id: 'session-1',
+      metadata: { remoteHistoryHydrationPending: true },
+    })),
+    peekActiveChatStore: vi.fn(() => ({})),
+    historyLoadIncompleteProjectIds: {},
+    appendInitChatStore: vi.fn(),
+    loadProjectFromHistory: vi.fn(),
+    mergeProjectHistory: vi.fn(async () => undefined),
+    setProjectNavLead: vi.fn(),
+    updateProject: vi.fn(),
+  });
+
+  beforeEach(() => {
+    mocks.proxyFetchGet.mockReset();
+    mocks.proxyFetchGet.mockResolvedValue({ tasks: [], last_prompt: '' });
+    mocks.knownRoute = { route: 'managed' };
+  });
+
+  afterEach(() => {
+    mocks.route = { route: 'legacy' };
+    mocks.knownRoute = null;
+  });
+
+  it('reads no history while it still runs there', async () => {
+    mocks.route = { route: 'managed' };
+    const onHydrationStarted = vi.fn();
+
+    await ensureProjectRuntimeLoaded(projectStore() as any, 'session-1', {
+      onHydrationStarted,
+    });
+
+    expect(onHydrationStarted).toHaveBeenCalledOnce();
+    expect(mocks.proxyFetchGet).not.toHaveBeenCalled();
+  });
+
+  it('reads history once if it turns out to have come back', async () => {
+    mocks.route = { route: 'legacy' };
+
+    await ensureProjectRuntimeLoaded(projectStore() as any, 'session-1');
+
+    expect(mocks.proxyFetchGet).toHaveBeenCalledOnce();
   });
 });

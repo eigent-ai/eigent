@@ -249,6 +249,10 @@ export interface RichChatInputProps {
   value: string;
   onChange: (value: string, cursorOffset?: number) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  /** List this field filters (the composer's "add context" panel). */
+  ariaControls?: string;
+  /** Highlighted option in that list, while the caret stays here. */
+  ariaActiveDescendant?: string;
   onFocus?: () => void;
   onBlur?: () => void;
   onCompositionStart?: () => void;
@@ -274,6 +278,8 @@ export const RichChatInput = React.forwardRef<
     value,
     onChange,
     onKeyDown,
+    ariaControls,
+    ariaActiveDescendant,
     onFocus,
     onBlur,
     onCompositionStart,
@@ -539,6 +545,8 @@ export const RichChatInput = React.forwardRef<
         role="textbox"
         aria-multiline="true"
         aria-placeholder={ariaPlaceholderLine}
+        aria-controls={ariaControls}
+        aria-activedescendant={ariaActiveDescendant}
         contentEditable={!disabled}
         suppressContentEditableWarning
         onInput={handleInput}

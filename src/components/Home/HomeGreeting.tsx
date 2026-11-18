@@ -74,13 +74,11 @@ function OverviewStat({
   );
 }
 
-export default function HomeGreeting() {
+/** "Good Afternoon Douglas!", from the time of day and the account name. */
+function useHomeGreetingText(): string {
   const { t } = useTranslation();
-  const { username, email, user_id: userId } = useAuthStore();
-  const { sectionCounts } = useHomeHub();
-  const skillCount = useSkillsStore((state) => state.skills.length);
-  const [connectorCount, setConnectorCount] = useState<number | null>(null);
-  const [memoryRemaining, setMemoryRemaining] = useState<number | null>(null);
+  const username = useAuthStore((state) => state.username);
+  const email = useAuthStore((state) => state.email);
   const welcomeName = formatWelcomeName(username || email || '');
   const hour = new Date().getHours();
   const timeGreetingKey =
@@ -89,6 +87,22 @@ export default function HomeGreeting() {
       : hour >= 12 && hour < 17
         ? 'layout.greeting-afternoon'
         : 'layout.greeting-evening';
+  return welcomeName
+    ? `${t(timeGreetingKey)} ${t('layout.welcome-name', {
+        name: welcomeName,
+        defaultValue: '{{name}}!',
+      })}`
+    : t(timeGreetingKey);
+}
+
+export default function HomeGreeting() {
+  const { t } = useTranslation();
+  const { email, user_id: userId } = useAuthStore();
+  const { sectionCounts } = useHomeHub();
+  const skillCount = useSkillsStore((state) => state.skills.length);
+  const [connectorCount, setConnectorCount] = useState<number | null>(null);
+  const [memoryRemaining, setMemoryRemaining] = useState<number | null>(null);
+  const greeting = useHomeGreetingText();
 
   useEffect(() => {
     let cancelled = false;
@@ -136,13 +150,7 @@ export default function HomeGreeting() {
     >
       <div className="min-w-0">
         <DsText role="body-large" weight="semibold">
-          {t(timeGreetingKey)}
-          {welcomeName
-            ? ` ${t('layout.welcome-name', {
-                name: welcomeName,
-                defaultValue: '{{name}}!',
-              })}`
-            : null}
+          {greeting}
         </DsText>
         <DsText role="meta" className="mt-1 text-ds-ink-muted-default">
           {t('layout.home-spaces-description', {

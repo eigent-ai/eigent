@@ -62,7 +62,7 @@ describe('SettingsRouteBridge', () => {
     act(() => openSettings('models', { modelProvider: 'ant-ling' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/home?section=settings&tab=models&provider=ant-ling'
+        '/settings?tab=models&provider=ant-ling'
       )
     );
     expect(useSettingsStore.getState()).toMatchObject({
@@ -115,8 +115,74 @@ describe('SettingsRouteBridge', () => {
     await waitFor(() => {
       expect(mocks.runAfterWorkspaceConfigurationSave).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/home?section=settings&tab=settings:{"from":"/?view=project"}'
+        '/settings?tab=settings:{"from":"/?view=project"}'
       );
     });
+  });
+
+  it('keeps the Workspace origin when Settings opens from Home', async () => {
+    mocks.runAfterWorkspaceConfigurationSave.mockImplementation(
+      async (action: () => void) => {
+        action();
+        return true;
+      }
+    );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/home',
+            search: '?section=spaces',
+            state: { from: '/' },
+          },
+        ]}
+      >
+        <SettingsRouteBridge />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    act(() => openSettings('memory'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/settings?tab=memory:{"from":"/"}'
+      )
+    );
+  });
+
+  it('switches sections in place while Settings is open', async () => {
+    mocks.runAfterWorkspaceConfigurationSave.mockImplementation(
+      async (action: () => void) => {
+        action();
+        return true;
+      }
+    );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/settings',
+            search: '?tab=models',
+            state: { from: '/' },
+          },
+        ]}
+      >
+        <SettingsRouteBridge />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    act(() => openSettings('models', { modelProvider: 'openai' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/settings?tab=models&provider=openai:{"from":"/"}'
+      )
+    );
+    act(() => openSettings('skills'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/settings?tab=skills:{"from":"/"}'
+      )
+    );
   });
 });
