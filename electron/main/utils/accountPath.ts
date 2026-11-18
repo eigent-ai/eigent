@@ -12,112 +12,358 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { createHash } from 'crypto';
-
 /**
- * Derivation of the on-disk account directory from an email address.
+ * Where each account keeps its files under `~/.eigent`.
  *
- * This lives in its own module, with no import-time side effects, so both
- * `envUtil` and `subscriptionAuth/credentialStore` can use it. They used to
- * carry identical copies of the same expression, which is how they drifted.
+ * Older versions named the folder after the part of the email before the `@`,
+ * so `alice@personal.com` and `alice@work.com` shared `~/.eigent/alice` and
+ * `~/.eigent/.env.alice`, and with them each other's API keys, MCP sign-ins and
+ * Codex sign-in. An account now uses `user_<id>`, the same folder the backend
+ * already uses for the account's skills config.
+ *
+ * The main process only receives an email from most callers, so it keeps a
+ * small registry (`~/.eigent/account-folders.json`) from email to folder. The
+ * renderer registers the signed-in account; until then, or if registering
+ * fails, the old folder keeps being used, exactly as before.
+ *
+ * Registering copies the old folder's contents into the new one once. It never
+ * moves or deletes the old folder: when two accounts shared it, nothing on disk
+ * says which file belongs to whom, so each account gets a copy, and older app
+ * versions keep working after a downgrade.
+ *
+ * Nothing here runs at import time, so `subscriptionAuth/credentialStore` can
+ * import it without side effects.
  */
 
-import { platform } from 'os';
+import log from 'electron-log';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+export const ACCOUNT_REGISTRY_FILE = 'account-folders.json';
+export const MIGRATION_MARKER_FILE = '.legacy-account-migration.json';
+
+const REGISTRY_VERSION = 1;
+const UNSAFE_CHARS = /[\\/*?:"<>|\s]/g;
+const CANONICAL_DIR_NAME = /^user_[^\\/*?:"<>|\s]+$/;
 
 /**
- * The previous derivation, kept only to locate directories created before the
- * fix so they can be migrated. It is deliberately not used for anything new.
- *
- * It discarded the domain entirely and replaced only the first dot, so
- * `alice@personal.com`, `alice@work.com` and `alice@corp.internal` all mapped
- * to `alice` and shared one `.env` file holding three accounts' credentials.
+ * Folders under `~/.eigent` that belong to the app, not to an account. An
+ * email such as `cache@example.com` used to map onto one of them; only the
+ * account's own files are copied out of those.
+ */
+const SHARED_EIGENT_DIRS = new Set([
+  'bin',
+  'browser_profiles',
+  'cache',
+  'fallback',
+  'memory',
+  'migrations',
+  'runtime',
+  'skills',
+  'tokens',
+  'venvs',
+  'workspaces',
+]);
+
+/** Files that are always the account's own, wherever they sit. */
+function isAccountOwnedEntry(name: string): boolean {
+  return name === 'codex-auth.json' || name.startsWith('mcp-remote-');
+}
+
+export function eigentDir(): string {
+  return path.join(os.homedir(), '.eigent');
+}
+
+/**
+ * The folder name older versions derived from an email. Kept exactly as it was
+ * (including replacing only the first dot) so the old folder can be found.
  */
 export function legacyAccountDirName(email: string): string {
-  return email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
+  return email.split('@')[0].replace(UNSAFE_CHARS, '_').replace('.', '_');
 }
 
 /**
- * Control characters, spaces, and everything unsafe in a path component on
- * Windows or POSIX. Spaces are included deliberately: they are legal in a POSIX
- * name but need quoting in every shell and are rejected at the tail on Windows.
+ * `user_<id>`, matching the backend's skills-config folder and the project
+ * storage identity. Returns null when there is no usable id.
  */
-const UNSAFE = /[\u0000-\u0020\u007f<>:"/\\|?*]/g;
-
-/** Windows additionally rejects trailing dots and spaces. */
-const WINDOWS_UNSAFE_TAIL = /[. ]+$/;
-
-/** Reserved device names on Windows. */
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
-
-/** Longest readable portion of the directory name, before the hash suffix. */
-const MAX_READABLE_LENGTH = 64;
-
-/**
- * Build the account directory name for an email address.
- *
- * The result stays greppable — the address is right there in the path — while
- * being distinct for every address. That combination is what the previous
- * expression gave up: it was readable but not distinct, and where the two
- * requirements conflict, distinctness wins, because the directory holds one
- * account's API keys.
- *
- * The name is `<readable>~<hash>`:
- *
- * - `readable` is the address with characters that are unsafe on Windows or
- *   POSIX replaced, so a path stays recognisable when debugging.
- * - `hash` is a truncated SHA-256 of the exact original address. Sanitisation
- *   is lossy — `a/b@x.com` and `a_b@x.com` both sanitise to `a_b@x.com` — so
- *   the readable part alone cannot guarantee the paths differ. Including a
- *   digest of the untouched input makes the mapping injective, which is what
- *   keeps one account from reading another's credentials.
- *
- * @param email - The account's email address, used verbatim for the hash.
- * @returns A single, filesystem-safe path component.
- */
-export function accountDirName(email: string): string {
-  const digest = createHash('sha256')
-    .update(email, 'utf8')
-    .digest('hex')
-    .slice(0, 12);
-
-  const readable = email
-    .normalize('NFKC')
-    .replace(UNSAFE, '_')
-    // Leading dots would create hidden files and `..` would escape the parent.
-    .replace(/^\.+/, '_')
-    .replace(WINDOWS_UNSAFE_TAIL, '')
-    .slice(0, MAX_READABLE_LENGTH)
-    .replace(WINDOWS_UNSAFE_TAIL, '');
-
-  const safe = readable.length > 0 ? readable : 'account';
-
-  // `~` is valid on both platforms and cannot appear in an email address, so
-  // it can never be confused with the readable part.
-  return `${safe}~${digest}`;
+export function accountDirNameForUserId(
+  userId: string | number | null | undefined
+): string | null {
+  if (userId === null || userId === undefined) return null;
+  const sanitized = String(userId)
+    .trim()
+    .replace(UNSAFE_CHARS, '_')
+    .replace(/^\.+|\.+$/g, '');
+  if (!sanitized) return null;
+  const name = sanitized.startsWith('user_') ? sanitized : `user_${sanitized}`;
+  return CANONICAL_DIR_NAME.test(name) && !name.includes('..') ? name : null;
 }
 
-/** Whether the current platform needs the extra Windows name restrictions. */
-function needsWindowsRestrictions(): boolean {
-  return platform() === 'win32';
+function registryKey(email: string): string {
+  return email.trim().toLowerCase();
 }
 
-/**
- * Assert a derived name is usable as a path component on this platform.
- *
- * Kept separate so the rules that only apply on Windows are not applied to
- * POSIX, where they would needlessly mangle ordinary addresses.
- */
-export function assertUsableAccountDirName(name: string): void {
-  if (name.length === 0) {
-    throw new Error('Account directory name must not be empty');
+interface AccountRegistry {
+  v: number;
+  accounts: Record<string, string>;
+}
+
+function registryPath(root: string): string {
+  return path.join(root, ACCOUNT_REGISTRY_FILE);
+}
+
+function readRegistry(root: string): AccountRegistry {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(registryPath(root), 'utf-8'));
+    if (parsed && typeof parsed.accounts === 'object' && parsed.accounts) {
+      return { v: REGISTRY_VERSION, accounts: { ...parsed.accounts } };
+    }
+  } catch {
+    // Missing or unreadable: every account uses its old folder.
   }
-  if (name === '.' || name === '..' || name.startsWith('../')) {
-    throw new Error(`Refusing to use ${name} as an account directory`);
+  return { v: REGISTRY_VERSION, accounts: {} };
+}
+
+function writeRegistry(root: string, registry: AccountRegistry): void {
+  fs.mkdirSync(root, { recursive: true });
+  const target = registryPath(root);
+  const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(registry, null, 2), {
+      mode: 0o600,
+    });
+    fs.renameSync(temporary, target);
+  } finally {
+    fs.rmSync(temporary, { force: true });
   }
-  if (needsWindowsRestrictions() && WINDOWS_RESERVED.test(name)) {
-    throw new Error(`Refusing to use reserved name ${name} on Windows`);
+}
+
+/**
+ * The folder name to use for an email: `user_<id>` once the account has been
+ * registered and its old files copied, otherwise the old email-derived name.
+ */
+export function resolveAccountDirName(email: string): string {
+  const registered = readRegistry(eigentDir()).accounts[registryKey(email)];
+  if (typeof registered === 'string' && accountDirNameForUserId(registered)) {
+    return registered;
+  }
+  return legacyAccountDirName(email);
+}
+
+export type MigrationStatus =
+  'migrated' | 'nothing-to-migrate' | 'already-done' | 'failed';
+
+export interface MigrationResult {
+  status: MigrationStatus;
+  from: string;
+  copied: string[];
+  skipped: string[];
+  failed: string[];
+  /** Another registered account used the same old folder. */
+  sharedLegacyFolder: boolean;
+}
+
+function exists(target: string): boolean {
+  return fs.lstatSync(target, { throwIfNoEntry: false }) !== undefined;
+}
+
+/** Copy next to the target, then rename, so a failure never leaves half a copy. */
+function copyEntry(source: string, target: string): void {
+  const temporary = path.join(
+    path.dirname(target),
+    `.${path.basename(target)}.migrating-${crypto.randomUUID()}`
+  );
+  try {
+    fs.cpSync(source, temporary, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      verbatimSymlinks: true,
+    });
+    fs.renameSync(temporary, target);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Copy what an account kept under its old folder into `user_<id>`, once.
+ *
+ * - `~/.eigent/.env.<old>` → `~/.eigent/.env.user_<id>`
+ * - every entry in `~/.eigent/<old>/` → `~/.eigent/user_<id>/`
+ *
+ * Anything already present in the new place is left alone, so this never
+ * overwrites newer data (the backend may already have put the skills config
+ * there). The old folder is never changed. The marker is written only when
+ * every entry was handled, so a failure is retried on the next start.
+ */
+export function migrateLegacyAccountData(
+  email: string,
+  dirName: string,
+  otherRegisteredEmails: string[] = []
+): MigrationResult {
+  const root = eigentDir();
+  const targetDir = path.join(root, dirName);
+  const marker = path.join(targetDir, MIGRATION_MARKER_FILE);
+  const from = legacyAccountDirName(email);
+  const result: MigrationResult = {
+    status: 'already-done',
+    from,
+    copied: [],
+    skipped: [],
+    failed: [],
+    sharedLegacyFolder: otherRegisteredEmails.some(
+      (other) => legacyAccountDirName(other) === from
+    ),
+  };
+  if (exists(marker)) return result;
+
+  // An empty old name meant `~/.eigent` itself, and a `user_*` old name is
+  // another account's new folder: neither is this account's to copy.
+  const hasLegacyLocation =
+    from.length > 0 &&
+    from !== '.' &&
+    from !== '..' &&
+    !from.startsWith('user_') &&
+    from !== dirName;
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  if (hasLegacyLocation) {
+    const legacyEnv = path.join(root, `.env.${from}`);
+    const targetEnv = path.join(root, `.env.${dirName}`);
+    if (exists(legacyEnv)) {
+      if (exists(targetEnv)) {
+        result.skipped.push(path.basename(targetEnv));
+      } else {
+        try {
+          copyEntry(legacyEnv, targetEnv);
+          try {
+            fs.chmodSync(targetEnv, 0o600);
+          } catch {
+            // best-effort on platforms without POSIX perms
+          }
+          result.copied.push(path.basename(targetEnv));
+        } catch (error) {
+          result.failed.push(path.basename(targetEnv));
+          log.warn('[accountPath] could not copy the old env file', error);
+        }
+      }
+    }
+
+    const legacyDir = path.join(root, from);
+    let entries: string[] = [];
+    try {
+      if (fs.statSync(legacyDir, { throwIfNoEntry: false })?.isDirectory()) {
+        entries = fs.readdirSync(legacyDir);
+      }
+    } catch (error) {
+      result.failed.push(from);
+      log.warn('[accountPath] could not read the old account folder', error);
+    }
+    const appFolder = SHARED_EIGENT_DIRS.has(from.toLowerCase());
+    for (const entry of entries) {
+      if (entry === MIGRATION_MARKER_FILE) continue;
+      if (appFolder && !isAccountOwnedEntry(entry)) continue;
+      const target = path.join(targetDir, entry);
+      if (exists(target)) {
+        result.skipped.push(entry);
+        continue;
+      }
+      try {
+        copyEntry(path.join(legacyDir, entry), target);
+        result.copied.push(entry);
+      } catch (error) {
+        result.failed.push(entry);
+        log.warn(`[accountPath] could not copy ${entry}`, error);
+      }
+    }
+  }
+
+  if (result.failed.length > 0) {
+    result.status = 'failed';
+    return result;
+  }
+
+  result.status = result.copied.length > 0 ? 'migrated' : 'nothing-to-migrate';
+  fs.writeFileSync(
+    marker,
+    JSON.stringify(
+      {
+        v: 1,
+        from: hasLegacyLocation ? from : null,
+        at: new Date().toISOString(),
+        copied: result.copied,
+        skipped: result.skipped,
+        sharedLegacyFolder: result.sharedLegacyFolder,
+      },
+      null,
+      2
+    ),
+    { mode: 0o600 }
+  );
+  return result;
+}
+
+export interface RegisterResult {
+  dirName: string;
+  migration: MigrationResult | null;
+}
+
+/**
+ * Record which folder an account uses, copying its old files first.
+ *
+ * Never throws: on any failure the account keeps using its current folder and
+ * the copy is tried again on the next start.
+ */
+export function registerAccountFolder(
+  email: unknown,
+  userId: unknown
+): RegisterResult {
+  const address = typeof email === 'string' ? email.trim() : '';
+  const dirName =
+    typeof userId === 'string' || typeof userId === 'number'
+      ? accountDirNameForUserId(userId)
+      : null;
+  if (!address || !dirName) {
+    return {
+      dirName: address ? resolveAccountDirName(address) : '',
+      migration: null,
+    };
+  }
+
+  try {
+    const root = eigentDir();
+    const registry = readRegistry(root);
+    const key = registryKey(address);
+    const others = Object.keys(registry.accounts).filter((k) => k !== key);
+    const migration = migrateLegacyAccountData(address, dirName, others);
+
+    if (migration.status === 'failed') {
+      log.warn(
+        `[accountPath] kept the old folder for this account; ${migration.failed.length} item(s) could not be copied and will be retried`
+      );
+      return { dirName: resolveAccountDirName(address), migration };
+    }
+    if (migration.sharedLegacyFolder && migration.status === 'migrated') {
+      log.warn(
+        '[accountPath] another account used the same old folder; its files were copied to both accounts because their owner cannot be told apart'
+      );
+    }
+    if (registry.accounts[key] !== dirName) {
+      registry.accounts[key] = dirName;
+      writeRegistry(root, registry);
+    }
+    if (migration.status === 'migrated') {
+      log.info(
+        `[accountPath] copied ${migration.copied.length} item(s) from the old account folder; ${migration.skipped.length} already present`
+      );
+    }
+    return { dirName, migration };
+  } catch (error) {
+    log.warn('[accountPath] could not register the account folder', error);
+    return { dirName: resolveAccountDirName(address), migration: null };
   }
 }

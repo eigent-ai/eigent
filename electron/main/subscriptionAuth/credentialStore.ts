@@ -19,7 +19,8 @@
 //     (OS keychain backed) and never leaves the user's machine.
 //   - Non-sensitive metadata (status, label, expiry) is stored in plaintext
 //     alongside the ciphertext so the UI can render status without decrypting.
-//   - File lives under ~/.eigent/<tempEmail>/codex-auth.json, mode 0600.
+//   - File lives under ~/.eigent/<account folder>/codex-auth.json, mode 0600
+//     (`user_<id>` once the account is registered; see utils/accountPath).
 //
 // This module is intentionally free of any Codex endpoint / OAuth-flow detail
 // so it can land ahead of the P0-1 spike. It only persists/restores whatever
@@ -31,9 +32,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 // Side-effect free, unlike envUtil, so importing it here does not create
-// directories. It replaces the copy of the derivation this module used to keep
-// in sync with envUtil by hand.
-import { accountDirName } from '../utils/accountPath';
+// directories.
+import { resolveAccountDirName } from '../utils/accountPath';
 
 import type { CodexAccountStatusView, CodexCredential } from './types';
 
@@ -56,7 +56,7 @@ interface OnDiskRecord {
 }
 
 export function getCodexAuthDir(email: string): string {
-  return path.join(os.homedir(), '.eigent', accountDirName(email));
+  return path.join(os.homedir(), '.eigent', resolveAccountDirName(email));
 }
 
 export function getCodexAuthFilePath(email: string): string {
