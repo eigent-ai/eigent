@@ -251,6 +251,39 @@ def test_rejected_proposal_is_a_known_failure_without_a_write(
     assert _all_entries(memory.journal) == []
 
 
+@pytest.mark.parametrize("scope_type", ["project", "space"])
+def test_trigger_message_labelled_as_chat_cannot_back_a_suggestion(
+    memory, scope_type
+):
+    """The Run's request decides authorship, not the message's own label."""
+
+    # Schedules, webhooks and Slack queue their Runs as scheduled:<id>.
+    memory.journal.ensure_run(
+        run_id="scheduled:execution-1", project_id="project-1"
+    )
+    memory.journal.append_event(
+        "scheduled:execution-1",
+        RunEventDraft(
+            event_id="labelled-trigger",
+            event_type="user.message",
+            payload={
+                "content": f"From now on, {RULE.lower()}",
+                "source": "chat",
+            },
+        ),
+    )
+
+    with pytest.raises(ToolPreWriteValidationError) as rejected:
+        _propose(
+            memory.service,
+            scope_type=scope_type,
+            source_refs=("labelled-trigger",),
+        )
+
+    assert rejected.value.error_code == "MEMORY_PROVENANCE_REJECTED"
+    memory.apply.assert_not_called()
+
+
 def test_pending_rules_are_capped_per_scope(memory):
     for index in range(5):
         assert (
