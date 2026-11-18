@@ -225,6 +225,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   envRemove: (email: string, key: string) =>
     ipcRenderer.invoke('env-remove', email, key),
   getEnvPath: (email: string) => ipcRenderer.invoke('get-env-path', email),
+  registerAccountFolder: (email: string, userId: string | number) =>
+    ipcRenderer.invoke('register-account-folder', email, userId),
   workspaceSecretPut: (request: WorkspaceSecretPutRequest) =>
     ipcRenderer.invoke('workspace-secret:put', request),
   workspaceSecretStatus: (request: WorkspaceSecretLookup) =>

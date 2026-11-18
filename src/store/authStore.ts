@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { registerAccountFolder } from '@/lib/accountFolder';
 import {
   changedAuthEnvironmentParts,
   getAuthEnvironmentKey,
@@ -262,6 +263,7 @@ const authStore = create<AuthState>()(
           authEnvironmentKey: getAuthEnvironmentKey(),
         });
         hydrateSpacesForUser(resolvedUserId);
+        void registerAccountFolder(email, resolvedUserId);
         recordUserIdentityAvailable({ id: resolvedUserId, email, username });
       },
 
@@ -598,6 +600,7 @@ queueMicrotask(() => {
   const { token, user_id, email, username } = authStore.getState();
   hydrateSpacesForUser(user_id);
   if (token && user_id != null) {
+    void registerAccountFolder(email, user_id);
     recordUserIdentityAvailable({ id: user_id, email, username });
   }
 });

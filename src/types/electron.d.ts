@@ -148,6 +148,10 @@ interface ElectronAPI {
   envWrite: (email: string, kv: { key: string; value: string }) => Promise<any>;
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
+  registerAccountFolder?: (
+    email: string,
+    userId: string | number
+  ) => Promise<{ dirName: string; status: string | null }>;
   workspaceSecretPut: (request: {
     account_scope_digest: string;
     space_id: string;
