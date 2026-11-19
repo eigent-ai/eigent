@@ -1,8 +1,10 @@
 # Session replay and sharing plan
 
-> **Status: proposal.** This plan lets people replay a finished Session step by
-> step, and share a read-only copy of a Session through a public link that
-> opens in any browser. Nothing here is implemented yet.
+> **Status: first version in progress.** This plan lets people replay a
+> finished Session step by step, and share a read-only copy of a Session
+> through a public link that opens in any browser. Replay (§4) and the desktop
+> side of sharing (§5.1, §5.2) are built; §9 lists what is built and what is
+> left.
 
 ## 1. Goal
 
@@ -24,6 +26,9 @@ UI copy follows `docs/product-terminology.md` (**Space → Session → Task**).
 | Shared Session | A fixed copy of selected Runs of a Session, published under a link      |
 | Share link     | The public URL of one Shared Session                                    |
 | Viewer         | The browser page that shows a Shared Session                            |
+
+A Run is one request and its work. UI copy calls a Run a **Task** ("Task 1",
+"Tasks still running are not included"); "Run" stays in code and API names.
 
 ## 3. What exists today
 
@@ -61,10 +66,17 @@ Replay runs entirely on the device and needs no server change.
 4. **Read-only.** The composer is hidden. Approval and question cards show the
    recorded decision and cannot be answered. Links to files open the current
    file if it still exists, otherwise show "not available in replay".
-5. **Implementation.** A replay controller that wraps the existing projector
-   input (`src/lib/projector`) and the `EventTimeline` renderer, plus a
-   replay toolbar. No new Brain endpoint: the events endpoint already returns
-   what is needed.
+5. **Implementation.** A replay controller that decides how many stored
+   events are visible, the existing projector (`src/lib/projector`) to
+   project that prefix, and the `TimelineModeRenderer` that draws the live
+   timeline, plus a replay toolbar. No new Brain endpoint: the events
+   endpoint already returns what is needed.
+   _Correction:_ the first draft of this plan named the `EventTimeline`
+   renderer. The live Session view no longer renders `EventTimeline`; it goes
+   through `EventNativeProjectTimeline` → `TimelineModeRenderer`, so replay
+   reuses `TimelineModeRenderer` to look the same as the live view.
+6. **Elapsed time.** A Run that has not ended yet in the replay measures its
+   time to the last event shown, not to the wall clock.
 
 ## 5. Sharing
 
@@ -86,13 +98,24 @@ Replay runs entirely on the device and needs no server change.
 The copy is built on the device from the Run events, then cleaned before it
 leaves the device:
 
-- Absolute local paths become paths relative to the Space folder.
+- Absolute local paths become paths relative to the Space folder. Other
+  paths under a home folder (`/Users/<name>`, `/home/<name>`,
+  `C:\Users\<name>`) start with `~` instead, so the user name is not shared.
 - Values of environment variables, connector credentials and model keys are
-  removed.
-- Raw model requests and responses are not included.
+  removed: fields named like keys, tokens, secrets, passwords, cookies or
+  authorization, and credential shapes inside text (bearer tokens, provider
+  key prefixes, private key blocks, `NAME_KEY=value`, `?token=` in URLs).
+- Raw model requests and responses are not included (`model.invocation.*`),
+  nor events that only describe this device (`run.environment_resolved`,
+  `run.attempt_environment_bound`, `execution.*`, `admission.*`,
+  `permission.action.*`, `workspace.writer.*`).
 - File contents are included only for files chosen in the dialog.
+- Run ids are replaced with `run-1`, `run-2`, … and event ids with
+  `run-N:<sequence>`. The Session's own id is sent to the server so the owner
+  can list links per Session, but it is not part of the public snapshot.
 
-The preview in §5.1 shows the cleaned copy, so people can check it.
+The preview in §5.1 is drawn from the cleaned copy itself, so people see
+exactly what would be uploaded. Removed values show as `[removed]`.
 
 ### 5.3 Cloud side
 
@@ -143,6 +166,13 @@ remove the desktop playback path (`handleSendShare`) one release later.
 
 The server change deploys before the desktop change that calls it.
 
+_Change of order:_ the first pull request builds steps 1 and 4 together, the
+desktop side of sharing included, against the server contract in its
+description. Until the server endpoints exist the Share dialog still builds
+and previews the cleaned copy, and **Create link** says sharing is not
+available on this server yet. The switch from Task share (§5.5) is left for
+when links work end to end.
+
 ## 8. Testing
 
 - Unit:
@@ -162,3 +192,16 @@ The server change deploys before the desktop change that calls it.
   5. An older Task share link still opens until it expires.
 - `npm run type-check`, `npm run lint`, focused server tests,
   `git diff --check`.
+
+## 9. Built so far
+
+| Part                                     | State                                                                                                                                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Replay (§4)                              | Built: Session menu → **Replay**; play/pause, 1×/2×/4×/instant, previous/next step, scrubber with approval, question, error and final-answer markers, **Exit replay**. Composer hidden while replaying. |
+| Replay entry on each Run section         | Not built.                                                                                                                                                                                              |
+| Share dialog, clean-up, preview (§5.1–2) | Built: choose Tasks, tool calls, thinking and files; preview of the cleaned copy; expiry; create and copy link.                                                                                         |
+| Owner link list (§5.3 owner actions)     | Built in the dialog: list, copy, stop, delete. Changing expiry has a client call but no control yet.                                                                                                    |
+| Cloud endpoints (§5.3)                   | Not in this repository; the expected contract is in the pull request description.                                                                                                                       |
+| Self-hosted `server/` endpoints          | Not built.                                                                                                                                                                                              |
+| Viewer (§5.4)                            | Not built.                                                                                                                                                                                              |
+| Older Task share switch (§5.5)           | Not built; the Home **Share** action is unchanged.                                                                                                                                                      |
