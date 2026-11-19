@@ -12,10 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { WindowTitleBar } from '@/components/Layout/WindowTitleBar';
 import { useTranslation } from 'react-i18next';
 
 export default function NotFound() {
   const { t } = useTranslation();
   console.log(window.location.href);
-  return <div>{t('layout.not-found')}</div>;
+  return (
+    <div className="flex h-full flex-col">
+      <WindowTitleBar />
+      <div>{t('layout.not-found')}</div>
+    </div>
+  );
 }
