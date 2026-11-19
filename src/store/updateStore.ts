@@ -52,7 +52,13 @@ export const useDesktopUpdateStore = create<DesktopUpdateState>((set) => ({
     set((state) => (state.phase === 'idle' ? { phase: 'checking' } : state)),
   setAvailable: (newVersion) =>
     set((state) => {
-      if (state.phase === 'downloaded' || state.phase === 'installing') {
+      // A repeated "available" (launch and background checks can overlap)
+      // must not reset a download in progress or a pending install.
+      if (
+        state.phase === 'downloading' ||
+        state.phase === 'downloaded' ||
+        state.phase === 'installing'
+      ) {
         return state;
       }
       return {

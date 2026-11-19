@@ -25,6 +25,11 @@ import {
   getUpdatePlatformDirectory,
   GitHubReleaseCdnProvider,
 } from './githubReleaseCdnProvider';
+import {
+  readUpdateChannel,
+  readUpdateCheckConfig,
+  selectUpdateFeedBaseUrl,
+} from './updateChannel';
 
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 
@@ -74,8 +79,17 @@ export function update(win: Electron.BrowserWindow) {
     return;
   }
 
-  const cdnBaseUrl =
-    process.env.EIGENT_UPDATER_CDN_BASE_URL || DEFAULT_CDN_RELEASE_BASE_URL;
+  const updateChannel = readUpdateChannel({
+    userDataPath: app.getPath('userData'),
+  });
+  // This feed has no pre-release lane, so a pre-release install stays on
+  // stable here; builds that publish one pass it as `prereleaseBaseUrl`.
+  const cdnBaseUrl = selectUpdateFeedBaseUrl({
+    channel: updateChannel,
+    stableBaseUrl:
+      process.env.EIGENT_UPDATER_CDN_BASE_URL || DEFAULT_CDN_RELEASE_BASE_URL,
+  });
+  console.log('[AutoUpdater] update channel:', updateChannel);
   const channel = getGitHubReleaseChannel(process.platform, process.arch);
   const feed = {
     provider: 'custom' as const,
@@ -122,7 +136,14 @@ export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
   // Checking for updates - errors are silent since users can't act on them
   ipcMain.handle('check-update', async () => {
     try {
-      return await autoUpdater.checkForUpdatesAndNotify();
+      const result = await autoUpdater.checkForUpdatesAndNotify();
+      // A plain summary: the raw result holds a cancellation token that does
+      // not need to cross IPC. `null` means no check ran.
+      if (!result) return null;
+      return {
+        updateAvailable: Boolean(result.isUpdateAvailable),
+        version: result.updateInfo?.version ?? null,
+      };
     } catch (error) {
       console.log(
         '[AutoUpdater] Update check failed:',
@@ -131,6 +152,9 @@ export function registerUpdateIpcHandlers(beforeQuitAndInstall?: () => void) {
       return null;
     }
   });
+
+  // Background check schedule; the renderer owns the timer.
+  ipcMain.handle('get-update-check-config', () => readUpdateCheckConfig());
 
   // Start downloading and feedback on progress
   ipcMain.handle('start-download', (event: Electron.IpcMainInvokeEvent) => {
