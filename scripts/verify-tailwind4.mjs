@@ -38,7 +38,40 @@ const tailwindBinary = path.join(
 
 const fixture = `@import './index.css';
 @source inline('short:block max-lg:block smooth-shadow-md smooth-shadow-ring-md bg-ds-accent-strong-default bg-ds-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-base text-body-sm text-ds-ink-default-default border-ds-hairline-default-default ring-ds-ring-focus shadow-ds-elevation-control h-ds-control-md');
+@source inline('max-w-xs max-w-sm max-w-md max-w-lg max-w-xl min-w-xs min-w-sm min-w-md min-w-lg min-w-xl');
 `;
+
+// The config's spacing scale also names its steps xs–xl (4–64px). Tailwind
+// resolves `max-w-*` / `min-w-*` through spacing before its container sizes,
+// so without the pins in index.css `max-w-md` compiles to 16px and squeezes
+// copy to one word per line. Each named width must stay on the width scale.
+const namedWidthSteps = ['xs', 'sm', 'md', 'lg', 'xl'];
+const namedWidthUtilities = namedWidthSteps.flatMap((step) => [
+  ['max', step],
+  ['min', step],
+]);
+
+function checkNamedWidths(css) {
+  for (const [kind, step] of namedWidthUtilities) {
+    const rule = css.match(new RegExp(`\\.${kind}-w-${step}\\s*\\{([^}]*)\\}`));
+    if (!rule) {
+      fail(`Missing named width utility: .${kind}-w-${step}`);
+      continue;
+    }
+    const expected = `${kind}-width: var(--${kind}-width-${step})`;
+    if (!rule[1].includes(expected)) {
+      fail(
+        `.${kind}-w-${step} must use the width scale (${expected}), found: ${rule[1].trim()}`
+      );
+    }
+    const token = css.match(new RegExp(`--${kind}-width-${step}:\\s*([^;]+);`));
+    if (!token || !/rem\s*$/.test(token[1])) {
+      fail(
+        `--${kind}-width-${step} must be a rem width, found: ${token?.[1] ?? 'nothing'}`
+      );
+    }
+  }
+}
 
 const requiredOutput = [
   ['public Neutral fill utility', '.bg-ds-neutral-default-default'],
@@ -100,12 +133,18 @@ try {
   }
 
   fs.writeFileSync(fixturePath, fixture, 'utf8');
+  // On Windows, node_modules/.bin holds a .cmd shim, which only runs through
+  // a shell.
+  const isWindows = process.platform === 'win32';
   const result = spawnSync(
-    tailwindBinary,
-    ['-i', fixturePath, '-o', outputPath],
+    isWindows ? `"${tailwindBinary}.cmd"` : tailwindBinary,
+    ['-i', fixturePath, '-o', outputPath].map((arg) =>
+      isWindows ? `"${arg}"` : arg
+    ),
     {
       cwd: repositoryRoot,
       encoding: 'utf8',
+      shell: isWindows,
     }
   );
 
@@ -125,6 +164,7 @@ try {
     for (const [label, sentinel] of forbiddenOutput) {
       if (css.includes(sentinel)) fail(`Found ${label}: ${sentinel}`);
     }
+    checkNamedWidths(css);
   }
 
   if (!process.exitCode) {
