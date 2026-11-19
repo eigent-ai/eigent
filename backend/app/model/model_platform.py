@@ -27,6 +27,7 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "meta": "openai-compatible-model",
     "nebius": "openai-compatible-model",
     "orcarouter": "openai-compatible-model",
+    "atlascloud": "openai-compatible-model",
 }
 
 # Bedrock Converse requires a region during model initialization.
