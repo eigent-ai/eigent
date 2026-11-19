@@ -136,6 +136,14 @@ cd backend
 uv sync
 ```
 
+### ⌨️ Command Line
+
+Start, follow and steer Tasks from a terminal with the `eigent` command: next to the app, with no app open (for scripts and servers), or from another machine. See the [command line guide](docs/cli.md).
+
+```bash
+eigent run "Summarise the open TODOs" --space ~/work/repo
+```
+
 ### 🏢 Enterprise
 
 For organizations requiring maximum security, customization, and control:

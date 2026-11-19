@@ -1032,8 +1032,11 @@ def main(argv: list[str] | None = None) -> None:
     sys.exit(run(argv))
 
 
-# Registers ``login``, ``logout`` and ``remote`` on ``cli``. Imported last:
-# that module builds on the group and helpers defined above.
-from eigent_cli import remote as _remote  # noqa: E402, F401
+# Register the commands that live in their own modules. Imported last: they
+# build on the group and helpers defined above.
+from eigent_cli import (  # noqa: E402, F401
+    install as _install,
+    remote as _remote,
+)
 
 __all__ = ["Context", "cli", "main", "run"]

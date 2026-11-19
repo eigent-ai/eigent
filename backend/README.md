@@ -31,6 +31,9 @@ uv run python main.py
 
 ### Command-line client (`eigent`)
 
+The user guide, including how to put `eigent` on your PATH, is in
+[`docs/cli.md`](../docs/cli.md). This section is the developer reference.
+
 Start, follow and steer Tasks from a terminal, next to the app or with no app
 open. In the app, CLI access is off by default. Turn it on by setting
 `EIGENT_CLI_ACCESS=1` (in your environment or in `~/.eigent/.env`) and
