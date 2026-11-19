@@ -557,5 +557,33 @@
     "removed": "设置已移除",
     "saved": "设置已保存",
     "loading": "加载中"
+  },
+  "apple-intelligence": {
+    "description": "使用这台 Mac 内置的模型。无需端点、密钥或下载。",
+    "checking": "正在检查 Apple Intelligence…",
+    "ready": "Apple Intelligence 已可在这台 Mac 上使用。",
+    "badge-ready": "可用",
+    "badge-unavailable": "不可用",
+    "not-apple-silicon": "在这台 Mac 上不可用。Apple Intelligence 需要搭载 Apple 芯片的 Mac。",
+    "bridge-missing": "此版本中不可用。",
+    "bridge-unavailable": "Apple Intelligence 辅助程序没有响应。",
+    "unsupported-os": "需要 macOS 26 或更高版本。",
+    "not-eligible": "这台 Mac 不支持 Apple Intelligence。",
+    "apple-intelligence-off": "请在系统设置中打开 Apple Intelligence。",
+    "model-not-ready": "模型仍在下载中。",
+    "unavailable": "Apple Intelligence 不可用。",
+    "open-system-settings": "打开系统设置",
+    "try-again": "重试",
+    "on-device-model": "设备端模型",
+    "on-this-mac": "在这台 Mac 上",
+    "text-only": "仅文本",
+    "context": "上下文 {{size}}",
+    "privacy": "提示和回复不会离开这台 Mac。会话历史的存储和同步方式与其他模型相同。",
+    "limits": "此版本在不使用工具的情况下回答问题。需要工具的任务请选择其他模型。",
+    "test": "测试",
+    "test-passed": "测试通过，用时 {{seconds}} 秒。",
+    "test-failed": "测试未完成。",
+    "add": "添加模型",
+    "added": "已添加"
   }
 }

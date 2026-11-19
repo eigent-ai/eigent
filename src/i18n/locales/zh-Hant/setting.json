@@ -546,5 +546,33 @@
     "removed": "設定已移除",
     "saved": "設定已儲存",
     "loading": "載入中"
+  },
+  "apple-intelligence": {
+    "description": "使用這台 Mac 內建的模型。無需端點、金鑰或下載。",
+    "checking": "正在檢查 Apple Intelligence…",
+    "ready": "Apple Intelligence 已可在這台 Mac 上使用。",
+    "badge-ready": "可用",
+    "badge-unavailable": "無法使用",
+    "not-apple-silicon": "在這台 Mac 上無法使用。Apple Intelligence 需要搭載 Apple 晶片的 Mac。",
+    "bridge-missing": "此版本中無法使用。",
+    "bridge-unavailable": "Apple Intelligence 輔助程式沒有回應。",
+    "unsupported-os": "需要 macOS 26 或以上版本。",
+    "not-eligible": "這台 Mac 不支援 Apple Intelligence。",
+    "apple-intelligence-off": "請在系統設定中開啟 Apple Intelligence。",
+    "model-not-ready": "模型仍在下載中。",
+    "unavailable": "Apple Intelligence 無法使用。",
+    "open-system-settings": "打開系統設定",
+    "try-again": "重試",
+    "on-device-model": "裝置端模型",
+    "on-this-mac": "在這台 Mac 上",
+    "text-only": "僅文字",
+    "context": "上下文 {{size}}",
+    "privacy": "提示與回覆不會離開這台 Mac。工作階段記錄的儲存與同步方式與其他模型相同。",
+    "limits": "此版本在不使用工具的情況下回答問題。需要工具的任務請選擇其他模型。",
+    "test": "測試",
+    "test-passed": "測試通過，用時 {{seconds}} 秒。",
+    "test-failed": "測試未完成。",
+    "add": "新增模型",
+    "added": "已新增"
   }
 }

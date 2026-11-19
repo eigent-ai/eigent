@@ -29,6 +29,7 @@ import {
   findNodejsWheelNpmPath,
   getBackendPath,
   getBinaryPath,
+  getBundledAppleBridgePath,
   getBundledGitPath,
   getCachePath,
   getPrebuiltPythonDir,
@@ -328,6 +329,10 @@ export async function startBackend(
   const npmWrapperDir = findNodejsWheelNpmPath(venvPath);
   const nodejsWheelBin = findNodejsWheelBinPath(venvPath);
   const bundledGitPath = getBundledGitPath();
+  const appleBridgePath = getBundledAppleBridgePath();
+  if (appleBridgePath) {
+    log.info(`[BACKEND] Apple Intelligence bridge: ${appleBridgePath}`);
+  }
   const pathEnv = process.env.PATH || '';
   const pathParts: string[] = [];
   if (bundledGitPath) {
@@ -354,6 +359,7 @@ export async function startBackend(
     npm_config_cache: npmCacheDir,
     PATH: updatedPath,
     ...(bundledGitPath ? { EIGENT_BUNDLED_GIT: bundledGitPath } : {}),
+    ...(appleBridgePath ? { EIGENT_APPLE_BRIDGE: appleBridgePath } : {}),
     ...extraEnv,
   };
 

@@ -38,6 +38,7 @@
     "build:all": "npm run prebuild && electron-builder --mac --win --linux --publish never",
     "preview": "vite preview",
     "build:web": "vite build --config vite.config.web.ts",
+    "build:apple-bridge": "node scripts/build-apple-bridge.mjs",
     "generate:design-tokens": "node scripts/generate-design-tokens.mjs",
     "build:design-system": "npm run generate:design-tokens",
     "check:design-system:clean-tree": "node scripts/check-design-system-clean-tree.mjs",

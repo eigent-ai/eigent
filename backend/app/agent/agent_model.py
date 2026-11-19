@@ -23,6 +23,7 @@ from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.apple_bridge.runtime import resolve_apple_bridge_config
 from app.model.anthropic_tools import configure_anthropic_tool_compatibility
 from app.model.chat import AgentModelConfig, Chat
 from app.model.effort import resolve_model_effort_config
@@ -234,6 +235,10 @@ def agent_model(
                 extra_params,
                 force_refresh=force_refresh,
             )
+
+        # Apple Intelligence records store no endpoint. Use the running
+        # bridge, or fail with its reason; there is no fallback model.
+        effective_config = resolve_apple_bridge_config(effective_config)
 
         effective_api_url = effective_config.get("api_url")
         is_effective_cloud = is_eigent_cloud_model_endpoint(effective_api_url)

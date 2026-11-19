@@ -23,6 +23,7 @@ from fastapi import Depends, FastAPI
 
 from app.auth import get_brain_auth_context
 from app.controller import (
+    apple_intelligence_controller,
     chat_controller,
     execution_controller,
     file_controller,
@@ -125,6 +126,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": model_controller.router,
             "tags": ["model"],
             "description": "Model validation and configuration",
+        },
+        {
+            "router": apple_intelligence_controller.router,
+            "tags": ["model"],
+            "description": "Apple Intelligence local provider status",
         },
         {
             "router": remote_sub_agent_controller.router,

@@ -1,10 +1,12 @@
 # Apple Intelligence models plan
 
-> **Status: proposal.** This plan lets people on a Mac with Apple Intelligence
-> use Apple's built-in models in Eigent: the on-device model with no API key,
-> download or server, and, on macOS 27, Apple's Private Cloud Compute model.
-> Nothing here is implemented yet. The meeting notes plan
-> (`docs/meeting-notes-plan.md`, separate pull request) builds on it.
+> **Status: first version in progress.** This plan lets people on a Mac with
+> Apple Intelligence use Apple's built-in models in Eigent: the on-device model
+> with no API key, download or server, and, on macOS 27, Apple's Private Cloud
+> Compute model. A text-only first version (most of PR 1 and part of PR 2 in
+> §6) is implemented; §8 lists what is in it, what is not, and where it
+> differs from this plan. The meeting notes plan (`docs/meeting-notes-plan.md`,
+> separate pull request) builds on it.
 
 ## 1. Goal
 
@@ -202,6 +204,12 @@ Alternatives considered:
   A new `LanguageModelSession` starts from that transcript and answers the last
   user or tool message.
 
+  The text-only first version does not rebuild a `Transcript` yet. `system`
+  messages become the session instructions, and earlier `user` and
+  `assistant` turns are written into the prompt ahead of the latest message.
+  A `Transcript` is only needed once tool calls and tool output have to be
+  replayed, so it arrives with tool calling (PR 3).
+
 - **Tools.** This applies only when the model reports `toolCalling`. Each
   OpenAI function tool becomes a `Tool` whose arguments use a
   `DynamicGenerationSchema` built from its JSON Schema. The bridge never runs a
@@ -274,14 +282,23 @@ applies)
 
 ### 4.4 Settings and model picker
 
-Reuse the existing provider card and configuration dialog in
-`src/components/Settings/Models/` (`ConfigModelCard`,
-`ModelConfigurationDialog`), badges and `Button` variants from
-`src/components/ui`, and `DsIcon`. No new primitive.
+Settings → Models no longer has provider cards or a separate local group
+(`ConfigModelCard` is no longer used). Providers are added from the **Add
+provider** dialog, and saved models are listed by provider. Follow the Codex
+entry, which also has no endpoint or key: its own configuration content in
+that dialog (`CodexConfigurationDialog`), with `Badge`, `Button` and `DsText`
+from `src/components/ui` and `DsIcon`. No new primitive.
 
-- **Where it shows.** An **Apple Intelligence** card in the local providers
-  group, on macOS only. On Intel Macs and older macOS it shows "Not available
-  on this Mac" and the reason.
+- **Where it shows.** An **Apple Intelligence** entry in the Add provider
+  dialog, in the macOS desktop app only. Windows, Linux and the web client do
+  not offer it. On Intel Macs and older macOS it opens and shows "Not
+  available on this Mac" and the reason. Nothing starts until the entry is
+  opened.
+- **Category.** The renderer classifies a saved provider as `local` or
+  `custom` in four places from `LOCAL_MODEL_OPTIONS`, and the default-model
+  selection depends on all four agreeing. Apple Intelligence stays out of that
+  list for now, so its records are `custom` everywhere. Moving it to `local`
+  needs one shared helper first.
 - **No fields.** There is no endpoint or key. A status line shows one of:
   - Ready;
   - Turn on Apple Intelligence in System Settings, with **Open System
@@ -381,3 +398,40 @@ Its own work can start in parallel.
   7. A local web page cannot call the bridge.
 - **Packaging.** A signed, notarized build starts the bridge under the hardened
   runtime.
+
+## 8. Implementation status
+
+**In the first version**
+
+- `native/apple-bridge/`: the Swift bridge. Text-only `/v1/health`,
+  `/v1/models` and `/v1/chat/completions` (streaming and not), the token,
+  `Origin` and `Host` checks, the error mapping in §4.2, one generation at a
+  time with a queue of four, the idle stop and the exit when stdin closes.
+  Requests with tools get `400 tools_unsupported`; structured output gets
+  `400 unsupported_response_format`. Swift unit tests cover everything except
+  the Foundation Models calls. The `Apple Bridge` workflow builds and tests it
+  on a macOS runner and checks that Foundation Models is weak-linked.
+- `npm run build:apple-bridge` builds it into
+  `resources/prebuilt/apple-bridge/` on Apple silicon Macs. The desktop app
+  passes its path to the backend as `EIGENT_APPLE_BRIDGE` on Apple silicon
+  Macs only.
+- `backend/app/apple_bridge/`: the supervisor (start on demand, token on
+  stdin, port handshake, crash limit with backoff, cached health),
+  `GET /model/apple-intelligence/status`, `POST /model/apple-intelligence/test`,
+  the `apple-intelligence` alias, and filling in the live bridge URL and token
+  when a model is built, with no fallback.
+- Settings: the Add provider entry and configuration dialog in §4.4 for the
+  on-device model, in all shipped locales.
+
+**Not yet**
+
+- Tool calling and the native `Transcript` (PR 3). Until then only Sessions
+  that need no tools work; a Task that needs tools fails with
+  `tools_unsupported`.
+- The context check before a Run (`/v1/token-count`), the token limit set to
+  the model's context size, and picker entries disabled with a reason.
+- The context size reported by the model on macOS 27; the bridge reports
+  4,096, the macOS 26 size.
+- Private Cloud Compute (PR 4) and the open questions in §5.
+- Bridge status in `/health?detail=true`.
+- Building, signing and notarizing the bridge in the release workflow.

@@ -556,5 +556,33 @@
     "removed": "Paramètres supprimés",
     "saved": "Paramètres enregistrés",
     "loading": "Chargement"
+  },
+  "apple-intelligence": {
+    "description": "Utilisez le modèle intégré à ce Mac. Aucun point de terminaison, clé ou téléchargement.",
+    "checking": "Vérification d’Apple Intelligence…",
+    "ready": "Apple Intelligence est prête sur ce Mac.",
+    "badge-ready": "Prête",
+    "badge-unavailable": "Indisponible",
+    "not-apple-silicon": "Indisponible sur ce Mac. Apple Intelligence nécessite un Mac avec puce Apple.",
+    "bridge-missing": "Indisponible dans cette version.",
+    "bridge-unavailable": "L’assistant Apple Intelligence ne répond pas.",
+    "unsupported-os": "Nécessite macOS 26 ou une version ultérieure.",
+    "not-eligible": "Ce Mac ne prend pas en charge Apple Intelligence.",
+    "apple-intelligence-off": "Activez Apple Intelligence dans Réglages Système.",
+    "model-not-ready": "Le modèle est encore en cours de téléchargement.",
+    "unavailable": "Apple Intelligence n’est pas disponible.",
+    "open-system-settings": "Ouvrir Réglages Système",
+    "try-again": "Réessayer",
+    "on-device-model": "Modèle sur l’appareil",
+    "on-this-mac": "Sur ce Mac",
+    "text-only": "Texte uniquement",
+    "context": "Contexte {{size}}",
+    "privacy": "Les requêtes et les réponses restent sur ce Mac. L’historique de session est enregistré et synchronisé comme avec tout autre modèle.",
+    "limits": "Cette version répond aux questions sans outils. Pour les tâches qui nécessitent des outils, choisissez un autre modèle.",
+    "test": "Tester",
+    "test-passed": "Test réussi en {{seconds}} s.",
+    "test-failed": "Le test n’a pas abouti.",
+    "add": "Ajouter le modèle",
+    "added": "Ajouté"
   }
 }

@@ -546,5 +546,33 @@
     "removed": "設定を削除しました",
     "saved": "設定を保存しました",
     "loading": "読み込み中"
+  },
+  "apple-intelligence": {
+    "description": "この Mac に組み込まれたモデルを使用します。エンドポイント、キー、ダウンロードは不要です。",
+    "checking": "Apple Intelligence を確認しています…",
+    "ready": "この Mac で Apple Intelligence を使用できます。",
+    "badge-ready": "使用可能",
+    "badge-unavailable": "使用不可",
+    "not-apple-silicon": "この Mac では使用できません。Apple Intelligence には Apple シリコン搭載の Mac が必要です。",
+    "bridge-missing": "このビルドでは使用できません。",
+    "bridge-unavailable": "Apple Intelligence のヘルパーが応答していません。",
+    "unsupported-os": "macOS 26 以降が必要です。",
+    "not-eligible": "この Mac は Apple Intelligence に対応していません。",
+    "apple-intelligence-off": "システム設定で Apple Intelligence をオンにしてください。",
+    "model-not-ready": "モデルをダウンロードしています。",
+    "unavailable": "Apple Intelligence は使用できません。",
+    "open-system-settings": "システム設定を開く",
+    "try-again": "再試行",
+    "on-device-model": "オンデバイスモデル",
+    "on-this-mac": "この Mac 上",
+    "text-only": "テキストのみ",
+    "context": "コンテキスト {{size}}",
+    "privacy": "プロンプトと応答はこの Mac から出ません。セッション履歴は他のモデルと同じように保存・同期されます。",
+    "limits": "このバージョンはツールを使わずに質問に答えます。ツールが必要なタスクには別のモデルを選んでください。",
+    "test": "テスト",
+    "test-passed": "テストは {{seconds}} 秒で完了しました。",
+    "test-failed": "テストを完了できませんでした。",
+    "add": "モデルを追加",
+    "added": "追加済み"
   }
 }
