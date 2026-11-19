@@ -189,6 +189,10 @@ def _working_root_upload_policy(
 def _artifact_upload_policy(root: _ArtifactRoot, relative_path: str) -> str:
     """Keep execution internals out of the project-output upload lane."""
 
+    from app.recording.runtime import is_reserved_recording
+
+    if is_reserved_recording(root.path, relative_path):
+        return _METADATA_ONLY_UPLOAD_POLICY
     path = Path(relative_path)
     if path.name in _SPACE_INTERNAL_ARTIFACT_NAMES:
         return _METADATA_ONLY_UPLOAD_POLICY

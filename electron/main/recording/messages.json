@@ -1,0 +1,79 @@
+{
+  "en-US": {
+    "title": "Record Eigent",
+    "message": "Record everything shown in the Eigent window?",
+    "detail": "This includes other Sessions, Settings, and embedded browser pages. Audio is off. Clips stay in the Space folder. Recording continues when you navigate away. Approval expires after 15 minutes without recording, when you sign out, or when the app quits.",
+    "cancel": "Cancel",
+    "allow": "Allow recording"
+  },
+  "zh-Hans": {
+    "title": "录制 Eigent",
+    "message": "录制 Eigent 窗口中显示的所有内容？",
+    "detail": "录制内容包括其他会话、设置和内嵌浏览器页面。不录制音频。视频保存在空间文件夹中，切换页面后仍会继续录制。连续 15 分钟未录制、退出登录或退出应用后，授权将失效。",
+    "cancel": "取消",
+    "allow": "允许录制"
+  },
+  "zh-Hant": {
+    "title": "錄製 Eigent",
+    "message": "錄製 Eigent 視窗中顯示的所有內容？",
+    "detail": "錄製內容包括其他工作階段、設定和內嵌瀏覽器頁面。不錄製音訊。影片儲存在空間資料夾中，切換頁面後仍會繼續錄製。連續 15 分鐘未錄製、登出或退出應用程式後，授權將失效。",
+    "cancel": "取消",
+    "allow": "允許錄製"
+  },
+  "de": {
+    "title": "Eigent aufnehmen",
+    "message": "Alles im Eigent-Fenster aufnehmen?",
+    "detail": "Dies umfasst andere Sitzungen, Einstellungen und eingebettete Browserseiten. Audio ist aus. Videos bleiben im Space-Ordner. Die Aufnahme läuft beim Seitenwechsel weiter. Die Zustimmung erlischt nach 15 Minuten ohne Aufnahme, beim Abmelden oder beim Beenden der App.",
+    "cancel": "Abbrechen",
+    "allow": "Aufnahme erlauben"
+  },
+  "fr": {
+    "title": "Enregistrer Eigent",
+    "message": "Enregistrer tout ce qui apparaît dans la fenêtre Eigent ?",
+    "detail": "Cela inclut les autres sessions, les paramètres et les pages du navigateur intégré. Le son est désactivé. Les vidéos restent dans le dossier de l’espace. L’enregistrement continue lors des changements de page. L’autorisation expire après 15 minutes sans enregistrement, à la déconnexion ou à la fermeture de l’application.",
+    "cancel": "Annuler",
+    "allow": "Autoriser"
+  },
+  "it": {
+    "title": "Registra Eigent",
+    "message": "Registrare tutto ciò che appare nella finestra Eigent?",
+    "detail": "Sono incluse altre sessioni, le impostazioni e le pagine del browser integrato. L’audio è disattivato. I video restano nella cartella dello spazio. La registrazione continua quando cambi pagina. Il consenso scade dopo 15 minuti senza registrazioni, alla disconnessione o alla chiusura dell’app.",
+    "cancel": "Annulla",
+    "allow": "Consenti registrazione"
+  },
+  "es": {
+    "title": "Grabar Eigent",
+    "message": "¿Grabar todo lo que se muestra en la ventana de Eigent?",
+    "detail": "Incluye otras sesiones, los ajustes y las páginas del navegador integrado. El audio está desactivado. Los vídeos permanecen en la carpeta del espacio. La grabación continúa al cambiar de página. El permiso caduca tras 15 minutos sin grabar, al cerrar sesión o al salir de la aplicación.",
+    "cancel": "Cancelar",
+    "allow": "Permitir grabación"
+  },
+  "ja": {
+    "title": "Eigent を録画",
+    "message": "Eigent ウィンドウに表示されるすべてを録画しますか？",
+    "detail": "他のセッション、設定、内蔵ブラウザーのページも含まれます。音声は録音されません。動画はスペースのフォルダーに保存され、ページを移動しても録画は続きます。15 分間録画しない場合、ログアウト時、またはアプリ終了時に許可が失効します。",
+    "cancel": "キャンセル",
+    "allow": "録画を許可"
+  },
+  "ko": {
+    "title": "Eigent 녹화",
+    "message": "Eigent 창에 표시되는 모든 내용을 녹화할까요?",
+    "detail": "다른 세션, 설정, 내장 브라우저 페이지도 포함됩니다. 오디오는 녹음하지 않습니다. 동영상은 스페이스 폴더에 저장되며 페이지를 이동해도 녹화가 계속됩니다. 15분 동안 녹화하지 않거나 로그아웃하거나 앱을 종료하면 승인이 만료됩니다.",
+    "cancel": "취소",
+    "allow": "녹화 허용"
+  },
+  "ru": {
+    "title": "Запись Eigent",
+    "message": "Записать всё, что отображается в окне Eigent?",
+    "detail": "В запись попадут другие сеансы, настройки и страницы встроенного браузера. Звук отключён. Видео остаётся в папке пространства. Запись продолжается при переходе между страницами. Разрешение истекает после 15 минут без записи, при выходе из аккаунта или закрытии приложения.",
+    "cancel": "Отмена",
+    "allow": "Разрешить запись"
+  },
+  "ar": {
+    "title": "تسجيل Eigent",
+    "message": "هل تريد تسجيل كل ما يظهر في نافذة Eigent؟",
+    "detail": "يشمل ذلك الجلسات الأخرى والإعدادات وصفحات المتصفح المضمّن. الصوت متوقف. تبقى المقاطع في مجلد المساحة. يستمر التسجيل عند الانتقال بين الصفحات. تنتهي الموافقة بعد 15 دقيقة دون تسجيل، أو عند تسجيل الخروج، أو إغلاق التطبيق.",
+    "cancel": "إلغاء",
+    "allow": "السماح بالتسجيل"
+  }
+}

@@ -47,6 +47,7 @@
     "test:e2e": "vitest run --config vitest.config.ts",
     "test:preview-browser": "node test/e2e/preview-browser/verify.mjs",
     "test:stream-relay": "node test/e2e/stream-relay/verify.mjs",
+    "test:recording": "node test/e2e/recording/verify.mjs",
     "test:terminal-scrollback": "node test/e2e/terminal-scrollback/verify.mjs",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "check:i18n": "node scripts/check-i18n-locale-parity.js && node scripts/check-i18n-source-usage.mjs",

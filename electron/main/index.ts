@@ -114,6 +114,7 @@ import {
 } from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
 import { confirmNativeQuit } from './nativeQuitGuard';
+import { RecordingAdapter } from './recording/adapter';
 import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
@@ -183,6 +184,8 @@ let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
 let brainStreamRelay: BrainStreamRelay | null = null;
 const localControlCapability = crypto.randomBytes(32).toString('base64url');
+const recordingBootstrap = crypto.randomBytes(32).toString('base64url');
+let recordingAdapter: RecordingAdapter | null = null;
 let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
@@ -1607,6 +1610,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  // Recording captures the main window, so consent and revoke stay with the
+  // main window's main frame. Session windows show the control disabled.
+  ipcMain.handle('recording-authorize', async (event, runId: unknown) => {
+    if (!isMainRendererFrame(event))
+      throw new Error('Recording consent requires the main renderer');
+    if (typeof runId !== 'string') throw new Error('Invalid recording scope');
+    return recordingAdapter?.authorize(runId) ?? null;
+  });
+  ipcMain.handle('recording-revoke', async (event) => {
+    if (!isAppRendererFrame(event))
+      throw new Error('Recording revoke requires the app renderer');
+    await recordingAdapter?.revoke();
+  });
   // Session windows call the same local Brain as the main window, so every
   // app window (and only its main frame) may read these.
   ipcMain.handle('get-local-control-capability', (event) => {
@@ -4094,6 +4110,7 @@ const checkAndStartBackend = async (
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
             EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
+            EIGENT_RECORDING_BOOTSTRAP: recordingBootstrap,
             EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
             EIGENT_ELECTRON_CDP_PORT: String(browser_port),
             EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
@@ -4102,6 +4119,17 @@ const checkAndStartBackend = async (
               workspaceSecretBroker.capability,
           }
         );
+
+        await recordingAdapter?.dispose();
+        recordingAdapter = win
+          ? new RecordingAdapter({
+              window: win,
+              port: backendPort,
+              bootstrap: recordingBootstrap,
+              workerDirectory: path.join(__dirname, 'recording'),
+              locale: () => nativeMenuLocale ?? 'en-US',
+            })
+          : null;
 
         // Notify frontend that backend is ready
         log.info('Backend is ready, notifying frontend...');
@@ -4421,6 +4449,7 @@ app.on('before-quit', async (event) => {
   }
 
   closeCoordinator.markAppQuitInProgress();
+  void recordingAdapter?.dispose();
   // Keep the Session windows' saved list as it is at quit, then close them.
   sessionWindows?.markQuitting();
   for (const sessionWindow of sessionWindows?.allWindows() ?? [])
