@@ -36,6 +36,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
+import { isPendingMemorySuggestion } from './memorySuggestion';
 
 type DirectoryScopeType = Extract<MemoryScopeType, 'space' | 'project'>;
 
@@ -70,7 +71,10 @@ async function loadLegacyScopeSummaries(
         items.push({
           scope_type: scopeType,
           scope_id: scopeId,
-          entry_count: response.items.length,
+          // Suggestions are not saved Memory until accepted.
+          entry_count: response.items.filter(
+            (entry) => !isPendingMemorySuggestion(entry)
+          ).length,
           scope_state: response.scope_state,
         });
       }
