@@ -29,7 +29,6 @@ import {
   AnimatedContentPane,
   useShellPaneMotion,
 } from '@/components/Layout/ShellPaneTransition';
-import MeetingsPage from '@/components/Meetings/MeetingsPage';
 import {
   isLegacyHomeSettingsSearch,
   settingsPageSearch,
@@ -42,13 +41,15 @@ import {
   useSpaceStore,
 } from '@/store/spaceStore';
 import { AnimatePresence } from 'framer-motion';
-import { useCallback, useEffect, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef } from 'react';
 import {
   Navigate,
   useLocation,
   useNavigate,
   useSearchParams,
 } from 'react-router-dom';
+
+const MeetingsPage = lazy(() => import('@/components/Meetings/MeetingsPage'));
 
 /** Home: every Space, and one Space's Workspace page at `?spaceId=`. */
 function HomePageContent() {
@@ -134,7 +135,9 @@ function HomePageContent() {
       onBack={showSpaces}
     />
   ) : showMeetings ? (
-    <MeetingsPage />
+    <Suspense fallback={null}>
+      <MeetingsPage />
+    </Suspense>
   ) : (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <HomeHeader />
