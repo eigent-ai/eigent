@@ -61,6 +61,7 @@ const expectedResourceFiles = [
   'folder.json',
   'layout.json',
   'markdown.json',
+  'meetings.json',
   'setting.json',
   'triggers.json',
   'update.json',

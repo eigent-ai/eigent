@@ -24,6 +24,8 @@ export const CLOSE_EXECUTION_CLASSES = [
   'legacy-stream',
   'mixed',
   'unknown',
+  // A meeting is being recorded in this window (Meetings, plan §4.2).
+  'meeting-recording',
 ] as const;
 
 export type CloseExecutionClass = (typeof CLOSE_EXECUTION_CLASSES)[number];

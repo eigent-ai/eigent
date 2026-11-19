@@ -24,6 +24,7 @@ import {
   screen,
   session,
   shell,
+  systemPreferences,
 } from 'electron';
 import log from 'electron-log';
 import FormData from 'form-data';
@@ -112,6 +113,7 @@ import {
   revealUserVisibleLocalNode,
   revealWorkspaceLocalNode,
 } from './localPathActions';
+import { registerMeetingMicrophoneHandlers } from './meetingMicrophone';
 import { setRoundedCorners } from './native/macos-window';
 import { confirmNativeQuit } from './nativeQuitGuard';
 import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
@@ -1696,6 +1698,11 @@ function registerIpcHandlers() {
     'is-fullscreen',
     (event) => appWindowForSender(event.sender)?.isFullScreen() || false
   );
+  registerMeetingMicrophoneHandlers(ipcMain, {
+    platform: process.platform,
+    preferences: systemPreferences,
+    openExternal: (url) => shell.openExternal(url),
+  });
   ipcMain.handle('get-home-dir', () => {
     const platform = process.platform;
     return platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;

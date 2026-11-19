@@ -15,7 +15,7 @@
 import { useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
-export const HOME_SECTIONS = ['spaces'] as const;
+export const HOME_SECTIONS = ['spaces', 'meetings'] as const;
 
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 

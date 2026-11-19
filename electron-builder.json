@@ -110,6 +110,7 @@
       ".*\\.map$"
     ],
     "extendInfo": {
+      "NSMicrophoneUsageDescription": "Eigent uses the microphone only while you record a meeting. Recordings stay on this Mac.",
       "CFBundleLocalizations": [
         "ar",
         "de",
