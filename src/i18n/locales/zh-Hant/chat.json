@@ -612,5 +612,8 @@
   "workspace-blocked-failed": "無法處理被阻擋的操作，請重試。",
   "notice-space-folder-home": "Eigent 無法直接在您的個人專屬資料夾中工作。",
   "notice-space-folder-app-data": "Eigent 無法在存放其自身應用程式資料的資料夾中工作。",
-  "notice-space-folder-description": "請使用個人專屬資料夾內的資料夾（例如「文件」）建立空間。"
+  "notice-space-folder-description": "請使用個人專屬資料夾內的資料夾（例如「文件」）建立空間。",
+  "worker-timeline-back": "返回工作階段",
+  "worker-timeline-subtitle": "此工作階段中的工作者",
+  "worker-timeline-reply-hint": "如需回覆，請返回工作階段。"
 }

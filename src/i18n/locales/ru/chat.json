@@ -624,5 +624,8 @@
   "workspace-blocked-failed": "Не удалось разрешить заблокированную операцию. Повторите попытку.",
   "notice-space-folder-home": "Eigent не может работать прямо в вашей домашней папке.",
   "notice-space-folder-app-data": "Eigent не может работать в папке, где хранятся его собственные данные.",
-  "notice-space-folder-description": "Создайте пространство из папки внутри домашней папки, например «Документы»."
+  "notice-space-folder-description": "Создайте пространство из папки внутри домашней папки, например «Документы».",
+  "worker-timeline-back": "Вернуться к сеансу",
+  "worker-timeline-subtitle": "Исполнитель в этом сеансе",
+  "worker-timeline-reply-hint": "Чтобы ответить, вернитесь к сеансу."
 }

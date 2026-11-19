@@ -1675,5 +1675,6 @@
   "show-fewer-sessions-in-space": "收起 {{name}} 的会话",
   "new-session-space": "本会话所在空间",
   "spaces-switch-failed": "切换 Space 失败",
-  "space-emoji-load-failed": "无法加载表情。请检查网络连接。"
+  "space-emoji-load-failed": "无法加载表情。请检查网络连接。",
+  "session-workers": "工作者：{{count}}"
 }

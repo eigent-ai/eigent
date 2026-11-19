@@ -632,5 +632,8 @@
   "workspace-blocked-failed": "تعذر حل العملية المحظورة. حاول مرة أخرى.",
   "notice-space-folder-home": "لا يمكن لـ Eigent العمل مباشرة في مجلد المنزل.",
   "notice-space-folder-app-data": "لا يمكن لـ Eigent العمل في مجلد يحتوي على بيانات التطبيق الخاصة به.",
-  "notice-space-folder-description": "أنشئ مساحة من مجلد داخل مجلد المنزل، مثل المستندات."
+  "notice-space-folder-description": "أنشئ مساحة من مجلد داخل مجلد المنزل، مثل المستندات.",
+  "worker-timeline-back": "العودة إلى الجلسة",
+  "worker-timeline-subtitle": "عامل في هذه الجلسة",
+  "worker-timeline-reply-hint": "للرد، ارجع إلى الجلسة."
 }

@@ -32,6 +32,7 @@ import {
   reconcileTimelineRuns,
   type TimelineRunView,
 } from '@/lib/projector/chat/presentation';
+import { filterChatNodesForWorker } from '@/lib/projector/chat/workerView';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
 import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
@@ -158,6 +159,11 @@ interface EventNativeProjectTimelineProps {
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
   onEditUserMessage?: (message: EditUserMessageSource) => void;
+  /**
+   * Show one worker's timeline instead of the whole Session: its own events,
+   * the task hand-offs to and from it, and the message that started each Run.
+   */
+  workerKey?: string;
 }
 
 /**
@@ -177,6 +183,7 @@ export function EventNativeProjectTimeline({
   scrollContainerRef,
   scrollBottomInsetPx,
   onEditUserMessage,
+  workerKey,
 }: EventNativeProjectTimelineProps) {
   const { t } = useTranslation();
   const runtime = useProjectEventRuntime();
@@ -338,19 +345,25 @@ export function EventNativeProjectTimeline({
     optimisticUserQuery,
   ]);
   const allNodes = useMemo(
-    () => [
-      ...durableNodes,
-      ...(optimisticUserQuery ? [optimisticUserQuery] : []),
-      ...(optimisticLegacyTerminalResponse
-        ? [optimisticLegacyTerminalResponse]
-        : []),
-      ...(optimisticRunStatus ? [optimisticRunStatus] : []),
-    ],
+    () =>
+      workerKey
+        ? // A worker timeline shows stored events only: the optimistic rows
+          // stand in for the Session's own reply, not a worker's.
+          filterChatNodesForWorker(durableNodes, workerKey)
+        : [
+            ...durableNodes,
+            ...(optimisticUserQuery ? [optimisticUserQuery] : []),
+            ...(optimisticLegacyTerminalResponse
+              ? [optimisticLegacyTerminalResponse]
+              : []),
+            ...(optimisticRunStatus ? [optimisticRunStatus] : []),
+          ],
     [
       durableNodes,
       optimisticLegacyTerminalResponse,
       optimisticRunStatus,
       optimisticUserQuery,
+      workerKey,
     ]
   );
   const conversation = useMemo(
@@ -387,7 +400,9 @@ export function EventNativeProjectTimeline({
   );
   const recordedModelsByRun = useResolvedRunModels(projectId, runActivity);
   const interactivePlansByRun = (() => {
-    if (sessionMode !== SessionMode.WORKFORCE || !chatStore) return undefined;
+    if (sessionMode !== SessionMode.WORKFORCE || !chatStore || workerKey) {
+      return undefined;
+    }
     const state = chatStore.getState();
     const taskId = state.activeTaskId;
     const task = taskId ? state.tasks[taskId] : undefined;

@@ -37,6 +37,8 @@ import { cn } from '@/lib/utils';
 import {
   AppWindow,
   Archive,
+  ChevronDown,
+  ChevronRight,
   Columns2,
   Mail,
   MailOpen,
@@ -72,6 +74,23 @@ export interface SessionNavItem {
   inOwnWindow?: boolean;
   /** Why "Open in split view" is unavailable; absent when it is available. */
   splitViewUnavailableReason?: string;
+  /** Rows nested under this Session, such as its Workforce workers. */
+  childRows?: SessionNavChildRows;
+}
+
+/**
+ * Rows shown under a parent Session row, behind a disclosure button that
+ * shows how many there are. Left and Right on the parent row collapse and
+ * expand them.
+ */
+export interface SessionNavChildRows {
+  rows: SessionNavItem[];
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  activeRowId?: string | null;
+  onRowClick: (rowId: string) => void;
+  /** Accessible name of the disclosure button and of the nested group. */
+  label: string;
 }
 
 /** "Open in" actions of a Session row. */
@@ -463,6 +482,37 @@ function SessionNavRowMenu({
   );
 }
 
+/** Shows the number of child rows and expands or collapses them. */
+function SessionChildRowsToggle({
+  childRows,
+}: {
+  childRows: SessionNavChildRows;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      buttonRadius="full"
+      aria-expanded={childRows.expanded}
+      aria-label={childRows.label}
+      data-session-child-rows-toggle
+      className="no-drag ml-ds-4 shrink-0 gap-ds-2 text-ds-ink-muted-default tabular-nums"
+      onClick={(event) => {
+        event.stopPropagation();
+        childRows.onExpandedChange(!childRows.expanded);
+      }}
+    >
+      <span aria-hidden>{childRows.rows.length}</span>
+      <DsIcon
+        icon={childRows.expanded ? ChevronDown : ChevronRight}
+        recipe="main-compact"
+        aria-hidden
+      />
+    </Button>
+  );
+}
+
 function SessionNavRow({
   session,
   active,
@@ -557,6 +607,24 @@ function SessionNavRow({
           <button
             type="button"
             onClick={() => onSessionClick?.(session.id)}
+            onKeyDown={
+              session.childRows
+                ? (event) => {
+                    const childRows = session.childRows;
+                    if (!childRows) return;
+                    if (event.key === 'ArrowRight' && !childRows.expanded) {
+                      event.preventDefault();
+                      childRows.onExpandedChange(true);
+                    } else if (
+                      event.key === 'ArrowLeft' &&
+                      childRows.expanded
+                    ) {
+                      event.preventDefault();
+                      childRows.onExpandedChange(false);
+                    }
+                  }
+                : undefined
+            }
             aria-current={active ? 'true' : undefined}
             className={cn(
               'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
@@ -609,6 +677,9 @@ function SessionNavRow({
             ) : null}
           </button>
 
+          {session.childRows ? (
+            <SessionChildRowsToggle childRows={session.childRows} />
+          ) : null}
           {nested ? (
             <SessionStatusDot
               session={session}
@@ -723,7 +794,8 @@ export function SessionNavListRows({
           );
         }
 
-        return (
+        const childRows = session.childRows;
+        const row = (
           <SessionNavRow
             key={session.id}
             session={session}
@@ -740,6 +812,27 @@ export function SessionNavListRows({
             onEndSession={onEndSession}
             onDeleteSession={onDeleteSession}
           />
+        );
+        if (!childRows) return row;
+        // Same wrapper whether expanded or not, so toggling keeps the row
+        // (and its keyboard focus) mounted.
+        return (
+          <div key={session.id} className="min-w-0">
+            {row}
+            {childRows.expanded && childRows.rows.length > 0 ? (
+              <div role="group" aria-label={childRows.label}>
+                <SessionNavListRows
+                  sessions={childRows.rows}
+                  activeSessionId={childRows.activeRowId}
+                  onSessionClick={childRows.onRowClick}
+                  folded={false}
+                  panelListHover={panelListHover}
+                  showRowMenu={false}
+                  nested
+                />
+              </div>
+            ) : null}
+          </div>
         );
       })}
     </>
