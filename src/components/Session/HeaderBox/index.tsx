@@ -200,8 +200,8 @@ export function HeaderBox({
   // Replay and sharing read stored Run events, so they need a finished Run.
   const hasFinishedRun = Boolean(
     projectId &&
-    projectEventRuntime.projectId === projectId &&
-    Object.values(projectEventRuntime.snapshot?.view.runs ?? {}).some((run) =>
+    projectEventRuntime?.projectId === projectId &&
+    Object.values(projectEventRuntime?.snapshot?.view.runs ?? {}).some((run) =>
       isStoppedRunStatus(run.status)
     )
   );

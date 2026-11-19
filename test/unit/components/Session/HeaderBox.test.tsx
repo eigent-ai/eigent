@@ -103,6 +103,10 @@ describe('HeaderBox chat timeline mode', () => {
 
   beforeEach(() => {
     runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
+    useSessionReplayStore.setState({
+      replayingProjectIds: [],
+      shareProjectId: null,
+    });
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800,
@@ -137,10 +141,6 @@ describe('HeaderBox chat timeline mode', () => {
   });
 
   afterEach(() => {
-    useSessionReplayStore.setState({
-      replayingProjectIds: [],
-      shareProjectId: null,
-    });
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
