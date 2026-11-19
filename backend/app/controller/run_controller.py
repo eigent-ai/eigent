@@ -54,6 +54,10 @@ from app.run_journal.models import (
     latest_environment_attempt,
 )
 from app.run_journal.transitions import ATTEMPT_ACTIVE_STATES
+from app.run_journal.worker_view import (
+    filter_events_for_agent,
+    summarize_run_agents,
+)
 from app.run_policy import (
     RunTimeoutPolicy,
     TimeoutOutcome,
@@ -861,18 +865,60 @@ async def decide_run_interaction(
     return await asyncio.to_thread(_interaction_receipt, journal, result)
 
 
+async def _read_all_events(run_id: str) -> list[CommittedRunEvent]:
+    return await asyncio.to_thread(
+        get_default_run_journal().list_events,
+        run_id,
+    )
+
+
+@router.get("/runs/{run_id}/agents")
+async def list_run_agents(run_id: str):
+    """Workers that took part in a Run, with their current task and status."""
+
+    run = await _load_run_or_404(run_id)
+    events = await _read_all_events(run_id)
+    return {
+        "run_id": run_id,
+        "project_id": run.project_id,
+        "agents": summarize_run_agents(events),
+    }
+
+
 @router.get("/runs/{run_id}/events")
 async def get_run_events(
     run_id: str,
     after_sequence: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=5000),
+    actor_id: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=256,
+            description=(
+                "Only return events of this worker (agent_id), including "
+                "the task hand-offs to and from it."
+            ),
+        ),
+    ] = None,
 ):
     run = await _load_run_or_404(run_id)
-    events = await _read_events(
-        run_id,
-        after_sequence=after_sequence,
-        limit=limit + 1,
-    )
+    if actor_id is not None:
+        # Attribution needs the whole Run (task and step ids are learned from
+        # earlier events), so filter first and page over the result.
+        events = [
+            event
+            for event in filter_events_for_agent(
+                await _read_all_events(run_id), actor_id
+            )
+            if event.sequence > after_sequence
+        ][: limit + 1]
+    else:
+        events = await _read_events(
+            run_id,
+            after_sequence=after_sequence,
+            limit=limit + 1,
+        )
     has_more = len(events) > limit
     page = events[:limit]
     return {

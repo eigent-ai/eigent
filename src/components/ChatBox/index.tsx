@@ -33,6 +33,7 @@ import {
   useIsFocusedSessionPane,
   useSessionProjectId,
 } from '@/hooks/useSessionProjectId';
+import { useSessionWorkers } from '@/hooks/useSessionWorkers';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
@@ -107,6 +108,7 @@ import {
   isSessionStarting,
   useSessionStartStore,
 } from '@/store/sessionStartStore';
+import { useSessionWorkerViewStore } from '@/store/sessionWorkerViewStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -169,6 +171,10 @@ import {
 } from './SessionExecutionChat';
 import { useReportSessionLoading } from './SessionLoadingHalo';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
+import {
+  WorkerTimelineHeader,
+  WorkerTimelineReplyNotice,
+} from './WorkerTimelineBar';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
@@ -298,6 +304,22 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = sessionProjectId;
+  const selectedWorkerKey = useSessionWorkerViewStore((s) =>
+    activeProjectId ? s.selectedWorkerByProject[activeProjectId] : undefined
+  );
+  const sessionWorkers = useSessionWorkers(
+    useMemo(() => (activeProjectId ? [activeProjectId] : []), [activeProjectId])
+  );
+  const selectedWorker = selectedWorkerKey
+    ? sessionWorkers[activeProjectId ?? '']?.find(
+        (worker) => worker.key === selectedWorkerKey
+      )
+    : undefined;
+  const closeWorkerTimeline = useCallback(() => {
+    if (activeProjectId) {
+      useSessionWorkerViewStore.getState().closeWorker(activeProjectId);
+    }
+  }, [activeProjectId]);
   // Switching Sessions remounts this composer; keep each Session's draft.
   const {
     text: message,
@@ -1058,6 +1080,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
     activeProjectId &&
     (hasEventNativeTimelineContent || !hasAnyMessages)
   );
+  // A worker timeline replaces the Session timeline while a worker row is
+  // open. The legacy renderer has no worker rows.
+  const workerTimelineKey =
+    shouldRenderEventNativeTimeline && selectedWorkerKey
+      ? selectedWorkerKey
+      : undefined;
   // The replayed history is what this view shows only while the event
   // timeline has nothing durable yet (an older or cloud-restored Session), so
   // only then does the Session's first load wait for the replay.
@@ -3249,7 +3277,27 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
         >
           {shouldRenderChatTimeline &&
           shouldRenderEventNativeTimeline &&
-          activeProjectId ? (
+          activeProjectId &&
+          workerTimelineKey ? (
+            <>
+              <WorkerTimelineHeader
+                worker={selectedWorker}
+                workerKey={workerTimelineKey}
+                onBack={closeWorkerTimeline}
+              />
+              <EventNativeProjectTimeline
+                key={`worker:${workerTimelineKey}`}
+                detailLevel={chatTimelineDetailLevel}
+                projectId={activeProjectId}
+                sessionMode={displaySessionMode}
+                scrollContainerRef={scrollContainerRef}
+                scrollBottomInsetPx={scrollBottomInsetPx}
+                workerKey={workerTimelineKey}
+              />
+            </>
+          ) : shouldRenderChatTimeline &&
+            shouldRenderEventNativeTimeline &&
+            activeProjectId ? (
             <EventNativeProjectTimeline
               chatStore={
                 projectStore.getActiveChatStore(
@@ -3432,80 +3480,87 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
                   readOnly={isCloudRestoredRun}
                 />
               )}
-              <BottomBox
-                state={
-                  hasControlledBottomBoxVariant
-                    ? 'running'
-                    : getBottomBoxState()
-                }
-                variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
-                queuedMessages={queuedMessages}
-                queueContext={queueContext}
-                onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                onSendQueuedMessageNow={handleSendQueuedMessageNow}
-                onReorderQueuedMessage={handleReorderTaskQueue}
-                usageLimitBanner={usageLimitBanner}
-                noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
-                onSelectModel={handleSelectModel}
-                subtitle={
-                  getBottomBoxState() === 'confirm' ||
-                  getBottomBoxState() === 'save'
-                    ? (() => {
-                        const messages = activeTask?.messages || [];
-                        const lastUserMessage = messages
-                          .slice()
-                          .reverse()
-                          .find((msg) => msg.role === 'user');
-                        return (
-                          lastUserMessage?.content || activeTask?.summaryTask
-                        );
-                      })()
-                    : activeTask?.summaryTask
-                }
-                autoStartDeadline={activeTask?.autoConfirmDeadline}
-                onStartTask={() => handleConfirmTask()}
-                onSavePlan={async () => {
-                  if (chatStore.activeTaskId) {
-                    setLoading(true);
-                    await chatStore.savePlan(
-                      chatStore.activeTaskId,
-                      activeProjectId
-                    );
-                    setLoading(false);
+              {workerTimelineKey ? (
+                <WorkerTimelineReplyNotice onBack={closeWorkerTimeline} />
+              ) : (
+                <BottomBox
+                  state={
+                    hasControlledBottomBoxVariant
+                      ? 'running'
+                      : getBottomBoxState()
                   }
-                }}
-                onEdit={handleEditQuery}
-                loading={loading}
-                inputProps={{
-                  value: legacyQuestionVariant ? '' : message,
-                  onChange: setMessage,
-                  onSend: handleSend,
-                  queuesFollowUp: isTaskBusy && !activeAsk,
-                  taskControlState: composerTaskControlState,
-                  onPauseTask: () => void handleTaskControl('pause'),
-                  onResumeTask: () => void handleTaskControl('resume'),
-                  taskControlLoading: isPauseResumeLoading,
-                  files:
-                    activeTask?.attaches?.map((f) => ({
-                      fileName: f.fileName,
-                      filePath: f.filePath,
-                    })) || [],
-                  onFilesChange: (files) => {
-                    if (!chatStore.activeTaskId) return;
-                    chatStore.setAttaches(chatStore.activeTaskId, files as any);
-                  },
-                  onAddFile: handleFileSelect,
-                  placeholder: t('chat.follow-up-placeholder'),
-                  disabled: isInputDisabled || Boolean(humanDecisionVariant),
-                  textareaRef: textareaRef,
-                  allowDragDrop: true,
-                  useCloudModelInDev: useCloudModelInDev,
-                }}
-                sessionMode={displaySessionMode}
-                sessionModeSelectInteractive={false}
-                modelSelectProjectId={activeProjectId}
-                modelSelectDisabled={isCloudUsageLimited ? false : undefined}
-              />
+                  variant={humanDecisionVariant ? 'input' : bottomBoxVariant}
+                  queuedMessages={queuedMessages}
+                  queueContext={queueContext}
+                  onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  onSendQueuedMessageNow={handleSendQueuedMessageNow}
+                  onReorderQueuedMessage={handleReorderTaskQueue}
+                  usageLimitBanner={usageLimitBanner}
+                  noModelOverlay={!canUseSessionModel && !isCloudUsageLimited}
+                  onSelectModel={handleSelectModel}
+                  subtitle={
+                    getBottomBoxState() === 'confirm' ||
+                    getBottomBoxState() === 'save'
+                      ? (() => {
+                          const messages = activeTask?.messages || [];
+                          const lastUserMessage = messages
+                            .slice()
+                            .reverse()
+                            .find((msg) => msg.role === 'user');
+                          return (
+                            lastUserMessage?.content || activeTask?.summaryTask
+                          );
+                        })()
+                      : activeTask?.summaryTask
+                  }
+                  autoStartDeadline={activeTask?.autoConfirmDeadline}
+                  onStartTask={() => handleConfirmTask()}
+                  onSavePlan={async () => {
+                    if (chatStore.activeTaskId) {
+                      setLoading(true);
+                      await chatStore.savePlan(
+                        chatStore.activeTaskId,
+                        activeProjectId
+                      );
+                      setLoading(false);
+                    }
+                  }}
+                  onEdit={handleEditQuery}
+                  loading={loading}
+                  inputProps={{
+                    value: legacyQuestionVariant ? '' : message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    queuesFollowUp: isTaskBusy && !activeAsk,
+                    taskControlState: composerTaskControlState,
+                    onPauseTask: () => void handleTaskControl('pause'),
+                    onResumeTask: () => void handleTaskControl('resume'),
+                    taskControlLoading: isPauseResumeLoading,
+                    files:
+                      activeTask?.attaches?.map((f) => ({
+                        fileName: f.fileName,
+                        filePath: f.filePath,
+                      })) || [],
+                    onFilesChange: (files) => {
+                      if (!chatStore.activeTaskId) return;
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId,
+                        files as any
+                      );
+                    },
+                    onAddFile: handleFileSelect,
+                    placeholder: t('chat.follow-up-placeholder'),
+                    disabled: isInputDisabled || Boolean(humanDecisionVariant),
+                    textareaRef: textareaRef,
+                    allowDragDrop: true,
+                    useCloudModelInDev: useCloudModelInDev,
+                  }}
+                  sessionMode={displaySessionMode}
+                  sessionModeSelectInteractive={false}
+                  modelSelectProjectId={activeProjectId}
+                  modelSelectDisabled={isCloudUsageLimited ? false : undefined}
+                />
+              )}
             </div>
           </div>
         )}

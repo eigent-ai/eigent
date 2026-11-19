@@ -620,5 +620,8 @@
   "workspace-blocked-failed": "Impossibile risolvere l'operazione bloccata. Riprova.",
   "notice-space-folder-home": "Eigent non può lavorare direttamente nella tua cartella home.",
   "notice-space-folder-app-data": "Eigent non può lavorare in una cartella che contiene i propri dati dell’app.",
-  "notice-space-folder-description": "Crea uno spazio da una cartella all’interno della tua cartella home, ad esempio Documenti."
+  "notice-space-folder-description": "Crea uno spazio da una cartella all’interno della tua cartella home, ad esempio Documenti.",
+  "worker-timeline-back": "Torna alla sessione",
+  "worker-timeline-subtitle": "Worker in questa sessione",
+  "worker-timeline-reply-hint": "Per rispondere, torna alla sessione."
 }

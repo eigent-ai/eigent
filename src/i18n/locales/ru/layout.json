@@ -1744,5 +1744,6 @@
   "show-fewer-sessions-in-space": "Показать меньше сессий в {{name}}",
   "new-session-space": "Пространство для этой сессии",
   "spaces-switch-failed": "Не удалось переключить Пространство",
-  "space-emoji-load-failed": "Не удалось загрузить эмодзи. Проверьте подключение."
+  "space-emoji-load-failed": "Не удалось загрузить эмодзи. Проверьте подключение.",
+  "session-workers": "Исполнители: {{count}}"
 }

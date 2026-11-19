@@ -32,6 +32,7 @@ import {
   getSplitViewUnavailableReason,
   useVisibleSessionPanes,
 } from '@/hooks/useSessionSplitView';
+import { useSessionWorkers } from '@/hooks/useSessionWorkers';
 import { isProjectAchieved } from '@/lib/projectAchievement';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
@@ -55,6 +56,7 @@ import {
   useSessionSplitViewStore,
 } from '@/store/sessionSplitViewStore';
 import { useSessionWindowsStore } from '@/store/sessionWindowsStore';
+import { useSessionWorkerViewStore } from '@/store/sessionWorkerViewStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
@@ -66,6 +68,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { SessionControlDialogs } from './SessionControlDialogs';
 import { SessionNavList } from './SessionNavList';
+import { buildWorkerChildRows } from './sessionWorkerRows';
 import {
   NavTabReconnectSuffix,
   triggerListenerLeadIconClass,
@@ -137,6 +140,18 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
     projectMetasForActiveSpace.map((project) => project.id),
     activeSpaceId
   );
+  const workersByProjectId = useSessionWorkers(
+    useMemo(
+      () => projectMetasForActiveSpace.map((project) => project.id),
+      [projectMetasForActiveSpace]
+    )
+  );
+  const selectedWorkerByProject = useSessionWorkerViewStore(
+    (s) => s.selectedWorkerByProject
+  );
+  const workerRowsExpandedByProject = useSessionWorkerViewStore(
+    (s) => s.expandedByProject
+  );
 
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const isActiveSpaceUnbound = isUnboundUntitledSpace(activeSpace, t);
@@ -182,8 +197,17 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
     []
   );
 
-  const selectSession = useCallback(
-    (projectId: string) => openSessionInShell(projectId),
+  const selectSession = useCallback((projectId: string) => {
+    // The Session row opens the Session itself, not a worker of it.
+    useSessionWorkerViewStore.getState().closeWorker(projectId);
+    return openSessionInShell(projectId);
+  }, []);
+
+  const selectWorker = useCallback(
+    async (projectId: string, workerKey: string) => {
+      await openSessionInShell(projectId);
+      useSessionWorkerViewStore.getState().openWorker(projectId, workerKey);
+    },
     []
   );
 
@@ -365,6 +389,25 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
                 : undefined,
             inOwnWindow: windowedProjectIds.includes(project.id),
             splitViewUnavailableReason: splitViewUnavailableReason(project.id),
+            childRows: buildWorkerChildRows({
+              mode: project.mode,
+              workers: workersByProjectId[project.id] ?? [],
+              explicitExpanded: workerRowsExpandedByProject[project.id],
+              activeWorkerKey:
+                isSessionNavSelectionActive && project.id === activeProjectId
+                  ? (selectedWorkerByProject[project.id] ?? null)
+                  : null,
+              label: t('layout.session-workers', {
+                count: workersByProjectId[project.id]?.length ?? 0,
+                defaultValue: 'Workers: {{count}}',
+              }),
+              onExpandedChange: (expanded) =>
+                useSessionWorkerViewStore
+                  .getState()
+                  .setExpanded(project.id, expanded),
+              onWorkerClick: (workerKey) =>
+                void selectWorker(project.id, workerKey),
+            }),
           };
         }),
     // `loadedProjects` isn't read directly: rows read chat stores through it.
@@ -372,14 +415,19 @@ function SpaceSidebar({ className }: SpaceSidebarProps) {
     [
       activeProjectId,
       historyLoadingProjectIds,
+      isSessionNavSelectionActive,
       navLeadByProjectId,
       pinnedProjectIds,
       projectMetasForActiveSpace,
       loadedProjects,
+      selectWorker,
+      selectedWorkerByProject,
       splitPanes,
       splitViewUnavailableReason,
       t,
       windowedProjectIds,
+      workerRowsExpandedByProject,
+      workersByProjectId,
     ]
   );
 
