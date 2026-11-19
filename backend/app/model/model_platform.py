@@ -32,10 +32,12 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
 # Bedrock Converse requires a region during model initialization.
 BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
 
-# Azure OpenAI requires an api_version. The cloud proxy accepts any modern
-# version; this default keeps cloud-mode requests working when the frontend
-# does not surface api_version in extra_params.
-AZURE_DEFAULT_API_VERSION: Final[str] = "2024-10-21"
+# Azure OpenAI requires an api_version. This default keeps cloud-mode requests
+# working when the frontend does not surface api_version in extra_params. It
+# must support Azure's Responses API (2025-03-01-preview or later): the cloud
+# proxy bridges chat requests with tools on newer GPT models to Responses and
+# forwards this version, and older versions return 404 "Resource not found".
+AZURE_DEFAULT_API_VERSION: Final[str] = "2025-04-01-preview"
 
 EIGENT_CLOUD_MODEL_ENDPOINT_MARKERS: Final[tuple[str, ...]] = (
     "eigent-proxy",

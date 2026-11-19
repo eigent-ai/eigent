@@ -32,6 +32,7 @@ from app.model.model_platform import (
     is_meta_model_api_endpoint,
     normalize_model_platform,
     normalize_optional_model_platform,
+    patch_azure_cloud_config,
     resolve_cloud_model_runtime_platform,
 )
 
@@ -296,6 +297,20 @@ def test_normalized_model_platform_type_applies_in_pydantic_model():
 
     assert item.model_platform == "qianfan"
     assert item.optional_model_platform == "openai-compatible-model"
+
+
+def test_cloud_azure_default_api_version_supports_responses():
+    # The cloud proxy bridges chat requests with tools to Azure's Responses
+    # API using this version; Azure added Responses in 2025-03-01-preview.
+    extra_params = {}
+
+    patched = patch_azure_cloud_config(extra_params)
+
+    assert patched["api_version"][:10] >= "2025-03-01"
+    assert extra_params == {}
+    assert patch_azure_cloud_config({"api_version": "v1"}) == {
+        "api_version": "v1"
+    }
 
 
 def test_eigent_cloud_azure_responses_use_openai_compatible_transport():
