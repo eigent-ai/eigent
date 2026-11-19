@@ -31,11 +31,11 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.auth import require_local_control_principal
+from app.auth import allow_cli_token, require_local_control_principal
 from app.permission_policy import literal_resource_pattern
 from app.run_journal import (
     CommittedRunEvent,
@@ -70,7 +70,19 @@ from app.workspace_git.content import ContentRepositoryError
 from app.workspace_runtime.entry_guard import guard_legacy_execution_entry
 from app.workspace_runtime.runtime import get_default_execution_service
 
-router = APIRouter(dependencies=[Depends(require_local_control_principal)])
+router = APIRouter(
+    dependencies=[
+        # Run routes are the only control routes the eigent CLI may use.
+        Depends(allow_cli_token),
+        Depends(require_local_control_principal),
+    ]
+)
+
+
+def _request_principal(request: Request) -> Any:
+    return getattr(request.state, "local_control_principal", None)
+
+
 logger = logging.getLogger("run_controller")
 
 _EVENT_PAGE_SIZE = 500
@@ -688,8 +700,22 @@ async def decide_run_interaction(
     run_id: str,
     interaction_id: str,
     body: InteractionDecisionBody,
+    principal: Annotated[Any, Depends(_request_principal)] = None,
 ):
     from app.service.task import commit_and_deliver, get_task_lock_if_exists
+
+    if getattr(principal, "kind", None) == "cli":
+        # The decision source column only knows desktop, remote_control,
+        # recovery and expiry. A terminal on this machine is local, so keep
+        # source=desktop and name the CLI as the actor. The CLI cannot claim
+        # another source or actor.
+        body = body.model_copy(
+            update={
+                "source": "desktop",
+                "actor_type": "user",
+                "actor_id": "cli",
+            }
+        )
 
     journal = get_default_run_journal()
 

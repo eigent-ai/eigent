@@ -22,6 +22,7 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
+import { writeCliLauncher } from './utils/cliLauncher';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
   ensureTerminalVenvAtUserPath,
@@ -376,6 +377,14 @@ export async function startBackend(
   };
 
   const pythonPath = getVenvPythonPath(venvPath);
+  try {
+    // Keeps `~/.eigent/bin/eigent` pointing at this version's Python and
+    // backend. Optional: the app works the same without it.
+    const launcher = writeCliLauncher({ pythonPath, backendPath });
+    if (launcher) log.info(`[CLI] Launcher written: ${launcher}`);
+  } catch (launcherError) {
+    log.warn('[CLI] Could not write the eigent launcher:', launcherError);
+  }
   // Use venv's python directly when venv exists (avoids uv run hang in some terminals/Electron spawn).
   // Packaged: always direct. Dev: use direct when venv exists, else uv run for first-time sync.
   const venvExists = fs.existsSync(path.join(venvPath, 'pyvenv.cfg'));

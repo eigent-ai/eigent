@@ -13,6 +13,7 @@ from app.auth.brain_auth import (
     get_brain_auth_context,
     get_brain_auth_provider,
 )
+from app.auth.cli_access import CLI_TOKEN_HEADER, current_cli_token
 from app.auth.interface import NoneAuth
 
 LOCAL_CONTROL_CAPABILITY_ENV = "EIGENT_LOCAL_CONTROL_CAPABILITY"
@@ -116,7 +117,15 @@ def _authorize_desktop_renderer(
 async def require_local_control_principal(
     request: Request,
 ) -> LocalControlPrincipal:
-    """Authorize the renderer capability or an authenticated remote Brain user."""
+    """Authorize the renderer capability or an authenticated remote Brain user.
+
+    Routes that declared ``allow_cli_token`` also accept the CLI token.
+    """
+
+    if getattr(request.state, "cli_token_allowed", False):
+        principal = _authorize_cli_token(request)
+        if principal is not None:
+            return principal
 
     principal = _authorize_desktop_renderer(request)
     if principal is not None:
@@ -146,6 +155,59 @@ async def require_local_control_principal(
     )
     request.state.local_control_principal = principal
     return principal
+
+
+def _authorize_cli_token(request: Request) -> LocalControlPrincipal | None:
+    """Authorize the opt-in ``eigent`` CLI token, if one was presented.
+
+    Returns None when the request carries no CLI token, so other credentials
+    are checked as before. A presented token never falls through: it is
+    either valid or the request is refused.
+    """
+
+    presented = request.headers.get(CLI_TOKEN_HEADER)
+    if presented is None:
+        return None
+    expected = current_cli_token()
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "cli_access_disabled",
+                "message": "CLI access is turned off.",
+            },
+        )
+    if not _is_loopback(getattr(request.client, "host", None)):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "local_control_loopback_required",
+                "message": "CLI access only accepts loopback clients.",
+            },
+        )
+    if not hmac.compare_digest(presented, expected):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "cli_token_invalid",
+                "message": "The CLI token does not match this Eigent.",
+            },
+        )
+    principal = LocalControlPrincipal(kind="cli", user_id="local")
+    request.state.local_control_principal = principal
+    return principal
+
+
+def allow_cli_token(request: Request) -> None:
+    """Let ``require_local_control_principal`` accept the CLI token here.
+
+    Declare it before ``require_local_control_principal`` in a router's
+    dependencies. Only Run routes do: other control routes (permission
+    profiles, Bundles, memory, Chat) keep requiring the renderer capability
+    or Brain auth.
+    """
+
+    request.state.cli_token_allowed = True
 
 
 async def require_local_control_if_configured(request: Request) -> None:
