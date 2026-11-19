@@ -29,6 +29,7 @@ import {
   AnimatedContentPane,
   useShellPaneMotion,
 } from '@/components/Layout/ShellPaneTransition';
+import MeetingsPage from '@/components/Meetings/MeetingsPage';
 import {
   isLegacyHomeSettingsSearch,
   settingsPageSearch,
@@ -67,6 +68,8 @@ function HomePageContent() {
   )
     ? null
     : spaceId;
+  const showMeetings =
+    !visibleSpaceId && searchParams.get('section') === 'meetings';
   const spaceTabFromUrl = searchParams.get('spaceTab');
   const activeSpaceTab: SpaceDetailTab = isSpaceDetailTab(spaceTabFromUrl)
     ? spaceTabFromUrl
@@ -130,6 +133,8 @@ function HomePageContent() {
       onTabChange={handleSpaceTabChange}
       onBack={showSpaces}
     />
+  ) : showMeetings ? (
+    <MeetingsPage />
   ) : (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <HomeHeader />

@@ -1,11 +1,13 @@
 # Meeting notes plan
 
-> **Status: proposal.** This plan adds a **Meetings** library next to Spaces.
-> People record a meeting on their Mac, get a live transcript and a
+> **Status: first version built.** This plan adds a **Meetings** library next
+> to Spaces. People record a meeting on their Mac, get a live transcript and a
 > structured note written on the device, and add that note to any Space as
-> context. Nothing here is implemented yet. It builds on the Apple Intelligence
-> models plan (`docs/apple-intelligence-models-plan.md`, separate pull
-> request).
+> context. The first version records the microphone, keeps typed notes and an
+> editable note, and adds the note to Spaces. §10 lists what it builds and
+> where it differs from this plan. Live transcription, system audio and notes
+> written by a model build on the Apple Intelligence models plan
+> (`docs/apple-intelligence-models-plan.md`, separate pull request).
 
 ## 1. Goal
 
@@ -40,6 +42,8 @@ UI copy follows `docs/product-terminology.md` (**Space → Session → Task**).
 | Add to Space | Copy the meeting note into a Space's folder so Sessions in that Space can use it            |
 
 ## 3. What exists today
+
+This section describes Eigent before the first version (§10).
 
 **In Eigent**
 
@@ -437,3 +441,87 @@ Prerequisite: PR 1 of the Apple Intelligence models plan (the bridge).
   7. A note from the on-device model and a note from a cloud model.
   8. Add the note to two Spaces, use it in a Session, then delete the meeting
      and check that the Space copies remain.
+
+## 10. First version
+
+The first version is a working slice of §8 that does not need the Apple
+bridge. The bridge comes from PR 1 of the models plan, which is not on `main`
+yet, so this version records only what the renderer can record.
+
+### 10.1 What it builds
+
+- **Meetings place.** A **Meetings** entry in the Home sidebar, below **All
+  Spaces**, opens `/home?section=meetings`. One meeting opens at
+  `?meetingId=`. The rail (#2113) has not landed, so this follows §4.1's "until
+  then".
+- **Recording.** **New meeting** shows the consent reminder before the first
+  recording (with **Don't show again**), then asks for the microphone and
+  records it. The meeting page has **Pause**, **Resume**, **Stop** and a field
+  for typed notes. Each typed line keeps its time in the meeting.
+- **Permission.** Before opening the microphone, the main process reads the
+  OS permission (`systemPreferences.getMediaAccessStatus`) and, on macOS, asks
+  for it (`askForMediaAccess`), which shows the system prompt the first time.
+  A denied or restricted permission stops there and the page explains it, with
+  **Open System Settings** where the OS has a privacy pane. A missing, busy or
+  unplugged microphone is explained the same way. None of these throws.
+- **Indicator.** While recording, a status pill with a red dot, the state in
+  words (Recording, Paused, Saving), the elapsed time, **Open** and **Stop**
+  stays in the bottom-right corner of every page.
+- **Keeps going.** The recorder lives in a store, not in a page, so recording
+  continues while the person moves to a Space or Settings. Closing the window
+  or quitting asks first, then saves what was recorded.
+- **Import recording.** m4a, mp3, wav, ogg, webm and mp4 files.
+- **Meeting page.** Title, date, duration and status. Tabs: **Note** (an
+  editable note that starts from the one format in §4.6), **Your notes** (the
+  typed lines with their times) and **Recording** (playback).
+- **Add to Space.** Writes `Meetings/<YYYY-MM-DD> <title>.md` into the Space
+  folder, with front matter (title, date, duration, meeting id), the note and
+  the typed notes. Each link stores the path and a digest of what was written.
+  When the note changes, the meeting page shows "Changed since it was added to
+  <Space>" with **Update copy**. If the file in the Space was edited, or a file
+  Eigent did not write is already at that path, Eigent asks before replacing
+  it. Removing a link or deleting the meeting leaves the Space file.
+- **Interrupted recordings.** When the backend starts, a meeting still marked
+  **Recording** becomes **Interrupted**. The library does the same for a
+  meeting that no window is recording (after a reload or crash).
+- **Packaging.** `NSMicrophoneUsageDescription` in `mac.extendInfo` and the
+  `com.apple.security.device.audio-input` entitlement.
+
+### 10.2 Where it differs from the plan, and why
+
+1. **Capture runs in the renderer, microphone only.** §5 puts capture in the
+   Swift bridge. Without the bridge, the renderer records the microphone with
+   `getUserMedia` and `MediaRecorder` (§5 notes that web audio can do this).
+   System audio needs the bridge's process tap, so it waits for PR 1 of §8.
+   Because the recorder is in the window, closing the window ends the
+   recording; the close guard saves it first. When the bridge lands, capture
+   moves there and recording survives a window reload, as §5 intends.
+2. **Recording on Windows and Linux.** §5.3 offers only **Import recording**
+   there. Microphone recording in the renderer works on all three desktop
+   platforms, so this version allows it everywhere. Windows reports the
+   permission through `getMediaAccessStatus`; Linux has no OS permission, so
+   the browser decides.
+3. **No transcript and no written note yet.** Transcription needs
+   `SpeechTranscriber` in the bridge, and the note model needs PR 2 of the
+   models plan. Until then the person writes the note from the template, and
+   the capabilities route reports `live_transcript: false` and
+   `note_writing: false`. Nothing is sent to a cloud model.
+4. **Store.** `~/.eigent/meetings/meetings.sqlite` (resolved by
+   `meetings_root()` in `workspace_paths.py`) holds `meetings`,
+   `meeting_notes` and `meeting_space_links`. Recordings are in
+   `~/.eigent/meetings/recordings/<meeting id>/`. `meeting_segments` (with its
+   FTS5 index) and `meeting_jobs` come with transcription; search covers
+   titles and notes until then.
+5. **Routes.** Pause and resume happen in the renderer's recorder, so there
+   are no pause, resume, stop or stream routes yet. Two routes are added:
+   `POST /meetings/{id}/recording` uploads the renderer's recording, and
+   `GET /meetings/{id}/recording` serves it for playback. Import takes an
+   uploaded file only, not a path.
+6. **Waiting for a Run.** The copy into a Space takes the advisory folder lock
+   that Space copies already use. It does not yet wait for a Run that is
+   writing in that Space (§4.5).
+7. **Not yet built:** the menu bar item, the start/stop shortcut, Settings →
+   Meetings (language, sources, note model, retention), **Start a session**,
+   **+ → Meeting note** in the composer, **Export Markdown**, **Show recording
+   in Finder**, the **Include full transcript** option, the Space filter in
+   the library, and sleep/wake handling.

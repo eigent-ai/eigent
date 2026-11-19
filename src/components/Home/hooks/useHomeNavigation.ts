@@ -74,6 +74,17 @@ export function useHomeNavigation() {
     [openHomePage]
   );
 
+  /** Meetings, the library next to Spaces; `meetingId` opens one meeting. */
+  const openMeetings = useCallback(
+    (meetingId?: string) =>
+      openHomePage(
+        meetingId
+          ? `?section=meetings&meetingId=${encodeURIComponent(meetingId)}`
+          : '?section=meetings'
+      ),
+    [openHomePage]
+  );
+
   const openSpaceWorkspace = useCallback(
     (spaceId: string, tab?: SpaceDetailTab) =>
       openHomePage(homeSpaceSearch(spaceId, tab)),
@@ -118,6 +129,7 @@ export function useHomeNavigation() {
 
   return {
     openAllSpaces,
+    openMeetings,
     openSpaceWorkspace,
     openNewSession,
     openSession,

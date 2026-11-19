@@ -28,6 +28,7 @@ from app.controller import (
     file_controller,
     health_controller,
     mcp_controller,
+    meeting_controller,
     memory_controller,
     message_controller,
     model_controller,
@@ -113,6 +114,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": memory_controller.router,
             "tags": ["Memory"],
             "description": "Authenticated local Lightweight Memory CRUD",
+            "self_authenticated": True,
+        },
+        {
+            "router": meeting_controller.router,
+            "tags": ["Meetings"],
+            "description": "Authenticated local meeting recordings and notes",
             "self_authenticated": True,
         },
         {

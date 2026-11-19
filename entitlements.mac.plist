@@ -25,6 +25,10 @@
     <key>com.apple.security.files.user-selected.read-only</key>
     <true/>
 
+    <!-- allow microphone input for meeting recording (hardened runtime) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
     <!-- allow running sub-processes -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>

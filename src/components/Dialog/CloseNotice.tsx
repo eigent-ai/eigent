@@ -36,23 +36,29 @@ export default function CloseNoticeDialog({
   // A task started in this version streams live and is also recorded as a
   // Run, so it reads as mixed. The Run is what decides what happens on quit.
   const message =
-    executionClass === 'canonical-durable' || executionClass === 'mixed'
+    executionClass === 'meeting-recording'
       ? t(
           isQuit
-            ? 'layout.close-durable-quit-message'
-            : 'layout.close-durable-window-message'
+            ? 'meetings.close-recording-quit-message'
+            : 'meetings.close-recording-window-message'
         )
-      : executionClass === 'unknown'
+      : executionClass === 'canonical-durable' || executionClass === 'mixed'
         ? t(
             isQuit
-              ? 'layout.close-unknown-quit-message'
-              : 'layout.close-unknown-window-message'
+              ? 'layout.close-durable-quit-message'
+              : 'layout.close-durable-window-message'
           )
-        : t(
-            isQuit
-              ? 'layout.close-legacy-quit-message'
-              : 'layout.close-legacy-window-message'
-          );
+        : executionClass === 'unknown'
+          ? t(
+              isQuit
+                ? 'layout.close-unknown-quit-message'
+                : 'layout.close-unknown-window-message'
+            )
+          : t(
+              isQuit
+                ? 'layout.close-legacy-quit-message'
+                : 'layout.close-legacy-window-message'
+            );
 
   return (
     <AlertDialog

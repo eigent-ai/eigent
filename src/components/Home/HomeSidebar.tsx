@@ -87,7 +87,7 @@ import {
 } from '@/store/spaceStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { TFunction } from 'i18next';
-import { Cable, ChevronRight, Folder, Plus } from 'lucide-react';
+import { Cable, ChevronRight, Folder, Mic, Plus } from 'lucide-react';
 import { memo, useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -449,8 +449,13 @@ function HomeSidebar() {
   const appearance = useAuthStore((state) => state.appearance);
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { openAllSpaces, openSpaceWorkspace, openNewSession, openSession } =
-    useHomeNavigation();
+  const {
+    openAllSpaces,
+    openMeetings,
+    openSpaceWorkspace,
+    openNewSession,
+    openSession,
+  } = useHomeNavigation();
   const spaces = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const projectIdIndex = useSpaceStore((state) => state.projectIdIndex);
@@ -498,6 +503,9 @@ function HomeSidebar() {
   const onWorkspaceRoute = location.pathname === '/';
   const onHomePage = isHomePagePath(location.pathname);
   const routeSpaceId = onHomePage ? searchParams.get('spaceId') : null;
+  const onMeetingsPage =
+    onHomePage && searchParams.get('section') === 'meetings';
+  const onAllSpacesPage = onHomePage && !routeSpaceId && !onMeetingsPage;
   const sessionTabOpen = onWorkspaceRoute && activeWorkspaceTab === 'project';
   const activeSessionId = sessionTabOpen ? activeProjectId : null;
 
@@ -704,6 +712,7 @@ function HomeSidebar() {
   const newSessionLabel = t('layout.new-project');
   const allSpacesLabel = t('layout.all-spaces');
   const connectorsLabel = t('layout.connectors');
+  const meetingsLabel = t('meetings.nav-label');
   const newSpaceLabel = t('layout.new-space');
   const homeLabel = t('layout.home');
 
@@ -766,14 +775,22 @@ function HomeSidebar() {
                 ariaCurrentPage={onWorkspaceRoute && !sessionTabOpen}
               />
               <NavTab
-                active={onHomePage && !routeSpaceId}
+                active={onAllSpacesPage}
                 onClick={openAllSpaces}
                 leading={
                   <DsIcon icon={Folder} className="shrink-0" aria-hidden />
                 }
                 label={allSpacesLabel}
                 ariaLabel={allSpacesLabel}
-                ariaCurrentPage={onHomePage && !routeSpaceId}
+                ariaCurrentPage={onAllSpacesPage}
+              />
+              <NavTab
+                active={onMeetingsPage}
+                onClick={() => openMeetings()}
+                leading={<DsIcon icon={Mic} className="shrink-0" aria-hidden />}
+                label={meetingsLabel}
+                ariaLabel={meetingsLabel}
+                ariaCurrentPage={onMeetingsPage}
               />
               <NavTab
                 active={false}

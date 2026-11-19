@@ -20,6 +20,7 @@ import dashboard from './dashboard.json';
 import folder from './folder.json';
 import layout from './layout.json';
 import markdown from './markdown.json';
+import meetings from './meetings.json';
 import setting from './setting.json';
 import triggers from './triggers.json';
 import update from './update.json';
@@ -34,6 +35,7 @@ export default {
   connectors,
   folder,
   markdown,
+  meetings,
   setting,
   update,
   triggers,
