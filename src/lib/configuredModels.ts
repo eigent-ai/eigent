@@ -14,6 +14,10 @@
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
+import {
+  APPLE_INTELLIGENCE_PROVIDER_ID,
+  appleIntelligenceProvider,
+} from '@/lib/appleIntelligence';
 import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
@@ -153,6 +157,9 @@ export const modelProviders: Provider[] = [
 ];
 
 export function providerDefinition(id: string): Provider {
+  // Apple Intelligence is not in `modelProviders`: it is offered only where
+  // the backend reports it can run. Saved records still need its name.
+  if (id === APPLE_INTELLIGENCE_PROVIDER_ID) return appleIntelligenceProvider;
   return (
     modelProviders.find((provider) => provider.id === id) ?? {
       id,

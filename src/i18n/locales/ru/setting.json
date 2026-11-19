@@ -569,5 +569,33 @@
     "removed": "Настройки удалены",
     "saved": "Настройки сохранены",
     "loading": "Загрузка"
+  },
+  "apple-intelligence": {
+    "description": "Используйте модель, встроенную в этот Mac. Без адреса, ключа и загрузки.",
+    "checking": "Проверка Apple Intelligence…",
+    "ready": "Apple Intelligence готова к работе на этом Mac.",
+    "badge-ready": "Готово",
+    "badge-unavailable": "Недоступно",
+    "not-apple-silicon": "Недоступно на этом Mac. Для Apple Intelligence нужен Mac с чипом Apple.",
+    "bridge-missing": "Недоступно в этой сборке.",
+    "bridge-unavailable": "Вспомогательная программа Apple Intelligence не отвечает.",
+    "unsupported-os": "Требуется macOS 26 или новее.",
+    "not-eligible": "Этот Mac не поддерживает Apple Intelligence.",
+    "apple-intelligence-off": "Включите Apple Intelligence в Системных настройках.",
+    "model-not-ready": "Модель ещё загружается.",
+    "unavailable": "Apple Intelligence недоступна.",
+    "open-system-settings": "Открыть Системные настройки",
+    "try-again": "Повторить",
+    "on-device-model": "Модель на устройстве",
+    "on-this-mac": "На этом Mac",
+    "text-only": "Только текст",
+    "context": "Контекст {{size}}",
+    "privacy": "Запросы и ответы остаются на этом Mac. История сессии хранится и синхронизируется так же, как с любой другой моделью.",
+    "limits": "Эта версия отвечает на вопросы без инструментов. Для задач с инструментами выберите другую модель.",
+    "test": "Проверить",
+    "test-passed": "Проверка пройдена за {{seconds}} с.",
+    "test-failed": "Проверка не завершилась.",
+    "add": "Добавить модель",
+    "added": "Добавлено"
   }
 }

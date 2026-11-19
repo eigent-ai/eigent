@@ -571,5 +571,33 @@
     "removed": "تمت إزالة الإعدادات",
     "saved": "تم حفظ الإعدادات",
     "loading": "جارٍ التحميل"
+  },
+  "apple-intelligence": {
+    "description": "استخدم النموذج المدمج في جهاز Mac هذا. بلا نقطة نهاية أو مفتاح أو تنزيل.",
+    "checking": "جارٍ التحقق من Apple Intelligence…",
+    "ready": "Apple Intelligence جاهزة على جهاز Mac هذا.",
+    "badge-ready": "جاهزة",
+    "badge-unavailable": "غير متاحة",
+    "not-apple-silicon": "غير متاحة على جهاز Mac هذا. تحتاج Apple Intelligence إلى جهاز Mac بشريحة Apple.",
+    "bridge-missing": "غير متاحة في هذا الإصدار.",
+    "bridge-unavailable": "أداة Apple Intelligence المساعدة لا تستجيب.",
+    "unsupported-os": "يتطلب macOS 26 أو أحدث.",
+    "not-eligible": "جهاز Mac هذا لا يدعم Apple Intelligence.",
+    "apple-intelligence-off": "شغّل Apple Intelligence من إعدادات النظام.",
+    "model-not-ready": "لا يزال النموذج قيد التنزيل.",
+    "unavailable": "Apple Intelligence غير متاحة.",
+    "open-system-settings": "فتح إعدادات النظام",
+    "try-again": "إعادة المحاولة",
+    "on-device-model": "نموذج على الجهاز",
+    "on-this-mac": "على جهاز Mac هذا",
+    "text-only": "نص فقط",
+    "context": "السياق {{size}}",
+    "privacy": "تبقى المطالبات والردود على جهاز Mac هذا. يُحفظ سجل الجلسة ويُزامَن بالطريقة نفسها كما مع أي نموذج آخر.",
+    "limits": "يجيب هذا الإصدار عن الأسئلة دون أدوات. للمهام التي تحتاج إلى أدوات، اختر نموذجًا آخر.",
+    "test": "اختبار",
+    "test-passed": "نجح الاختبار خلال {{seconds}} ث.",
+    "test-failed": "لم يكتمل الاختبار.",
+    "add": "إضافة نموذج",
+    "added": "تمت الإضافة"
   }
 }

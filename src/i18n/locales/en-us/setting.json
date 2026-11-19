@@ -551,5 +551,33 @@
     "removed": "Settings removed",
     "saved": "Settings saved",
     "loading": "Loading"
+  },
+  "apple-intelligence": {
+    "description": "Use the model built into this Mac. No endpoint, key or download.",
+    "checking": "Checking Apple Intelligence…",
+    "ready": "Apple Intelligence is ready on this Mac.",
+    "badge-ready": "Ready",
+    "badge-unavailable": "Not available",
+    "not-apple-silicon": "Not available on this Mac. Apple Intelligence needs a Mac with Apple silicon.",
+    "bridge-missing": "Not available in this build.",
+    "bridge-unavailable": "The Apple Intelligence helper isn't responding.",
+    "unsupported-os": "Requires macOS 26 or later.",
+    "not-eligible": "This Mac doesn't support Apple Intelligence.",
+    "apple-intelligence-off": "Turn on Apple Intelligence in System Settings.",
+    "model-not-ready": "The model is still downloading.",
+    "unavailable": "Apple Intelligence is not available.",
+    "open-system-settings": "Open System Settings",
+    "try-again": "Try again",
+    "on-device-model": "On-device model",
+    "on-this-mac": "On this Mac",
+    "text-only": "Text only",
+    "context": "Context {{size}}",
+    "privacy": "Prompts and responses stay on this Mac. Session history is stored and synced the same way as with any other model.",
+    "limits": "This version answers questions without tools. For tasks that need tools, choose another model.",
+    "test": "Test",
+    "test-passed": "Test passed in {{seconds}} s.",
+    "test-failed": "The test didn't complete.",
+    "add": "Add model",
+    "added": "Added"
   }
 }

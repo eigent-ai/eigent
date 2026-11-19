@@ -129,6 +129,7 @@ import {
 } from './subscriptionAuth';
 import { disposeAllTerminals, registerTerminalIpcHandlers } from './terminal';
 import { registerUpdateIpcHandlers, update } from './update';
+import { APPLE_INTELLIGENCE_SETTINGS_URL } from './utils/appleBridge';
 import {
   getEmailFolderPath,
   getEnvPath,
@@ -2003,6 +2004,19 @@ function registerIpcHandlers() {
         return { success: false, error: 'Invalid external URL' };
       }
       await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Fixed destination: the renderer cannot choose what this opens.
+  ipcMain.handle('open-apple-intelligence-settings', async () => {
+    if (process.platform !== 'darwin') {
+      return { success: false, error: 'Only available on macOS' };
+    }
+    try {
+      await shell.openExternal(APPLE_INTELLIGENCE_SETTINGS_URL);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

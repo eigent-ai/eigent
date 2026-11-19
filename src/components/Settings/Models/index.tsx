@@ -37,7 +37,13 @@ import { Input } from '@/components/ui/input';
 import { itemFadeMotion } from '@/components/ui/motion';
 import { Switch } from '@/components/ui/switch';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
+import { useHost } from '@/host/context';
 import { SITE_URL } from '@/lib';
+import {
+  APPLE_INTELLIGENCE_PROVIDER_ID,
+  appleIntelligenceProvider,
+  isAppleIntelligenceOffered,
+} from '@/lib/appleIntelligence';
 import {
   cloudModelAvailabilityStatus,
   isCloudModelAvailable,
@@ -79,6 +85,10 @@ import SettingsContentShell from '../SettingsContentShell';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 import {
+  AppleIntelligenceConfigurationContent,
+  AppleIntelligenceConfigurationDialog,
+} from './AppleIntelligenceConfigurationDialog';
+import {
   CodexConfigurationContent,
   CodexConfigurationDialog,
 } from './CodexConfigurationDialog';
@@ -100,6 +110,10 @@ function ModelsContent() {
   const inventory = useConfiguredModels();
   const shouldReduceMotion = Boolean(useReducedMotion());
   const auth = useAuthStore();
+  // Offered only by the macOS desktop app; see isAppleIntelligenceOffered.
+  const appleIntelligenceOffered = isAppleIntelligenceOffered(
+    useHost()?.electronAPI?.getPlatform?.()
+  );
   const credits = useUsageNoticeStore((state) => state.credits);
   const creditsLoading = useUsageNoticeStore((state) => state.refreshing);
   const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
@@ -159,7 +173,10 @@ function ModelsContent() {
   ];
   const matches = (value: string) =>
     value.toLowerCase().includes(query.trim().toLowerCase());
-  const availableProviders = modelProviders.filter((provider) =>
+  const availableProviders = [
+    ...modelProviders,
+    ...(appleIntelligenceOffered ? [appleIntelligenceProvider] : []),
+  ].filter((provider) =>
     provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase())
   );
   const matchingRecords = inventory.records.filter((record) =>
@@ -1031,8 +1048,15 @@ function ModelsContent() {
               {...itemFadeMotion(shouldReduceMotion)}
             >
               {editing ? (
-                providerDefinition(editing.provider).authMode ===
-                'oauth_subscription' ? (
+                editing.provider === APPLE_INTELLIGENCE_PROVIDER_ID ? (
+                  <AppleIntelligenceConfigurationContent
+                    records={inventory.records}
+                    onClose={closeAddModelFlow}
+                    onBack={returnToProviderSelection}
+                    onBusyChange={setConfigurationBusy}
+                  />
+                ) : providerDefinition(editing.provider).authMode ===
+                  'oauth_subscription' ? (
                   <CodexConfigurationContent
                     connected={inventory.codexConnected}
                     accountLabel={inventory.codexAccountLabel}
@@ -1098,8 +1122,18 @@ function ModelsContent() {
       </Dialog>
       {editing &&
         !adding &&
-        (providerDefinition(editing.provider).authMode ===
-        'oauth_subscription' ? (
+        (editing.provider === APPLE_INTELLIGENCE_PROVIDER_ID ? (
+          <AppleIntelligenceConfigurationDialog
+            records={inventory.records}
+            onClose={() => setEditing(null)}
+            onBack={
+              editing.returnToProviderSelection
+                ? returnToProviderSelection
+                : undefined
+            }
+          />
+        ) : providerDefinition(editing.provider).authMode ===
+          'oauth_subscription' ? (
           <CodexConfigurationDialog
             connected={inventory.codexConnected}
             accountLabel={inventory.codexAccountLabel}
