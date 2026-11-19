@@ -31,8 +31,7 @@ backend/context_files/
 *.sln
 *.sw?
 
-#lockfile
-package-lock.json
+#lockfile (package-lock.json is committed; npm ci installs from it)
 pnpm-lock.yaml
 yarn.lock
 /test-results/

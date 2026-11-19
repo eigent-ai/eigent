@@ -22,7 +22,6 @@ jobs:
           list-files: json
           filters: |
             change:
-              - 'package-lock.json'
               - 'yarn.lock'
               - 'pnpm-lock.yaml'
 
@@ -35,7 +34,6 @@ jobs:
             let workflowFailMessage = "It looks like you've modified some files that we can't accept as contributions."
             try {
               const badFilesArr = [
-                'package-lock.json',
                 'yarn.lock',
                 'pnpm-lock.yaml',
               ]
