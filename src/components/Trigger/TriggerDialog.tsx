@@ -450,7 +450,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       } else {
         // Capture a dedicated Session once, including retries of this form.
         automationSessionRef.current ??= projectStore.createProject(
-          t('triggers.automation-project-name', { name: formData.name }),
+          formData.name,
           '',
           undefined,
           undefined,

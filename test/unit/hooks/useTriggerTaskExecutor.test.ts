@@ -610,8 +610,33 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     const project = useProjectStore
       .getState()
       .getProjectById('proj-placeholder');
-    expect(project?.name).toBe('Automation: Daily');
+    expect(project?.name).toBe('Daily');
     expect(project?.queuedMessages).toHaveLength(1);
+  });
+
+  it('names a new Automation Session after the Automation, without a prefix', async () => {
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    await act(async () => {
+      await result.current.executeTask(
+        makeTask({
+          projectId: null,
+          triggerName: 'Weekly report',
+          executionId: 'exec-plain-name',
+        })
+      );
+    });
+
+    const project = Object.values(useProjectStore.getState().projects).find(
+      (candidate) => candidate.name === 'Weekly report'
+    );
+    expect(project).toBeDefined();
+    expect(
+      Object.values(useProjectStore.getState().projects).some((candidate) =>
+        candidate.name.startsWith('Automation:')
+      )
+    ).toBe(false);
+    if (project) useProjectStore.getState().removeProject(project.id);
   });
 
   // ╔═══════════════════════════════════════════════════════════════╗

@@ -173,7 +173,7 @@
   "execution-failed-toast": "Ошибка автоматизации: {{name}}",
   "automation-verified": "Автоматизация проверена: № {{id}}",
   "automation-fallback-name": "Автоматизация № {{id}}",
-  "automation-project-name": "Автоматизация: {{name}}",
+  "session-from-automation": "Из автоматизации · {{name}}",
   "automation-project-description": "Создано автоматически автоматизацией типа «{{type}}»",
   "status-created": "Создана",
   "status-updated": "Обновлена",

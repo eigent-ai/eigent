@@ -173,7 +173,7 @@
   "execution-failed-toast": "فشلت الأتمتة: {{name}}",
   "automation-verified": "تم التحقق من الأتمتة: #{{id}}",
   "automation-fallback-name": "الأتمتة #{{id}}",
-  "automation-project-name": "الأتمتة: {{name}}",
+  "session-from-automation": "من الأتمتة · {{name}}",
   "automation-project-description": "أُنشئت تلقائيًا بواسطة أتمتة من نوع {{type}}",
   "status-created": "تم الإنشاء",
   "status-updated": "تم التحديث",

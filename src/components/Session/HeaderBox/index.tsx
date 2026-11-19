@@ -35,6 +35,7 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useSessionAutomation } from '@/hooks/useSessionAutomation';
 import { useSessionPageTabStore } from '@/hooks/useSessionPageTabStore';
 import {
   parseAutomationDraft,
@@ -227,6 +228,12 @@ export function HeaderBox({
     return spaceId ? state.spaces?.[spaceId] : undefined;
   });
   const sessionSpaceName = getActiveSpaceTriggerLabel(sessionSpace?.name, t);
+  const sessionAutomation = useSessionAutomation(projectId, sessionSpace?.id);
+  const sessionAutomationLabel = sessionAutomation?.name?.trim()
+    ? t('triggers.session-from-automation', {
+        name: sessionAutomation.name.trim(),
+      })
+    : null;
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
@@ -415,6 +422,27 @@ export function HeaderBox({
           >
             {projectName}
           </span>
+        ) : null}
+        {sessionAutomationLabel ? (
+          // The title is the Automation's own name; this says where it came
+          // from without repeating it on every sidebar row.
+          <TooltipSimple
+            content={sessionAutomationLabel}
+            compact
+            side="bottom"
+            align="start"
+            variant="instant"
+          >
+            <span
+              data-session-automation-source
+              tabIndex={0}
+              role="img"
+              aria-label={sessionAutomationLabel}
+              className="flex size-ds-control-xs shrink-0 items-center justify-center rounded-ds-compact-control text-ds-icon-warning-default-default outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
+            >
+              <DsIcon icon={AUTOMATION_ICON} recipe="main" />
+            </span>
+          </TooltipSimple>
         ) : null}
       </div>
 
