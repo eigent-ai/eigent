@@ -63,6 +63,7 @@ from app.service.task import (
     process_task,
 )
 from app.service.terminal_processes import terminal_processes
+from app.utils.app_version import resolve_app_version
 from app.utils.listen.toolkit_listen import (
     _safe_put_queue,
     auto_listen_toolkit,
@@ -79,9 +80,8 @@ from app.workspace_git import (
 
 logger = logging.getLogger("terminal_toolkit")
 
-# App version - should match electron app version
-# TODO: Consider getting this from a shared config
-APP_VERSION = "1.0.8"
+# Same string the Electron Host uses for ~/.eigent/venvs/terminal_base-{version}
+APP_VERSION = resolve_app_version()
 
 
 _SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
