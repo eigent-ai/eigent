@@ -133,19 +133,32 @@ async def write_pid_file():
 pid_task = None
 
 
-@api.on_event("startup")
-async def startup_event():
-    global pid_task
-    set_main_event_loop(asyncio.get_running_loop())
-    pid_task = asyncio.create_task(write_pid_file())
-    app_logger.info("PID write task created")
+journal_claim_task = None
 
-    # Reconcile durable execution facts before accepting new Run admission.
-    # No Python coroutine or external Tool call is restarted implicitly.
+
+async def _claim_journal_when_free(journal_path) -> None:
+    """Take over journal ownership once the other Brain has exited.
+
+    Without it, the next Brain to start would become the owner and
+    interrupt this one's running Tasks.
+    """
+
+    from app.run_journal.instance_lock import acquire_journal_instance_lock
+
+    while True:
+        await asyncio.sleep(5)
+        if await asyncio.to_thread(
+            acquire_journal_instance_lock, journal_path
+        ):
+            app_logger.info("This Brain now owns %s", journal_path)
+            return
+
+
+async def _reconcile_durable_state(journal) -> None:
+    """Settle what a stopped Brain left behind. Journal owner only."""
+
     from app.artifacts import finalize_recoverable_run_artifacts
-    from app.run_journal.runtime import get_default_run_journal
 
-    journal = get_default_run_journal()
     artifact_recovery = await asyncio.to_thread(
         finalize_recoverable_run_artifacts,
         journal,
@@ -263,6 +276,61 @@ async def startup_event():
         },
     )
 
+
+@api.on_event("startup")
+async def startup_event():
+    global pid_task, journal_claim_task
+    set_main_event_loop(asyncio.get_running_loop())
+    pid_task = asyncio.create_task(write_pid_file())
+    app_logger.info("PID write task created")
+
+    from app.auth.cli_access import initialize_cli_access
+    from app.run_journal.instance_lock import (
+        acquire_journal_instance_lock,
+        journal_instance_owner_pid,
+    )
+    from app.run_journal.runtime import (
+        configured_run_journal_path,
+        get_default_run_journal,
+    )
+
+    # One Brain owns a RunJournal. Reconciliation below would interrupt the
+    # running Tasks of any other Brain that has the same journal open.
+    journal_path = configured_run_journal_path()
+    owns_journal = await asyncio.to_thread(
+        acquire_journal_instance_lock, journal_path, wait_seconds=3.0
+    )
+    if not owns_journal:
+        owner_pid = journal_instance_owner_pid(journal_path)
+        if env("EIGENT_RUNTIME", "").lower().strip() != "electron":
+            raise RuntimeError(
+                "Another Eigent process"
+                + (f" (pid {owner_pid})" if owner_pid else "")
+                + f" is already using {journal_path}. Stop it first, or "
+                "point this one at a different EIGENT_RUN_JOURNAL_PATH."
+            )
+        # The desktop app keeps starting, so a leftover backend process
+        # cannot lock the user out of the app. It leaves the other
+        # process's Tasks alone instead.
+        app_logger.warning(
+            "Another Eigent process (pid %s) owns %s; skipping startup "
+            "reconciliation",
+            owner_pid,
+            journal_path,
+        )
+
+        journal_claim_task = asyncio.create_task(
+            _claim_journal_when_free(journal_path)
+        )
+
+    initialize_cli_access()
+
+    # Reconcile durable execution facts before accepting new Run admission.
+    # No Python coroutine or external Tool call is restarted implicitly.
+    journal = get_default_run_journal()
+    if owns_journal:
+        await _reconcile_durable_state(journal)
+
     # Initialize EnvironmentHands from Brain deployment (full on local/cloud_vm, sandbox in Docker)
     from app.router_layer.hands_resolver import init_environment_hands
 
@@ -295,6 +363,12 @@ async def startup_event():
         runtime_environment_gc_loop(journal)
     )
 
+    # Queued Tasks of Sessions the Brain started have no renderer to
+    # dispatch them. Starts after reconciliation, like every other admission.
+    from app.dispatch.service import DISPATCHER
+
+    DISPATCHER.start()
+
 
 @api.on_event("shutdown")
 async def shutdown_event_handler():
@@ -304,6 +378,16 @@ async def shutdown_event_handler():
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
+    from app.auth.cli_access import shutdown_cli_access
+
+    shutdown_cli_access()
+    from app.dispatch.service import DISPATCHER
+
+    await DISPATCHER.stop()
+    claim_task = globals().get("journal_claim_task")
+    if claim_task is not None:
+        claim_task.cancel()
+        await asyncio.gather(claim_task, return_exceptions=True)
     gc_task = globals().get("runtime_environment_gc_task")
     if gc_task is not None:
         gc_task.cancel()
@@ -364,6 +448,9 @@ async def cleanup_resources():
         close_default_run_journal()
     except Exception as e:
         app_logger.warning(f"RunJournal shutdown failed: {e}")
+    from app.run_journal.instance_lock import release_journal_instance_locks
+
+    release_journal_instance_locks()
 
     # Remove PID file
     pid_file = dir / "run.pid"
@@ -463,6 +550,11 @@ def run_standalone():
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None
 
+    from app.dispatch.lifecycle import register_shutdown_handler
+
+    # Lets ``eigent brain stop`` end a background Brain gracefully.
+    register_shutdown_handler(lambda: setattr(server, "should_exit", True))
+
     force_exit_timer = None
     signal_count = {"count": 0}
     old_sigint = signal.getsignal(signal.SIGINT)
@@ -509,6 +601,10 @@ def run_standalone():
             force_exit_timer.cancel()
         signal.signal(signal.SIGINT, old_sigint)
         signal.signal(signal.SIGTERM, old_sigterm)
+    if not server.started:
+        # For example, another Eigent already owns the RunJournal. A
+        # launcher must be able to tell this from a normal stop.
+        sys.exit(3)
 
 
 if __name__ == "__main__":

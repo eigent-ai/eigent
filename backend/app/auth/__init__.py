@@ -30,6 +30,7 @@ from app.auth.local_control import (
     LOCAL_CONTROL_CAPABILITY_ENV,
     LOCAL_CONTROL_CAPABILITY_HEADER,
     LocalControlPrincipal,
+    allow_cli_token,
     require_local_control_if_configured,
     require_local_control_principal,
 )
@@ -51,4 +52,5 @@ __all__ = [
     "LocalControlPrincipal",
     "require_local_control_if_configured",
     "require_local_control_principal",
+    "allow_cli_token",
 ]
