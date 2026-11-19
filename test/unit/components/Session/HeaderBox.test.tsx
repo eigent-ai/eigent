@@ -17,6 +17,7 @@ import type { ChatMessageNode } from '@/lib/projector/chat';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSessionReplayStore } from '@/store/sessionReplayStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -102,6 +103,10 @@ describe('HeaderBox chat timeline mode', () => {
 
   beforeEach(() => {
     runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
+    useSessionReplayStore.setState({
+      replayingProjectIds: [],
+      shareProjectId: null,
+    });
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800,
@@ -224,6 +229,8 @@ describe('HeaderBox chat timeline mode', () => {
     expect(items.map((item) => item.textContent)).toEqual([
       'Turn into skill',
       'Turn into automation',
+      'Replay',
+      'Share…',
       'Pin',
       'Rename session',
       'End session',
@@ -235,6 +242,59 @@ describe('HeaderBox chat timeline mode', () => {
     expect(items[1]).toHaveAttribute('aria-disabled', 'true');
     // A separator divides the Task actions from the Session actions.
     expect(items[1].nextElementSibling).toHaveAttribute('role', 'separator');
+  });
+
+  it('offers Replay and Share only once a Run has finished', async () => {
+    const user = userEvent.setup();
+    useSessionReplayStore.setState({
+      replayingProjectIds: [],
+      shareProjectId: null,
+    });
+    const { rerender } = render(
+      <HeaderBox projectName="Timeline project" projectId="project-1" />
+    );
+    const trigger = () =>
+      screen.getByRole('button', {
+        name: 'Session settings: Timeline project',
+      });
+
+    await user.click(trigger());
+    expect(screen.getByRole('menuitem', { name: 'Replay' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('menuitem', { name: 'Share…' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    await user.keyboard('{Escape}');
+
+    runtimeMock.mockReturnValue({
+      projectId: 'project-1',
+      snapshot: {
+        ...completedSnapshot(),
+        view: {
+          projectId: 'project-1',
+          runs: { 'run-1': { runId: 'run-1', status: 'completed' } },
+        },
+      },
+    });
+    rerender(
+      <HeaderBox projectName="Timeline project" projectId="project-1" />
+    );
+    await user.click(trigger());
+    await user.click(screen.getByRole('menuitem', { name: 'Replay' }));
+    expect(useSessionReplayStore.getState().replayingProjectIds).toEqual([
+      'project-1',
+    ]);
+
+    await user.click(trigger());
+    expect(screen.getByRole('menuitem', { name: 'Replay' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Share…' }));
+    expect(useSessionReplayStore.getState().shareProjectId).toBe('project-1');
   });
 
   it('drafts from the latest completed result and opens an editable automation', async () => {
