@@ -178,7 +178,7 @@ def start_background(
         started_at = info.get("started_at")
         if (
             info.get("port") == chosen_port
-            and isinstance(started_at, (int, float))
+            and isinstance(started_at, int | float)
             and started_at >= spawned_at
         ):
             connection = resolve_connection()

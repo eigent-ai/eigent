@@ -31,11 +31,13 @@ uv run python main.py
 
 ### Command-line client (`eigent`)
 
-Follow and steer Tasks on a running Eigent from a terminal. CLI access is off
-by default. Turn it on by setting `EIGENT_CLI_ACCESS=1` (in your environment or
-in `~/.eigent/.env`) and restarting Eigent. Eigent then writes:
+Start, follow and steer Tasks from a terminal, next to the app or with no app
+open. In the app, CLI access is off by default. Turn it on by setting
+`EIGENT_CLI_ACCESS=1` (in your environment or in `~/.eigent/.env`) and
+restarting Eigent. An Eigent started by the CLI itself always has it on.
+Eigent then writes:
 
-- `~/.eigent/cli/token`: the token the CLI sends. It works only on Run routes
+- `~/.eigent/cli/token`: the token the CLI sends. It works only on Task routes
   and only from this machine. Anything that can read this file as your user
   can approve or stop your Tasks, so leave CLI access off when you do not use
   it.
@@ -56,6 +58,45 @@ uv run python -m eigent_cli --json follow TASK_ID   # One event per line
 `follow` exits with how the Task ended: `0` completed, `1` failed, `3` waiting
 for you (when no one is at the terminal), `4` stopped, `5` deadline reached,
 `6` interrupted, `7` cannot reach or sign in to Eigent.
+
+#### Start Tasks with no app open
+
+`run` starts a Task in a folder and follows it to the end, with the same exit
+codes. When Eigent is not running, it starts one in the background.
+
+```bash
+uv run python -m eigent_cli run "Summarise the open TODOs" --space ~/work/repo
+uv run python -m eigent_cli --json run "..." --space DIR   # For scripts
+uv run python -m eigent_cli run "..." --space DIR --detach # Start and return
+uv run python -m eigent_cli run "and now fix them" --session SESSION_ID
+uv run python -m eigent_cli send SESSION_ID "one more thing"  # Queues if busy
+uv run python -m eigent_cli resume TASK_ID     # After an interruption
+uv run python -m eigent_cli brain start        # Background Eigent, no app
+uv run python -m eigent_cli brain stop
+```
+
+- **Model.** Tasks started this way use the model in Eigent's own settings, in
+  the environment or in `~/.eigent/.env`. The key is never sent by the CLI.
+
+  | Variable                | Example                     | Notes                                    |
+  | ----------------------- | --------------------------- | ---------------------------------------- |
+  | `EIGENT_MODEL_PLATFORM` | `openai`                    | Provider name, as in the app             |
+  | `EIGENT_MODEL_TYPE`     | `gpt-5.2`                   | Model name; `--model` overrides it       |
+  | `EIGENT_MODEL_API_KEY`  | `sk-...`                    | Optional when `EIGENT_MODEL_API_URL` set |
+  | `EIGENT_MODEL_API_URL`  | `http://localhost:11434/v1` | Only for compatible or local endpoints   |
+
+- **Space.** `--space DIR` is the folder the Task works in. The same folder is
+  always the same Space, so approvals given "for this Space" carry over.
+- **Session.** A new Session is created on the first `run`; its ID is printed.
+  `--session ID` and `send` continue it. While a Task is running, the next
+  message waits in a durable queue and starts when that Task ends.
+- **Mode.** A new Session uses one agent unless you pass `--mode workforce`.
+- **Approvals.** What a Task may do without asking is the Space's permission
+  profile; the default is to ask. With no one at the terminal, `run` exits `3`
+  and prints the request, and a script can call `approve`, `deny` or `answer`.
+- **One Eigent per data folder.** A background Eigent refuses to start when
+  another one is already using `~/.eigent/run-journal.sqlite3`. Sessions
+  started from the command line are not listed in the app.
 
 RemoteHands config file example:
 
