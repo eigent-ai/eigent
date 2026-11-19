@@ -152,7 +152,7 @@ def render_event(
         reason = payload.get("terminal_reason") or payload.get("reason")
         detail = payload.get("message") or payload.get("terminal_detail")
         if reason and reason != "completed":
-            line += f" ({reason})"
+            line += f" ({reason_text(str(reason))})"
         if detail and event_type != "run.completed":
             line += f": {_text(detail)}"
         return line
