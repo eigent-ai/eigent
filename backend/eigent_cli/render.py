@@ -50,6 +50,16 @@ _STATUS_WORDS = {
     "timed_out": "Deadline reached",
 }
 
+# Recorded reasons that would otherwise show internal wording.
+_REASON_WORDS = {
+    "brain_restart": "Eigent stopped while the Task was running",
+    "resume_admission_failed": "The Task could not be resumed",
+    "execution_backend_ended_without_result": "The Task ended with no result",
+    "execution_backend_failure": "Eigent hit an internal error",
+    "explicit_cancel": "Stopped from the command line",
+    "user_stopped_turn": "Stopped by you",
+}
+
 _TERMINAL_EVENT_WORDS = {
     "run.completed": "Task completed",
     "run.failed": "Task failed",
@@ -62,6 +72,10 @@ _TERMINAL_EVENT_WORDS = {
 
 def status_word(status: str | None) -> str:
     return _STATUS_WORDS.get(str(status or ""), str(status or "unknown"))
+
+
+def reason_text(reason: str | None) -> str:
+    return _REASON_WORDS.get(reason or "", reason or "")
 
 
 def format_time(timestamp: Any) -> str:

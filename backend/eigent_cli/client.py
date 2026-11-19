@@ -46,7 +46,7 @@ TERMINAL_STATUS_EXIT = {
 }
 
 ENABLE_HINT = (
-    "Turn on CLI access by setting EIGENT_CLI_ACCESS=1 (in your environment "
+    "turn on CLI access by setting EIGENT_CLI_ACCESS=1 (in your environment "
     "or in ~/.eigent/.env) and restarting Eigent."
 )
 
@@ -95,7 +95,9 @@ def resolve_connection(url: str | None = None) -> Connection:
         port = info.get("port") if info else None
         if not isinstance(port, int):
             raise CliError(
-                "No running Eigent with CLI access was found. " + ENABLE_HINT,
+                "No running Eigent with CLI access was found. Start one "
+                "with: eigent brain start. To use the app instead: "
+                + ENABLE_HINT,
                 EXIT_UNREACHABLE,
             )
         host = str(info.get("host") or "127.0.0.1")
@@ -152,7 +154,7 @@ class BrainClient:
     def _unreachable(self, exc: Exception) -> CliError:
         return CliError(
             f"Cannot reach Eigent at {self.base_url} ({exc}). "
-            "Is the app running?",
+            "Is it running? Start it with: eigent brain start",
             EXIT_UNREACHABLE,
         )
 
@@ -162,7 +164,8 @@ class BrainClient:
         code, message = _detail_message(response)
         if code == "cli_access_disabled":
             raise CliError(
-                "CLI access is turned off in this Eigent. " + ENABLE_HINT,
+                "CLI access is turned off in this Eigent. To use it, "
+                + ENABLE_HINT,
                 EXIT_UNREACHABLE,
             )
         if response.status_code in {401, 403} or code in {
@@ -172,7 +175,7 @@ class BrainClient:
             hint = (
                 ""
                 if self._http.headers.get(CLI_TOKEN_HEADER)
-                else " No CLI token was found. " + ENABLE_HINT
+                else " No CLI token was found. To get one, " + ENABLE_HINT
             )
             raise CliError(
                 f"Eigent refused the request: {message.rstrip('.')}.{hint}",

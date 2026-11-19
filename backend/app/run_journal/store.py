@@ -9830,6 +9830,22 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._follow_up_request_from_row(row) for row in rows]
 
+    def get_follow_up_request(
+        self, request_id: str
+    ) -> FollowUpRequestRecord | None:
+        """Return one queued instruction in any state, by its request id."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            return (
+                self._follow_up_request_from_row(row)
+                if row is not None
+                else None
+            )
+
     def get_follow_up_request_by_source_command_id(
         self, *, source_command_id: str
     ) -> FollowUpRequestRecord | None:
