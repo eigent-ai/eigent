@@ -25,8 +25,14 @@ exports.default = async function notarizing(context) {
 		appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
 		ascProvider: process.env.APPLE_TEAM_ID,
 	})
-		.then((res) => {
-			console.log("success!");
+		.then(() => {
+			console.log("Notarization succeeded.");
 		})
-		.catch(console.log);
+		.catch((error) => {
+			// A signed but un-notarized app is blocked by Gatekeeper when people
+			// download it, so a failed notarization must fail the build instead of
+			// shipping that app.
+			console.error("Notarization failed:", error);
+			throw error;
+		});
 };
