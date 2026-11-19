@@ -12,12 +12,62 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
+
+export function restrictEnvFilePermissions(envPath: string) {
+  try {
+    fs.chmodSync(envPath, 0o600);
+  } catch {
+    // best-effort on platforms without POSIX perms
+  }
+}
+
+export function writeEnvFile(envPath: string, content: string) {
+  // Preserve existing symlink bindings, but reject dangling links instead of
+  // silently replacing them with a new file.
+  const targetPath = fs
+    .lstatSync(envPath, { throwIfNoEntry: false })
+    ?.isSymbolicLink()
+    ? fs.realpathSync(envPath)
+    : envPath;
+  const temporaryPath = path.join(
+    path.dirname(targetPath),
+    `.env-${crypto.randomUUID()}.tmp`
+  );
+  let descriptor: number | null = null;
+  let created = false;
+  try {
+    descriptor = fs.openSync(temporaryPath, 'wx', 0o600);
+    created = true;
+    if (process.platform !== 'win32') {
+      // Unlike best-effort loading, writes must fail before storing secrets
+      // if the filesystem cannot enforce owner-only access.
+      fs.fchmodSync(descriptor, 0o600);
+      if ((fs.fstatSync(descriptor).mode & 0o777) !== 0o600) {
+        throw new Error('Cannot enforce owner-only env file permissions');
+      }
+    }
+    fs.writeFileSync(descriptor, content, 'utf-8');
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = null;
+    // Replace the old inode so existing readers of a formerly public file
+    // cannot read newly saved credentials through an already-open handle.
+    fs.renameSync(temporaryPath, targetPath);
+  } finally {
+    try {
+      if (descriptor !== null) fs.closeSync(descriptor);
+    } finally {
+      if (created) fs.rmSync(temporaryPath, { force: true });
+    }
+  }
+}
 
 export function getEnvPath(email: string) {
   const tempEmail = email
@@ -34,8 +84,10 @@ export function getEnvPath(email: string) {
   const envPath = path.join(eigentDir, '.env.' + tempEmail);
   const defaultEnv = path.join(process.resourcesPath, 'backend', '.env');
   if (!fs.existsSync(envPath) && fs.existsSync(defaultEnv)) {
-    fs.copyFileSync(defaultEnv, envPath);
-    fs.chmodSync(envPath, 0o600);
+    writeEnvFile(envPath, fs.readFileSync(defaultEnv, 'utf-8'));
+  }
+  if (fs.existsSync(envPath)) {
+    restrictEnvFilePermissions(envPath);
   }
 
   return envPath;

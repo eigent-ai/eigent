@@ -1,0 +1,60 @@
+{
+  "$description": "Reference typography seeds, generated roles, and weights. Sizes derive from the channel base at review time; CSS stores the 13px default scale.",
+  "families": {
+    "text": [
+      "Inter",
+      "ui-sans-serif",
+      "system-ui",
+      "-apple-system",
+      "BlinkMacSystemFont",
+      "Segoe UI",
+      "sans-serif"
+    ],
+    "code": [
+      "ui-monospace",
+      "SFMono-Regular",
+      "SF Mono",
+      "Menlo",
+      "Consolas",
+      "Liberation Mono",
+      "monospace"
+    ]
+  },
+  "weights": {
+    "regular": "400",
+    "medium": "500",
+    "semibold": "600",
+    "bold": "700"
+  },
+  "channels": {
+    "text": {
+      "defaultPx": 13,
+      "minPx": 11,
+      "maxPx": 16,
+      "generalFloorPx": 11,
+      "metaFloorPx": 11
+    },
+    "code": {
+      "defaultPx": 13,
+      "minPx": 8,
+      "maxPx": 24,
+      "floorPx": 8
+    }
+  },
+  "roles": {
+    "text": {
+      "meta": { "sizeRatio": 0.846, "lineRatio": 1.231 },
+      "base": { "sizeRatio": 1.0, "lineRatio": 1.538 },
+      "body-large": { "sizeRatio": 1.154, "lineRatio": 1.692 },
+      "title": { "sizeRatio": 1.385, "lineRatio": 1.846 },
+      "section": { "sizeRatio": 1.538, "lineRatio": 2.154 },
+      "page": { "sizeRatio": 2.154, "lineRatio": 2.769 },
+      "display": { "sizeRatio": 3.385, "lineRatio": 4.0 }
+    },
+    "code": {
+      "small": { "sizeRatio": 0.923, "lineRatio": 1.385 },
+      "base": { "sizeRatio": 1.0, "lineRatio": 1.538 },
+      "large": { "sizeRatio": 1.154, "lineRatio": 1.692 }
+    }
+  }
+}

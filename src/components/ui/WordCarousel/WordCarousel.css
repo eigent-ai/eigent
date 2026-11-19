@@ -2,17 +2,23 @@
   position: relative;
   display: inline-block;
   background: var(--word-gradient);
+  background-size: 200% 100%;
+  background-position: 0% 50%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   white-space: nowrap;
   animation: gradient-sweep var(--sweep-duration, 2200ms) linear infinite;
-  will-change: background-position, opacity;
+}
+
+.word-carousel.is-sweeping {
+  will-change: background-position;
 }
 
 .word-carousel.is-fading {
-  transition: opacity 220ms ease;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
   opacity: 0.35;
+  will-change: opacity;
 }
 
 /* run once, left-to-right */
@@ -24,11 +30,22 @@
 
 @keyframes gradient-sweep {
   0% {
-    background-size: 200% 100%;
     background-position: 0% 50%;
   }
   100% {
-    background-size: 200% 100%;
     background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-carousel,
+  .word-carousel.sweep-once {
+    animation: none;
+    background-position: 50% 50%;
+    will-change: auto;
+  }
+
+  .word-carousel.is-fading {
+    transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 }

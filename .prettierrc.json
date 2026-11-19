@@ -4,7 +4,7 @@
     "prettier-plugin-tailwindcss"
   ],
   "tailwindFunctions": ["classNames"],
-  "tailwindConfig": "./tailwind.config.js",
+  "tailwindStylesheet": "./src/style/index.css",
   "singleQuote": true,
   "trailingComma": "es5"
 }

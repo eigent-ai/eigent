@@ -13,26 +13,50 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 # STATUS: full-rewrite (uses ProviderService, self-managed session)
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_babel import _
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from sqlmodel import Session, select, col
+from sqlmodel import Session, col, select
 
 from app.core.database import session
-from app.model.provider.provider import Provider, ProviderIn, ProviderOut, ProviderPreferIn
+from app.domains.model_provider.service.provider_service import ProviderService
+from app.model.provider.provider import Provider, ProviderIn, ProviderModelMetadata, ProviderOut, ProviderPreferIn
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
-from app.domains.model_provider.service.provider_service import ProviderService
 
 router = APIRouter(tags=["Provider Management"])
+
+
+@router.get("/provider-models", response_model=list[ProviderModelMetadata])
+async def model_catalog(
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+) -> list[ProviderModelMetadata]:
+    # Extract the two model overrides in SQL; never load credential columns or
+    # the complete encrypted_config into this metadata-only request.
+    stmt = (
+        select(
+            Provider.provider_name,
+            Provider.model_type,
+            Provider.is_valid,
+            col(Provider.encrypted_config)["model_platform"].as_string().label("configured_model_platform"),
+            col(Provider.encrypted_config)["model_type"].as_string().label("configured_model_type"),
+        )
+        .where(Provider.user_id == auth.id, Provider.no_delete())
+        .limit(513)
+    )
+    metadata_rows = db_session.exec(stmt).all()
+    if len(metadata_rows) > 512:
+        raise HTTPException(status_code=413, detail="Provider catalog exceeds limit")
+    return [ProviderModelMetadata.from_projection(*row) for row in metadata_rows]
 
 
 @router.get("/providers", name="list providers", response_model=Page[ProviderOut])
 async def gets(
     keyword: str | None = None,
-    prefer: Optional[bool] = Query(None, description="Filter by prefer status"),
+    prefer: bool | None = Query(None, description="Filter by prefer status"),
     db_session: Session = Depends(session),
     auth: V1UserAuth = Depends(auth_must),
 ) -> Page[ProviderOut]:

@@ -44,18 +44,18 @@ describe('githubReleaseCdnProvider', () => {
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases/',
-        '0.0.90',
+        '1.0.8',
         'mac-arm64'
       )
-    ).toBe('https://cdn.eigent.ai/releases/v0.0.90/mac-arm64/');
+    ).toBe('https://cdn.eigent.ai/releases/v1.0.8/mac-arm64/');
 
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases',
-        '0.0.90',
+        '1.0.8',
         'win-x64'
       )
-    ).toBe('https://cdn.eigent.ai/releases/v0.0.90/win-x64/');
+    ).toBe('https://cdn.eigent.ai/releases/v1.0.8/win-x64/');
   });
 
   it('maps mac builds to the GitHub release channels used in CI', () => {

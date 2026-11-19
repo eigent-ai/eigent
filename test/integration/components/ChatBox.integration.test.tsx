@@ -141,6 +141,18 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
             ],
           },
         });
+        chatStore.setSummaryTask(
+          taskId,
+          'Calculator App|Build a simple calculator app'
+        );
+        chatStore.setTaskInfo(taskId, [
+          { id: 'task-1', content: 'Create UI components', status: '' },
+          {
+            id: 'task-2',
+            content: 'Implement calculator logic',
+            status: '',
+          },
+        ]);
         rerender();
       });
 
@@ -158,6 +170,10 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         );
         expect(calculatorElements.length).toBeGreaterThanOrEqual(1);
         // The component should show task breakdown
+        expect(screen.getByText('Create UI components')).toBeInTheDocument();
+        expect(
+          screen.getByText('Implement calculator logic')
+        ).toBeInTheDocument();
         expect(
           screen.queryByText(/layout.welcome-to-eigent/i)
         ).not.toBeInTheDocument();

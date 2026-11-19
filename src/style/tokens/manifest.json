@@ -1,0 +1,62 @@
+{
+  "elements": ["bg", "text", "border", "icon", "ring"],
+  "emphasis": ["subtle", "muted", "default", "strong", "inverse"],
+  "states": ["default", "hover", "active", "selected", "focus", "disabled"],
+  "tones": [
+    "neutral",
+    "brand",
+    "status-running",
+    "status-splitting",
+    "status-pending",
+    "status-error",
+    "status-reassigning",
+    "status-completed",
+    "status-blocked",
+    "status-paused",
+    "status-skipped",
+    "status-cancelled",
+    "single-agent",
+    "workforce",
+    "browser",
+    "terminal",
+    "document",
+    "success",
+    "error",
+    "warning",
+    "information"
+  ],
+  "category": {
+    "colors": [
+      "gray",
+      "slate",
+      "red",
+      "blue",
+      "green",
+      "yellow",
+      "orange",
+      "purple",
+      "pink",
+      "cyan",
+      "teal",
+      "indigo",
+      "amber",
+      "lime",
+      "mint",
+      "tomato"
+    ],
+    "roles": [
+      ["background", "app"],
+      ["background", "subtle"],
+      ["background", "default"],
+      ["background", "hover"],
+      ["background", "active"],
+      ["border", "subtle"],
+      ["border", "default"],
+      ["border", "hover"],
+      ["solid", "default"],
+      ["solid", "hover"],
+      ["text", "default"],
+      ["text", "strong"]
+    ]
+  }
+}

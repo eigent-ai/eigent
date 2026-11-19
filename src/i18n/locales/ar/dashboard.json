@@ -1,9 +1,9 @@
 {
   "task-hub": "مركز المهام",
-  "new-project": "مشروع جديد",
+  "new-project": "جلسة جديدة",
   "search": "بحث",
-  "project-archives": "أرشيف المشاريع",
-  "ongoing-projects": "المشاريع الجارية",
+  "project-archives": "أرشيف الجلسات",
+  "ongoing-projects": "الجلسات الجارية",
   "ongoing-tasks": "المهام الجارية",
   "completed-tasks": "المهام المكتملة",
   "share": "مشاركة",
@@ -11,6 +11,7 @@
   "grid": "شبكة",
   "table": "جدول",
   "list": "قائمة",
+  "board": "لوحة",
   "search-dialog": "مربع حوار البحث",
   "search-dialog-placeholder": "ابحث أو اطرح سؤالاً",
   "no-results": "لا توجد نتائج",
@@ -23,5 +24,9 @@
   "document-agent": "وكيل المستندات",
   "multi-modal-agent": "وكيل متعدد الوسائط",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
-  "no-projects-found": "لا توجد مشاريع"
+  "no-projects-found": "لا توجد جلسات",
+  "no-tasks-found": "لم يتم العثور على مهام.",
+  "command-search-placeholder": "اكتب أمرًا أو ابحث…",
+  "more-integrations": "المزيد من التكاملات",
+  "today": "اليوم"
 }

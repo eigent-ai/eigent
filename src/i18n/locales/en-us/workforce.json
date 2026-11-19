@@ -8,6 +8,8 @@
   "save-changes": "Save changes",
   "description-optional": "Description (Optional)",
   "agent-tool": "Agent Tool",
+  "agent-tool-connectors-note": "Add your local connectors here. Remote connectors are added to every agent automatically.",
+  "agent-tool-tooltip": "Select tools and integrations for your agent",
   "share": "Share",
   "advanced-model-config": "Advanced Model Configuration",
   "use-custom-model": "Use custom model configuration",
@@ -16,5 +18,8 @@
   "model-type": "Model Type",
   "model-type-placeholder": "e.g., gpt-4o-mini",
   "worker-name-cannot-be-empty": "Worker name cannot be empty",
-  "worker-name-already-exists": "Worker name already exists"
+  "worker-name-already-exists": "Worker name already exists",
+  "detail": "Detail",
+  "duplicate": "Duplicate",
+  "delete": "Delete"
 }

@@ -1,0 +1,38 @@
+/* ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. ========= */
+
+/* index.css applies `* { font-family: 'Inter' }` app-wide. That universal
+ * rule matches xterm's glyph spans directly, so they render in proportional
+ * Inter while xterm positions them on the monospace character cells it
+ * measured — glyphs drift apart and overlap. Pin everything inside the
+ * terminal screen to the same code stack markdown code blocks use
+ * (`.markdown-body code`): the system default code font first, then explicit
+ * fallbacks. Must match TERMINAL_FONT_FAMILY in terminalTheme.ts, which xterm
+ * measures with. */
+/* Scoped to xterm's own DOM so design-system UI overlaid on the screen
+ * (e.g. the shell-exited notice bar) keeps the app font. */
+.preview-terminal-screen .xterm,
+.preview-terminal-screen .xterm * {
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  font-variant-ligatures: none;
+}
+
+/* The legacy agent terminal (src/components/Terminal) injects a global
+ * `.xterm span { letter-spacing: 0.5px !important }` workaround; neutralize
+ * it here so cells keep the exact width xterm measured. */
+.preview-terminal-screen .xterm span {
+  letter-spacing: 0 !important;
+}

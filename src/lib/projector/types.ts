@@ -1,0 +1,295 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import type { RunTerminalReason } from '@/lib/runTerminalReason';
+
+export type ProjectorMode = 'live' | 'rehydrate' | 'playback';
+
+export type CanonicalSemanticStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'timed_out'
+  | 'outcome_unknown'
+  | 'cancelled'
+  | 'unknown';
+
+export type CanonicalSemanticPhase =
+  | 'requested'
+  | 'started'
+  | 'progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'unknown';
+
+export type CanonicalSemanticKind =
+  | 'agent'
+  | 'agent_turn'
+  | 'browser_operation'
+  | 'command_execution'
+  | 'file_change'
+  | 'file_operation'
+  | 'git_conflict_resolution'
+  | 'git_integration'
+  | 'narration'
+  | 'plan'
+  | 'plan_operation'
+  | 'subtask'
+  | 'tool_call'
+  | 'workspace_writer';
+
+export type CanonicalSemanticSubjectType =
+  | 'activity_stream'
+  | 'agent'
+  | 'agent_turn'
+  | 'agent_workspace'
+  | 'artifact'
+  | 'file'
+  | 'plan'
+  | 'task'
+  | 'tool_call'
+  | 'writer_request';
+
+export type CanonicalSemanticActorType = 'agent' | 'system' | 'user';
+
+/** Versioned domain semantics carried by new RunJournal events. */
+export interface CanonicalSemanticEnvelopeV1 {
+  kind: CanonicalSemanticKind;
+  subject: { type: CanonicalSemanticSubjectType; id: string };
+  actor?: { type?: CanonicalSemanticActorType; id?: string; name?: string };
+  lifecycle: {
+    phase: CanonicalSemanticPhase;
+    status: CanonicalSemanticStatus;
+  };
+  correlation?: Record<string, string>;
+  completeness: {
+    state: 'complete' | 'partial';
+    missing_fields: string[];
+  };
+  provenance?: { source?: string };
+}
+
+export type CanonicalSemanticStatusV2 =
+  CanonicalSemanticStatus | 'blocked' | 'interrupted';
+
+export type CanonicalSemanticPhaseV2 =
+  CanonicalSemanticPhase | 'blocked' | 'resumed' | 'interrupted';
+
+export type CanonicalSemanticKindV2 = CanonicalSemanticKind | 'step';
+export type CanonicalSemanticSubjectTypeV2 =
+  CanonicalSemanticSubjectType | 'step';
+
+export interface CanonicalSemanticEnvelopeV2 {
+  kind: CanonicalSemanticKindV2;
+  subject: { type: CanonicalSemanticSubjectTypeV2; id: string };
+  actor?: { type?: CanonicalSemanticActorType; id?: string; name?: string };
+  lifecycle: {
+    phase: CanonicalSemanticPhaseV2;
+    status: CanonicalSemanticStatusV2;
+  };
+  correlation?: Record<string, string>;
+  completeness: {
+    state: 'complete' | 'partial';
+    missing_fields: string[];
+  };
+  provenance?: { source?: string };
+}
+
+export type CanonicalSemanticEnvelope =
+  CanonicalSemanticEnvelopeV1 | CanonicalSemanticEnvelopeV2;
+
+export type CanonicalSemanticPayloadV1 = Record<string, unknown> & {
+  semantic_schema_version: 1;
+  display_schema_version: 1;
+  semantic: CanonicalSemanticEnvelopeV1;
+};
+
+export type CanonicalSemanticPayloadV2 = Record<string, unknown> & {
+  semantic_schema_version: 2;
+  display_schema_version: 1;
+  semantic: CanonicalSemanticEnvelopeV2;
+};
+
+export type CanonicalProjectEvent = {
+  eventId: string;
+  /** Backend receipt reference; excludes synthesized legacy transport IDs. */
+  sourceEventId?: string;
+  projectId: string;
+  runId: string;
+  runSequence: number;
+  runVersion: number;
+  cloudCursor: number | null;
+  eventType: string;
+  payload: Record<string, unknown>;
+  legacyStep: string | null;
+  createdAt: string;
+  source: 'canonical' | 'chat_step_v1' | 'indexeddb_v1' | 'local_memory_v1';
+  origin?: 'local' | 'cloud_restore' | 'remote';
+  raw: unknown;
+};
+
+export type ProjectedLegacyStep = {
+  eventId: string;
+  /** Backend receipt reference retained separately from legacy transport IDs. */
+  sourceEventId?: string;
+  stepId: number | string;
+  taskId: string;
+  projectId: string;
+  step: string;
+  data: unknown;
+  timestamp: number | null;
+  runSequence: number;
+  cloudCursor: number | null;
+  source: CanonicalProjectEvent['source'];
+  crossLaneEventIds?: string[];
+};
+
+/** A Tool call whose unknown outcome makes an explicit Resume unsafe. */
+export type ProjectedUnsafeResumeBlocker = {
+  toolCallId: string;
+  toolName: string | null;
+  displayTitle: string | null;
+};
+
+/** A Run queued behind the single writer of its Space. */
+export type ProjectedWriterWait = {
+  /** The writer stopped mid-change and keeps the Space until the user acts. */
+  holderNeedsAttention: boolean;
+  /** Session that owns that writer, when the Brain recorded it. */
+  blockerProjectId?: string;
+};
+
+export type ProjectedRun = {
+  runId: string;
+  status:
+    | 'unknown'
+    | 'pending'
+    | 'running'
+    | 'waiting_for_user'
+    | 'cancelling'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'timed_out'
+    | 'interrupted';
+  lastSequence: number;
+  runVersion: number;
+  updatedAt: string;
+  origin?: 'local' | 'cloud_restore' | 'remote' | null;
+  resumeBlockedReason?: string | null;
+  /** Why the Run last stopped, as recorded by the Brain. */
+  terminalReason?: RunTerminalReason | null;
+  /** Free-form diagnostic for Detailed mode; shown verbatim. */
+  terminalDetail?: string | null;
+  latestAttempt?: {
+    attemptNumber: number;
+    status: string;
+    resumeRequestId?: string;
+  } | null;
+  /**
+   * Attempt time measured at `totalAttemptElapsedAt`, leaving out time spent
+   * waiting for an approval or an answer.
+   */
+  totalAttemptElapsedMs?: number | null;
+  /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
+  totalAttemptElapsedAt?: string | null;
+  /**
+   * Finished waits for an approval or an answer that the task timer leaves
+   * out, counted after the timer's baseline: the elapsed checkpoint when one
+   * is present, otherwise the start of the Run. Omitted when zero.
+   */
+  userWaitMs?: number;
+  /** When the current wait for the user began; present only while waiting. */
+  userWaitStartedAt?: string;
+  /** Derived by the Brain; Resume is refused while any remain. */
+  unsafeResumeBlockers?: ProjectedUnsafeResumeBlocker[];
+  /** Present while the Run waits for its Space writer. */
+  writerWait?: ProjectedWriterWait | null;
+};
+
+export type ProjectedArtifact = {
+  artifactId: string;
+  runId: string;
+  name: string;
+  relativePath: string;
+  changeType: 'generated' | 'changed';
+  size: number | null;
+  modifiedAt: number | null;
+  uploadPolicy: string | null;
+  localPathAvailable: boolean;
+  assetRef?: {
+    chatFileId?: number;
+    bucket?: string;
+    key: string;
+    filename?: string;
+    size?: number;
+    contentType?: string;
+  };
+};
+
+export type ProjectedArtifactManifest = {
+  runSequence: number;
+  createdAt: string;
+  scanStatus: string;
+  truncated: boolean;
+  /** Recovery output remains authoritative until another Attempt starts. */
+  frozenAfterInterruption?: boolean;
+};
+
+export type ProjectViewState = {
+  projectId: string;
+  mode: ProjectorMode;
+  seenEventIds: Record<string, true>;
+  currentCursor: number;
+  eventsTruncated: boolean;
+  lastSyncedAt: string | null;
+  needsResync: boolean;
+  resyncReason: string | null;
+  resyncTargetCursor: number | null;
+  runs: Record<string, ProjectedRun>;
+  artifactsByRun: Record<string, ProjectedArtifact[]>;
+  artifactManifestsByRun?: Record<string, ProjectedArtifactManifest>;
+  legacySteps: ProjectedLegacyStep[];
+  unknownEvents: CanonicalProjectEvent[];
+};
+
+export type ProjectorEffect =
+  | { type: 'scroll_to_latest'; eventId: string }
+  | { type: 'request_resync'; reason: string };
+
+export type ProjectSnapshotInput = {
+  project_id: string;
+  current_cursor: number;
+  runs?: Array<{
+    run_id: string;
+    status: string;
+    expected_next_run_sequence: number;
+    updated_at: string;
+    /** Canonical execution time; excludes gaps between attempts. */
+    total_attempt_elapsed_ms?: number | null;
+    /** Local measurement anchor; not a Run API/SQLite field. */
+    totalAttemptElapsedAt?: string | null;
+    /** RunJournal aggregate version; aliases the latest event run_version. */
+    run_version?: number;
+    /** Accepted for direct snapshots shaped like the existing GET /runs API. */
+    version?: number;
+    origin?: string | null;
+    resume_blocked_reason?: string | null;
+  }>;
+  recent_events: unknown[];
+  artifact_events?: unknown[];
+  events_truncated?: boolean;
+};

@@ -13,12 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
-import os
 from typing import Any
 
 import httpx
 from camel.toolkits import SearchToolkit as BaseSearchToolkit
 from camel.toolkits.function_tool import FunctionTool
+from camel.utils.mcp_client import MCPClient
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env, env_not_empty
@@ -26,6 +26,20 @@ from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 
 logger = logging.getLogger("search_toolkit")
+
+QUERIT_MCP_URL = "https://mcp.querit.ai/mcp"
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_ANONYMOUS_LIMIT_REASONS = ("limit", "quota", "rate", "unavailable")
+
+
+def _is_querit_anonymous_limit(result: dict[str, Any]) -> bool:
+    error = result.get("error")
+    if not isinstance(error, str):
+        return False
+    normalized = error.strip().lower()
+    return "anonymous" in normalized and any(
+        reason in normalized for reason in _ANONYMOUS_LIMIT_REASONS
+    )
 
 
 @auto_listen_toolkit(BaseSearchToolkit)
@@ -46,12 +60,14 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # Cache for user-specific search configurations
         self._user_google_api_key = None
         self._user_search_engine_id = None
+        self._user_querit_api_key = None
+        self._querit_enabled = False
         self._config_loaded = False
 
     def _load_user_search_config(self):
         """
-        Load user-specific Google Search configuration from user's .env file.
-        This is called lazily when search_google is invoked.
+        Load user-specific Search configuration from the Run context or the
+        user's environment. This is called lazily when a search tool is used.
         """
         if self._config_loaded:
             return
@@ -62,6 +78,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # which is set by the middleware based on the user's project settings
         google_api_key = env("GOOGLE_API_KEY")
         search_engine_id = env("SEARCH_ENGINE_ID")
+        querit_api_key = env("QUERIT_API_KEY")
+        querit_enabled = str(env("QUERIT_ENABLED", "")).strip().lower()
+
+        self._querit_enabled = querit_enabled in _TRUE_VALUES
+        if querit_api_key:
+            self._user_querit_api_key = querit_api_key
 
         if google_api_key and search_engine_id:
             self._user_google_api_key = google_api_key
@@ -71,6 +93,187 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
             logger.debug(
                 "No user-specific Google Search configuration found, will use cloud search"
             )
+
+    def _google_available(self) -> bool:
+        self._load_user_search_config()
+        return bool(
+            (self._user_google_api_key and self._user_search_engine_id)
+            or env("cloud_api_key")
+        )
+
+    async def _search_querit_via_mcp(
+        self,
+        query: str,
+        number_of_result_pages: int = 10,
+        site_include: list[str] | None = None,
+        site_exclude: list[str] | None = None,
+        time_range: str | None = None,
+        country_include: list[str] | None = None,
+        language_include: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Call Querit's hosted MCP with optional per-Run BYOK auth."""
+        self._load_user_search_config()
+        requested_count = max(1, number_of_result_pages)
+        if not self._user_querit_api_key:
+            requested_count = min(requested_count, 5)
+
+        arguments: dict[str, Any] = {
+            "query": query,
+            "count": requested_count,
+        }
+        optional_arguments = {
+            "include_domains": site_include,
+            "exclude_domains": site_exclude,
+            "date_range": time_range,
+            "countries": country_include,
+            "languages": language_include,
+        }
+        arguments.update(
+            {
+                key: value
+                for key, value in optional_arguments.items()
+                if value is not None
+            }
+        )
+
+        headers = None
+        if self._user_querit_api_key:
+            headers = {"Authorization": f"Bearer {self._user_querit_api_key}"}
+
+        timeout = float(self.timeout or 30)
+        config: dict[str, Any] = {
+            "url": QUERIT_MCP_URL,
+            "type": "streamable_http",
+            "timeout": timeout,
+        }
+        if headers:
+            config["headers"] = headers
+
+        async with MCPClient(config, timeout=timeout) as client:
+            result = await client.call_tool("querit_search", arguments)
+
+        structured = getattr(result, "structuredContent", None)
+        if getattr(result, "isError", False):
+            messages = [
+                item.text
+                for item in getattr(result, "content", [])
+                if isinstance(getattr(item, "text", None), str)
+            ]
+            return {
+                "error": " ".join(messages) or "Querit MCP returned an error"
+            }
+        if isinstance(structured, dict):
+            return structured
+        return {"error": "Querit MCP returned no structured search result"}
+
+    async def _search_querit_via_managed_proxy(
+        self,
+        query: str,
+        number_of_result_pages: int = 10,
+        site_include: list[str] | None = None,
+        site_exclude: list[str] | None = None,
+        time_range: str | None = None,
+        country_include: list[str] | None = None,
+        language_include: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Use Eigent's server-side key pool without exposing managed keys."""
+        server_url = str(env("SERVER_URL", "")).rstrip("/")
+        cloud_api_key = env("cloud_api_key")
+        if not server_url or not cloud_api_key:
+            return {"error": "Managed Querit search is not available"}
+
+        payload: dict[str, Any] = {
+            "query": query,
+            "count": max(1, min(number_of_result_pages, 100)),
+        }
+        optional_arguments = {
+            "include_domains": site_include,
+            "exclude_domains": site_exclude,
+            "date_range": time_range,
+            "countries": country_include,
+            "languages": language_include,
+        }
+        payload.update(
+            {
+                key: value
+                for key, value in optional_arguments.items()
+                if value is not None
+            }
+        )
+
+        timeout = float(self.timeout or 30)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{server_url}/proxy/querit",
+                    json=payload,
+                    headers={"api-key": str(cloud_api_key)},
+                )
+                response.raise_for_status()
+                result = response.json()
+        except Exception as exc:
+            logger.warning("Managed Querit proxy failed: %s", exc)
+            return {"error": f"Managed Querit proxy failed: {exc!s}"}
+        if isinstance(result, dict):
+            return result
+        return {"error": "Managed Querit proxy returned an invalid response"}
+
+    async def search_querit(
+        self,
+        query: str,
+        number_of_result_pages: int = 10,
+        site_include: list[str] | None = None,
+        site_exclude: list[str] | None = None,
+        time_range: str | None = None,
+        country_include: list[str] | None = None,
+        language_include: list[str] | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Search with Querit first and fall back to Google when available.
+
+        The public signature intentionally matches CAMEL's
+        ``SearchToolkit.search_querit``. Eigent only adds per-Run credential
+        selection and Querit's hosted anonymous transport.
+        """
+        self._load_user_search_config()
+        using_byok = bool(self._user_querit_api_key)
+        try:
+            result = await self._search_querit_via_mcp(
+                query=query,
+                number_of_result_pages=number_of_result_pages,
+                site_include=site_include,
+                site_exclude=site_exclude,
+                time_range=time_range,
+                country_include=country_include,
+                language_include=language_include,
+            )
+        except Exception as exc:
+            logger.warning("Querit search failed: %s", exc)
+            result = {"error": f"Querit search failed: {exc!s}"}
+
+        if not using_byok and _is_querit_anonymous_limit(result):
+            logger.info(
+                "Querit anonymous limit reached; using managed key pool"
+            )
+            result = await self._search_querit_via_managed_proxy(
+                query=query,
+                number_of_result_pages=number_of_result_pages,
+                site_include=site_include,
+                site_exclude=site_exclude,
+                time_range=time_range,
+                country_include=country_include,
+                language_include=language_include,
+            )
+
+        if "error" not in result or not self._google_available():
+            return result
+
+        logger.info("Querit search failed; falling back to Google Search")
+        return self.search_google(
+            query=query,
+            search_type="web",
+            number_of_result_pages=min(number_of_result_pages, 10),
+            start_page=1,
+        )
 
     # @listen_toolkit(BaseSearchToolkit.search_wiki)
     # def search_wiki(self, entity: str) -> str:
@@ -94,13 +297,111 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     # ) -> dict[str, Any]:
     #     return super().search_linkup(query, depth, output_type, structured_output_schema)
 
+    def _search_google_with_config(
+        self,
+        query: str,
+        search_type: str,
+        number_of_result_pages: int,
+        start_page: int,
+        google_api_key: str,
+        search_engine_id: str,
+    ) -> list[dict[str, Any]]:
+        if start_page < 1:
+            raise ValueError("start_page must be a positive integer")
+        if number_of_result_pages < 1:
+            raise ValueError(
+                "number_of_result_pages must be a positive integer"
+            )
+        if number_of_result_pages > 10:
+            logger.warning(
+                "Google API limits results to 10 per request. "
+                "Using 10 instead."
+            )
+            number_of_result_pages = 10
+        if search_type not in ("web", "image"):
+            raise ValueError("search_type must be either 'web' or 'image'")
+
+        modified_query = query
+        if self.exclude_domains:
+            exclusion_terms = " ".join(
+                f"-site:{domain}" for domain in self.exclude_domains
+            )
+            modified_query = f"{query} {exclusion_terms}"
+
+        params: dict[str, str | int] = {
+            "key": google_api_key,
+            "cx": search_engine_id,
+            "q": modified_query,
+            "start": start_page,
+            "lr": "en",
+            "num": number_of_result_pages,
+        }
+        if search_type == "image":
+            params["searchType"] = "image"
+
+        try:
+            response = httpx.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params=params,
+                timeout=self.timeout,
+            )
+            data = response.json()
+        except Exception as exc:
+            return [{"error": f"google search failed: {exc!s}"}]
+
+        items = data.get("items")
+        if not items:
+            if "error" in data:
+                return [
+                    {
+                        "error": "Google search failed - "
+                        f"API response: {data.get('error', {})}"
+                    }
+                ]
+            return []
+
+        results: list[dict[str, Any]] = []
+        for index, item in enumerate(items, start=1):
+            if search_type == "image":
+                image_info = item.get("image", {})
+                result: dict[str, Any] = {
+                    "result_id": index,
+                    "title": item.get("title"),
+                    "image_url": item.get("link"),
+                    "display_link": item.get("displayLink"),
+                    "context_url": image_info.get("contextLink", ""),
+                }
+                if image_info.get("width"):
+                    result["width"] = int(image_info["width"])
+                if image_info.get("height"):
+                    result["height"] = int(image_info["height"])
+                results.append(result)
+                continue
+
+            metatags = item.get("pagemap", {}).get("metatags", [])
+            long_description = (
+                metatags[0].get("og:description") if metatags else "N/A"
+            )
+            results.append(
+                {
+                    "result_id": index,
+                    "title": item.get("title"),
+                    "description": item.get("snippet"),
+                    "long_description": long_description or "N/A",
+                    "url": item.get("link"),
+                }
+            )
+        return results
+
     @listen_toolkit(
         BaseSearchToolkit.search_google,
         lambda _,
         query,
         search_type="web",
         number_of_result_pages=10,
-        start_page=1: f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}",
+        start_page=1: (
+            f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}"
+        ),
     )
     def search_google(
         self,
@@ -115,27 +416,14 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # If user has configured their own Google API keys, use them
         if self._user_google_api_key and self._user_search_engine_id:
             logger.info("Using user-configured Google Search API")
-            # Temporarily set environment variables for this search
-            old_google_key = os.environ.get("GOOGLE_API_KEY")
-            old_search_id = os.environ.get("SEARCH_ENGINE_ID")
-
-            try:
-                os.environ["GOOGLE_API_KEY"] = self._user_google_api_key
-                os.environ["SEARCH_ENGINE_ID"] = self._user_search_engine_id
-                return super().search_google(
-                    query, search_type, number_of_result_pages, start_page
-                )
-            finally:
-                # Restore original environment variables
-                if old_google_key is not None:
-                    os.environ["GOOGLE_API_KEY"] = old_google_key
-                elif "GOOGLE_API_KEY" in os.environ:
-                    del os.environ["GOOGLE_API_KEY"]
-
-                if old_search_id is not None:
-                    os.environ["SEARCH_ENGINE_ID"] = old_search_id
-                elif "SEARCH_ENGINE_ID" in os.environ:
-                    del os.environ["SEARCH_ENGINE_ID"]
+            return self._search_google_with_config(
+                query,
+                search_type,
+                number_of_result_pages,
+                start_page,
+                self._user_google_api_key,
+                self._user_search_engine_id,
+            )
         else:
             # Fallback to cloud search
             logger.info(
@@ -380,9 +668,10 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # if env("BRAVE_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_brave))
 
-        if (env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID")) or env(
-            "cloud_api_key"
-        ):
+        search_toolkit._load_user_search_config()
+        if search_toolkit._querit_enabled:
+            tools.append(FunctionTool(search_toolkit.search_querit))
+        elif search_toolkit._google_available():
             tools.append(FunctionTool(search_toolkit.search_google))
 
         # if env("TAVILY_API_KEY"):

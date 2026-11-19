@@ -21,7 +21,8 @@
  * so users don't have to wait for installation on first run
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
+import { createHash } from 'crypto';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
@@ -37,7 +38,17 @@ const PREBUILT_DIR = path.join(projectRoot, 'resources', 'prebuilt');
 const BIN_DIR = path.join(PREBUILT_DIR, 'bin');
 const VENV_DIR = path.join(PREBUILT_DIR, 'venv');
 const TERMINAL_VENV_DIR = path.join(PREBUILT_DIR, 'terminal_venv');
+const MINGIT_DIR = path.join(PREBUILT_DIR, 'mingit');
 const BACKEND_DIR = path.join(projectRoot, 'backend');
+
+// MinGit is the official embeddable Git for Windows distribution. Keep the
+// archive and checksum pinned so packaged builds are reproducible.
+const MINGIT_VERSION = '2.55.0.3';
+const MINGIT_X64_URL =
+  'https://github.com/git-for-windows/git/releases/download/' +
+  'v2.55.0.windows.3/MinGit-2.55.0.3-64-bit.zip';
+const MINGIT_X64_SHA256 =
+  'f48e2d2dc74a24454adc6d8fd0ac25bf9c2386f19cfb06202b9465aaad4f9f05';
 
 // Terminal base packages - keep in sync with electron/main/utils/process.ts
 const TERMINAL_BASE_PACKAGES = [
@@ -87,6 +98,10 @@ function isValidTarGz(filePath) {
   } catch {
     return false;
   }
+}
+
+function sha256File(filePath) {
+  return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 /**
@@ -322,6 +337,70 @@ function getUvUrls(archStr, platformStr, isWindows = false) {
       name: 'GitHub',
     },
   ];
+}
+
+/**
+ * Install the official embeddable Git runtime used by the packaged Brain.
+ */
+async function installMinGit() {
+  if (process.platform !== 'win32') return null;
+  if (process.arch !== 'x64') {
+    throw new Error(`Unsupported MinGit architecture: ${process.arch}`);
+  }
+
+  console.log('\n📥 Installing MinGit...');
+  const gitPath = path.join(MINGIT_DIR, 'cmd', 'git.exe');
+  const versionMarker = path.join(MINGIT_DIR, '.eigent-mingit-version');
+  if (
+    fs.existsSync(gitPath) &&
+    fs.existsSync(versionMarker) &&
+    fs.readFileSync(versionMarker, 'utf-8').trim() === MINGIT_VERSION
+  ) {
+    try {
+      execFileSync(gitPath, ['--version'], { stdio: 'pipe' });
+      console.log(`✅ MinGit ${MINGIT_VERSION} already installed`);
+      return gitPath;
+    } catch (error) {
+      console.error(`Error verifying MinGit: ${error}`);
+    }
+  }
+
+  if (fs.existsSync(MINGIT_DIR)) {
+    fs.rmSync(MINGIT_DIR, { recursive: true, force: true });
+  }
+
+  const archivePath = path.join(
+    PREBUILT_DIR,
+    `mingit-download-${Date.now()}.zip`
+  );
+  try {
+    await downloadFileWithValidation(
+      [{ url: MINGIT_X64_URL, name: 'Git for Windows' }],
+      archivePath,
+      isValidZip,
+      'MinGit ZIP'
+    );
+    const actualSha256 = sha256File(archivePath);
+    if (actualSha256 !== MINGIT_X64_SHA256) {
+      throw new Error(
+        `MinGit checksum mismatch: expected ${MINGIT_X64_SHA256}, ` +
+          `received ${actualSha256}`
+      );
+    }
+
+    const AdmZip = (await import('adm-zip')).default;
+    new AdmZip(archivePath).extractAllTo(MINGIT_DIR, true);
+  } finally {
+    if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
+  }
+
+  if (!fs.existsSync(gitPath)) {
+    throw new Error(`MinGit executable not found after extraction: ${gitPath}`);
+  }
+  execFileSync(gitPath, ['--version'], { stdio: 'pipe' });
+  fs.writeFileSync(versionMarker, `${MINGIT_VERSION}\n`, 'utf-8');
+  console.log(`✅ MinGit ${MINGIT_VERSION} installed successfully`);
+  return gitPath;
 }
 
 /**
@@ -1100,6 +1179,7 @@ async function main() {
   try {
     const uvPath = await installUv();
     await installBun();
+    await installMinGit();
     await installPythonDeps(uvPath);
     await installTerminalBaseVenv(uvPath);
     await installBrowserToolkitDeps(uvPath, VENV_DIR);
@@ -1108,6 +1188,9 @@ async function main() {
     console.log(`📦 Binaries: ${BIN_DIR}`);
     console.log(`🐍 Python venv: ${VENV_DIR}`);
     console.log(`🖥️  Terminal venv: ${TERMINAL_VENV_DIR}`);
+    if (process.platform === 'win32') {
+      console.log(`🔀 MinGit: ${MINGIT_DIR}`);
+    }
   } catch (error) {
     console.error('\n❌ Failed:', error);
     process.exit(1);

@@ -1,6 +1,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+camel_logs/
 build/
 dist/
 wheels/

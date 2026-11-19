@@ -48,6 +48,21 @@ class WebDeployToolkit(BaseWebDeployToolkit, AbstractToolkit):
             remote_server_port,
         )
 
+    def get_tools(self) -> list[Any]:
+        """Expose only deployment operations supported by Eigent.
+
+        CAMEL's ``deploy_folder`` currently targets the legacy remote deploy
+        service, which does not support Eigent Workspace folders. Keep the
+        inherited method available for compatibility, but do not advertise it
+        to Agents until the remote service has a working folder contract.
+        """
+
+        return [
+            tool
+            for tool in super().get_tools()
+            if tool.get_function_name() != "deploy_folder"
+        ]
+
     @listen_toolkit(BaseWebDeployToolkit.deploy_html_content)
     def deploy_html_content(
         self,

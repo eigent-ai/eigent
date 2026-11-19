@@ -13,12 +13,20 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+import stat
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from app.component.environment import env_base_dir, sanitize_env_path
+import app.component.environment as environment
+from app.component.environment import (
+    _load_initial_env_files,
+    env,
+    env_base_dir,
+    sanitize_env_path,
+    set_user_env_path,
+)
 
 
 def test_none_input_returns_none():
@@ -185,3 +193,180 @@ def test_current_directory_traversal():
     result = sanitize_env_path("././project.env")
     assert result is not None
     assert result.startswith(env_base_dir)
+
+
+def test_initial_env_files_precedence(monkeypatch, temp_dir: Path):
+    """Standalone backend env loading should not depend on Electron."""
+    low_priority = temp_dir / "global.env"
+    high_priority = temp_dir / ".env.development"
+    low_priority.write_text(
+        "\n".join(
+            [
+                "SHARED_KEY=from_global",
+                "GLOBAL_ONLY=from_global",
+                "PROCESS_KEY=from_global",
+            ]
+        )
+    )
+    high_priority.write_text(
+        "\n".join(
+            [
+                "SHARED_KEY=from_development",
+                "DEVELOPMENT_ONLY=from_development",
+                "PROCESS_KEY=from_development",
+            ]
+        )
+    )
+
+    monkeypatch.delenv("SHARED_KEY", raising=False)
+    monkeypatch.delenv("GLOBAL_ONLY", raising=False)
+    monkeypatch.delenv("DEVELOPMENT_ONLY", raising=False)
+    monkeypatch.setenv("PROCESS_KEY", "from_process")
+
+    loaded_paths = _load_initial_env_files((low_priority, high_priority))
+
+    assert loaded_paths == [low_priority.resolve(), high_priority.resolve()]
+    assert os.environ["SHARED_KEY"] == "from_development"
+    assert os.environ["GLOBAL_ONLY"] == "from_global"
+    assert os.environ["DEVELOPMENT_ONLY"] == "from_development"
+    assert os.environ["PROCESS_KEY"] == "from_process"
+
+
+def test_env_reads_live_dotenv_updates(monkeypatch, temp_dir: Path):
+    """env() should see dotenv changes written after process startup."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("DYNAMIC_ENV_KEY=first")
+
+    monkeypatch.delenv("DYNAMIC_ENV_KEY", raising=False)
+    monkeypatch.setattr(
+        environment, "_resolve_initial_env_paths", lambda: (env_file,)
+    )
+    monkeypatch.setattr(
+        environment, "_process_env_keys", set(os.environ.keys())
+    )
+
+    assert env("DYNAMIC_ENV_KEY") == "first"
+
+    env_file.write_text("DYNAMIC_ENV_KEY=second")
+
+    assert env("DYNAMIC_ENV_KEY") == "second"
+
+
+def test_env_process_value_overrides_live_dotenv(monkeypatch, temp_dir: Path):
+    """Real process env remains higher priority than dotenv files."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("PROCESS_PRIORITY_KEY=from_file")
+
+    monkeypatch.setenv("PROCESS_PRIORITY_KEY", "from_process")
+    monkeypatch.setattr(
+        environment, "_resolve_initial_env_paths", lambda: (env_file,)
+    )
+    monkeypatch.setattr(
+        environment, "_process_env_keys", {"PROCESS_PRIORITY_KEY"}
+    )
+
+    assert env("PROCESS_PRIORITY_KEY") == "from_process"
+
+
+def _clear_thread_env_path() -> None:
+    if hasattr(environment._thread_local, "env_path"):
+        delattr(environment._thread_local, "env_path")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_load_initial_env_files_restricts_user_home_env_permissions(
+    monkeypatch, temp_dir: Path
+):
+    """~/.eigent/.env is loaded at startup and must not stay world-readable."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / ".env"
+    env_file.write_text("EIGENT_PERM_INIT_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        _load_initial_env_files((env_file,))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        monkeypatch.delenv("EIGENT_PERM_INIT_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_load_initial_env_files_does_not_chmod_repo_env_files(
+    monkeypatch, temp_dir: Path
+):
+    """Repo-local .env files are not user secret stores; leave their mode."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("EIGENT_PERM_REPO_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        _load_initial_env_files((env_file,))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o644, f"expected 0644, got {oct(mode)}"
+    finally:
+        monkeypatch.delenv("EIGENT_PERM_REPO_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_restricts_existing_env_file_permissions(
+    monkeypatch, temp_dir: Path
+):
+    """User .env files must be owner-only (0600), not default umask 0644."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / "user.env"
+    env_file.write_text("EIGENT_PERM_TEST_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        set_user_env_path(str(env_file))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_TEST_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_restricts_default_env_when_resetting(
+    monkeypatch, temp_dir: Path
+):
+    """Falling back to the global ~/.eigent/.env should still tighten it."""
+    default_env = temp_dir / ".env"
+    default_env.write_text("EIGENT_PERM_DEFAULT_KEY=secret\n")
+    os.chmod(default_env, 0o644)
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    monkeypatch.setattr(environment, "default_env_path", str(default_env))
+
+    try:
+        set_user_env_path(None)
+        mode = stat.S_IMODE(default_env.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_DEFAULT_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_still_loads_if_chmod_fails(
+    monkeypatch, temp_dir: Path
+):
+    """Permission hardening is best-effort and must not block loading."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / "user.env"
+    env_file.write_text("EIGENT_PERM_FAIL_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    def _boom(_path, _mode):
+        raise OSError("operation not permitted")
+
+    monkeypatch.setattr(os, "chmod", _boom)
+
+    try:
+        set_user_env_path(str(env_file))
+        assert Path(environment.get_current_env_path()).resolve() == (
+            env_file.resolve()
+        )
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_FAIL_KEY", raising=False)

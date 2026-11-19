@@ -12,131 +12,202 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { create } from 'zustand';
 import { Trigger, TriggerType } from '@/types';
+import { create } from 'zustand';
 
 export interface WebSocketEvent {
-    triggerId: number;
-    triggerName: string;
-    taskPrompt: string;
-    executionId: string;
-    timestamp: number;
-    /** Type of trigger: webhook or scheduled */
-    triggerType: TriggerType;
-    /** 
-     * Target project ID where this task should run.
-     * Future: triggers will be associated with specific projects.
-     */
-    projectId: string | null;
-    /** Input data from webhook request or scheduled context */
-    inputData: Record<string, any>;
+  triggerId: number;
+  triggerName: string;
+  taskPrompt: string;
+  executionId: string;
+  timestamp: number;
+  /** Type of trigger: webhook or scheduled */
+  triggerType: TriggerType;
+  /**
+   * Target project ID where this task should run.
+   * Future: triggers will be associated with specific projects.
+   */
+  projectId: string | null;
+  /** Target Space ID for the project, when supplied by the backend event. */
+  spaceId?: string | null;
+  /** Input data from webhook request or scheduled context */
+  inputData: Record<string, any>;
+  /**
+   * Set when this app found the execution itself (Run now, or a pending
+   * execution the websocket never delivered). It has not been acknowledged
+   * yet, so the server marks it missed unless the app reports it started.
+   */
+  needsClaim?: boolean;
 }
 
-export type WebSocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unhealthy';
+export type WebSocketConnectionStatus =
+  'disconnected' | 'connecting' | 'connected' | 'unhealthy';
+
+export interface RemoteControlSession {
+  sessionId: string;
+  url: string;
+  title: string;
+  expiresAt?: string;
+  linkToken?: string;
+}
+
+export type RemoteControlLogStatus = 'created' | 'stopped' | 'expired';
+
+export interface RemoteControlLogEntry {
+  id: string;
+  time: string;
+  name: string;
+  status: RemoteControlLogStatus;
+}
 
 interface TriggerStore {
-    // State
-    triggers: Trigger[];
-    webSocketEvent: WebSocketEvent | null;
-    wsConnectionStatus: WebSocketConnectionStatus;
-    lastPongTimestamp: number | null;
-    wsReconnectCallback: (() => void) | null;
+  // State
+  triggers: Trigger[];
+  /** Executions waiting for useTriggerTaskExecutor, oldest first. */
+  webSocketEvents: WebSocketEvent[];
+  /** Increments each time the execution websocket subscribes. */
+  wsConnectionEpoch: number;
+  /** True while this window runs useTriggerTaskExecutor. */
+  executionAdmissionAvailable: boolean;
+  wsConnectionStatus: WebSocketConnectionStatus;
+  lastPongTimestamp: number | null;
+  wsReconnectCallback: (() => void) | null;
+  activeRemoteControlSessions: RemoteControlSession[];
+  remoteControlLogs: RemoteControlLogEntry[];
 
-    // Actions
-    setTriggers: (triggers: Trigger[]) => void;
-    setWsConnectionStatus: (status: WebSocketConnectionStatus) => void;
-    setLastPongTimestamp: (timestamp: number | null) => void;
-    setWsReconnectCallback: (callback: (() => void) | null) => void;
-    triggerReconnect: () => void;
-    addTrigger: (triggerData: Partial<Trigger>) => Trigger;
-    updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => void;
-    deleteTrigger: (triggerId: number) => void;
-    duplicateTrigger: (triggerId: number) => Trigger | null;
-    getTriggerById: (triggerId: number) => Trigger | undefined;
-    emitWebSocketEvent: (event: WebSocketEvent) => void;
-    clearWebSocketEvent: () => void;
+  // Actions
+  setTriggers: (triggers: Trigger[]) => void;
+  setWsConnectionStatus: (status: WebSocketConnectionStatus) => void;
+  markWsSubscribed: () => void;
+  setExecutionAdmissionAvailable: (available: boolean) => void;
+  setLastPongTimestamp: (timestamp: number | null) => void;
+  setWsReconnectCallback: (callback: (() => void) | null) => void;
+  triggerReconnect: () => void;
+  addTrigger: (triggerData: Partial<Trigger>) => Trigger;
+  updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => void;
+  deleteTrigger: (triggerId: number) => void;
+  getTriggerById: (triggerId: number) => Trigger | undefined;
+  emitWebSocketEvent: (event: WebSocketEvent) => void;
+  takeWebSocketEvents: () => WebSocketEvent[];
+  addRemoteControlSession: (session: RemoteControlSession) => void;
+  removeRemoteControlSession: (sessionId: string) => void;
+  addRemoteControlLog: (
+    entry: Omit<RemoteControlLogEntry, 'id' | 'time'>
+  ) => void;
 }
 
 export const useTriggerStore = create<TriggerStore>((set, get) => ({
-    // Initialize with mock data
-    triggers: [],
-    webSocketEvent: null,
-    wsConnectionStatus: 'disconnected' as WebSocketConnectionStatus,
-    lastPongTimestamp: null,
-    wsReconnectCallback: null,
+  // Initialize with mock data
+  triggers: [],
+  webSocketEvents: [],
+  wsConnectionEpoch: 0,
+  executionAdmissionAvailable: false,
+  wsConnectionStatus: 'disconnected' as WebSocketConnectionStatus,
+  lastPongTimestamp: null,
+  wsReconnectCallback: null,
+  activeRemoteControlSessions: [],
+  remoteControlLogs: [],
 
-    setTriggers: (triggers: Trigger[]) => {
-        set({ triggers });
-    },
+  setTriggers: (triggers: Trigger[]) => {
+    set({ triggers });
+  },
 
-    setWsConnectionStatus: (status: WebSocketConnectionStatus) => {
-        set({ wsConnectionStatus: status });
-    },
+  setWsConnectionStatus: (status: WebSocketConnectionStatus) => {
+    set({ wsConnectionStatus: status });
+  },
 
-    setLastPongTimestamp: (timestamp: number | null) => {
-        set({ lastPongTimestamp: timestamp });
-    },
+  markWsSubscribed: () => {
+    set((state) => ({ wsConnectionEpoch: state.wsConnectionEpoch + 1 }));
+  },
 
-    setWsReconnectCallback: (callback: (() => void) | null) => {
-        set({ wsReconnectCallback: callback });
-    },
+  setExecutionAdmissionAvailable: (available: boolean) => {
+    set({ executionAdmissionAvailable: available });
+  },
 
-    triggerReconnect: () => {
-        const callback = get().wsReconnectCallback;
-        if (callback) {
-            callback();
-        }
-    },
+  setLastPongTimestamp: (timestamp: number | null) => {
+    set({ lastPongTimestamp: timestamp });
+  },
 
-    addTrigger: (triggerData: Partial<Trigger>) => {
-        const newTrigger: Trigger = {
-            id: triggerData.id,
-            ...triggerData,
-        } as Trigger;
+  setWsReconnectCallback: (callback: (() => void) | null) => {
+    set({ wsReconnectCallback: callback });
+  },
 
-        set((state) => ({
-            triggers: [...state.triggers, newTrigger]
-        }));
+  triggerReconnect: () => {
+    const callback = get().wsReconnectCallback;
+    if (callback) {
+      callback();
+    }
+  },
 
-        return newTrigger;
-    },
+  addTrigger: (triggerData: Partial<Trigger>) => {
+    const newTrigger: Trigger = {
+      id: triggerData.id,
+      ...triggerData,
+    } as Trigger;
 
-    updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => {
-        set((state) => ({
-            triggers: state.triggers.map((trigger) =>
-                trigger.id === triggerId
-                    ? { ...trigger, ...triggerData, updated_at: new Date().toISOString() }
-                    : trigger
-            )
-        }));
-    },
+    set((state) => ({
+      triggers: [...state.triggers, newTrigger],
+    }));
 
-    deleteTrigger: (triggerId: number) => {
-        set((state) => ({
-            triggers: state.triggers.filter((trigger) => trigger.id !== triggerId)
-        }));
-    },
+    return newTrigger;
+  },
 
-    duplicateTrigger: (triggerId: number) => {
-        const originalTrigger = get().triggers.find((t) => t.id === triggerId);
-        if (!originalTrigger) return null;
+  updateTrigger: (triggerId: number, triggerData: Partial<Trigger>) => {
+    set((state) => ({
+      triggers: state.triggers.map((trigger) =>
+        trigger.id === triggerId
+          ? { ...trigger, ...triggerData, updated_at: new Date().toISOString() }
+          : trigger
+      ),
+    }));
+  },
 
-        set((state) => ({
-            triggers: [...state.triggers, originalTrigger]
-        }));
+  deleteTrigger: (triggerId: number) => {
+    set((state) => ({
+      triggers: state.triggers.filter((trigger) => trigger.id !== triggerId),
+    }));
+  },
 
-        return originalTrigger;
-    },
+  getTriggerById: (triggerId: number) => {
+    return get().triggers.find((t) => t.id === triggerId);
+  },
 
-    getTriggerById: (triggerId: number) => {
-        return get().triggers.find((t) => t.id === triggerId);
-    },
+  // A queue, not a slot: events that arrive in the same tick must all run.
+  emitWebSocketEvent: (event: WebSocketEvent) => {
+    set((state) => ({ webSocketEvents: [...state.webSocketEvents, event] }));
+  },
 
-    emitWebSocketEvent: (event: WebSocketEvent) => {
-        set({ webSocketEvent: event });
-    },
+  takeWebSocketEvents: () => {
+    const events = get().webSocketEvents;
+    if (events.length) set({ webSocketEvents: [] });
+    return events;
+  },
 
-    clearWebSocketEvent: () => {
-        set({ webSocketEvent: null });
-    },
+  addRemoteControlSession: (session: RemoteControlSession) => {
+    set((state) => ({
+      activeRemoteControlSessions: [
+        ...state.activeRemoteControlSessions,
+        session,
+      ],
+    }));
+  },
+
+  removeRemoteControlSession: (sessionId: string) => {
+    set((state) => ({
+      activeRemoteControlSessions: state.activeRemoteControlSessions.filter(
+        (s) => s.sessionId !== sessionId
+      ),
+    }));
+  },
+
+  addRemoteControlLog: (entry) => {
+    const newEntry: RemoteControlLogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      time: new Date().toISOString(),
+      ...entry,
+    };
+    set((state) => ({
+      remoteControlLogs: [...state.remoteControlLogs, newEntry],
+    }));
+  },
 }));

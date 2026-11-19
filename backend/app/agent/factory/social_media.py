@@ -12,14 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import SOCIAL_MEDIA_SYS_PROMPT
+from app.agent.prompt import (
+    SOCIAL_MEDIA_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -30,7 +38,7 @@ from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.twitter_toolkit import TwitterToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
-from app.agent.utils import NOW_STR
+from app.agent.utils import agent_current_time
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
@@ -46,6 +54,11 @@ async def social_media_agent(options: Chat):
     logger.info(
         f"Creating social media agent for project: {options.project_id} "
         f"in directory: {working_directory}"
+    )
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, Agents.social_media_agent
+        ).send_message_to_user
     )
     tools = [
         *WhatsAppToolkit.get_can_use_tools(options.project_id),
@@ -84,28 +97,50 @@ async def social_media_agent(options: Chat):
         # *DiscordToolkit(options.project_id).get_tools(),
         # *GoogleSuiteToolkit(options.project_id).get_tools(),
     ]
+    tool_names = [
+        WhatsAppToolkit.toolkit_name(),
+        TwitterToolkit.toolkit_name(),
+        LinkedInToolkit.toolkit_name(),
+        RedditToolkit.toolkit_name(),
+        NotionMCPToolkit.toolkit_name(),
+        GoogleGmailMCPToolkit.toolkit_name(),
+        GoogleCalendarToolkit.toolkit_name(),
+        HumanToolkit.toolkit_name(),
+        TerminalToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+        SearchToolkit.toolkit_name(),
+    ]
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.social_media_agent,
+    )
+    system_message = SOCIAL_MEDIA_SYS_PROMPT.format(
+        working_directory=working_directory,
+        now_str=agent_current_time(options),
+    )
+    system_message = append_connected_app_mcp_notice(system_message)
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.social_media_agent,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=system_message,
+        local_tool_description=(
+            "local social, calendar, email, terminal, or search tools"
+        ),
+        message_integration=message_integration,
+    )
     return agent_model(
         Agents.social_media_agent,
         BaseMessage.make_assistant_message(
             role_name="Social Media Agent",
-            content=SOCIAL_MEDIA_SYS_PROMPT.format(
-                working_directory=working_directory, now_str=NOW_STR
-            ),
+            content=system_message,
         ),
         options,
         tools,
-        tool_names=[
-            WhatsAppToolkit.toolkit_name(),
-            TwitterToolkit.toolkit_name(),
-            LinkedInToolkit.toolkit_name(),
-            RedditToolkit.toolkit_name(),
-            NotionMCPToolkit.toolkit_name(),
-            GoogleGmailMCPToolkit.toolkit_name(),
-            GoogleCalendarToolkit.toolkit_name(),
-            HumanToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-            SearchToolkit.toolkit_name(),
-        ],
+        tool_names=tool_names,
     )

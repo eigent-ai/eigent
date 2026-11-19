@@ -36,11 +36,15 @@
 
 - ✅ **零配置** - 无需技术设置
 - ✅ **多智能体协作** - 处理复杂的多智能体工作流
-- ✅ **企业级功能** - SSO/访问控制
+- ✅ **单智能体执行框架** - 使用一个专注的智能体执行明确任务
 - ✅ **本地部署**
 - ✅ **开源**
-- ✅ **支持自定义模型**
+- ✅ **模型无关** - 支持您选择的任意模型
 - ✅ **MCP 集成**
+- ✅ **技能集成**
+- ✅ **内置浏览器与终端工具包**
+- ✅ **以及更多**
+- ✅ **企业级功能** - SSO、访问控制与定制咨询
 
 <br/>
 
@@ -51,22 +55,25 @@
 
 #### 目录
 
-- \[🚀 快速开始 - 开源 Cowork\](#-快速开始---开源 Cowork)
+- [🚀 快速开始 - 开源 Cowork](#-快速开始---开源 Cowork)
   - [☁️ 云版本](#%EF%B8%8F-%E4%BA%91%E7%89%88%E6%9C%AC)
   - [🏠 自托管（社区版）](#-%E8%87%AA%E6%89%98%E7%AE%A1%E7%A4%BE%E5%8C%BA%E7%89%88)
   - [🏢 企业版](#-%E4%BC%81%E4%B8%9A%E7%89%88)
-- \[✨ 核心功能 - 开源 Cowork\](#-核心功能---开源 Cowork)
-  - [🏭 工作流](#-%E5%B7%A5%E4%BD%9C%E6%B5%81)
-  - [🧠 全面模型支持](#-%E5%85%A8%E9%9D%A2%E6%A8%A1%E5%9E%8B%E6%94%AF%E6%8C%81)
-  - [🔌 MCP 工具集成](#-mcp-%E5%B7%A5%E5%85%B7%E9%9B%86%E6%88%90)
-  - [✋ 人工介入](#-%E4%BA%BA%E5%B7%A5%E4%BB%8B%E5%85%A5)
+- [✨ 核心功能 - 开源 Cowork](#-核心功能---开源 Cowork)
+  - [🧑‍💻 与单个智能体协作](#-与单个智能体协作)
+  - [🏭 与智能体团队协作](#-与智能体团队协作)
+  - [⏰ 自动化](#-自动化)
+  - [🔒 本地且安全](#-本地且安全)
+  - [🧠 模型无关](#-模型无关)
   - [👐 100% 开源](#-100-%E5%BC%80%E6%BA%90)
-- \[🧩 使用案例 - 开源 Cowork\](#-使用案例---开源 Cowork)
+- [🧩 使用案例 - 开源 Cowork](#-使用案例---开源 Cowork)
+  - [面向开发者](#面向开发者)
+  - [精选](#精选)
 - [🛠️ 技术栈](#%EF%B8%8F-%E6%8A%80%E6%9C%AF%E6%A0%88)
   - [后端](#%E5%90%8E%E7%AB%AF)
   - [前端](#%E5%89%8D%E7%AB%AF)
-- \[🌟 保持领先 - 开源 Cowork\](#保持领先---开源 Cowork)
-- \[🗺️ 路线图 - 开源 Cowork\](#️-路线图---开源 Cowork)
+- [🌟 保持领先 - 开源 Cowork](#保持领先---开源 Cowork)
+- [🗺️ 路线图 - 开源 Cowork](#️-路线图---开源 Cowork)
 - [📖 贡献](#-%E8%B4%A1%E7%8C%AE)
   - [核心贡献者](#%E6%A0%B8%E5%BF%83%E8%B4%A1%E7%8C%AE%E8%80%85)
   - [杰出大使](#%E6%9D%B0%E5%87%BA%E5%A4%A7%E4%BD%BF)
@@ -147,132 +154,91 @@ uv sync
 - **可扩展的企业部署**
 - **协商的 SLA** 和实施服务
 
-📧 更多详情，请联系 [info@eigent.ai](mailto:info@eigent.ai)。
+📧 如需了解更多详情，请[联系我们的销售团队](https://www.eigent.ai/contact-sales)。
 
 ## **✨ 核心功能 - 开源 Cowork**
 
-通过 Eigent 开源 Cowork的强大功能释放卓越生产力的全部潜力——专为无缝集成、智能任务执行和无边界自动化而设计。
+### 🧑‍💻 与单个智能体协作
 
-### 🏭 工作流
+从一个专注的智能体开始处理明确任务。在桌面工作区中与它一起研究、写作、调试和执行操作。
 
-部署一支专业 AI 智能体团队，协作解决复杂任务。Eigent 开源 Cowork动态分解任务并激活多个智能体 **并行工作**。
+### 🏭 与智能体团队协作
 
-Eigent 预定义了以下智能体工作者：
+扩展至多个专业智能体，让它们拆分工作、并行协作，并共同执行复杂的多步骤工作流。
 
-- **开发智能体**：编写和执行代码，运行终端命令。
-- **搜索智能体**：搜索网络并提取内容。
-- **文档智能体**：创建和管理文档。
-- **多模态智能体**：处理图像和音频。
+### ⏰ 自动化
 
-![Workforce](https://eigent-ai.github.io/.github/assets/gif/feature_dynamic_workforce.gif)
+安排周期性工作流，让智能体在正确的时间执行任务——即使您暂时离开，工作也能继续推进。
 
-<br/>
+### 🔒 本地且安全
 
-### 🧠 全面模型支持
+采用本地优先方式在您的机器上运行智能体。文件、凭据和上下文始终由您掌控。
 
-使用您偏好的模型本地部署 Eigent 开源 Cowork桌面应用。
+### 🧠 模型无关
 
-![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
-
-<br/>
-
-### 🔌 MCP 工具集成
-
-Eigent 内置大量 **模型上下文协议（MCP）** 工具（用于网页浏览、代码执行、Notion、Google 套件、Slack 等），并允许您 **安装自己的工具**。为智能体配备适合您场景的工具——甚至集成内部 API 或自定义功能——以增强其能力。
-
-![MCP](https://eigent-ai.github.io/.github/assets/gif/feature_add_mcps.gif)
-
-<br/>
-
-### ✋ 人工介入
-
-如果任务卡住或遇到不确定性，Eigent 会自动请求人工输入。
-
-![Human-in-the-loop](https://eigent-ai.github.io/.github/assets/gif/feature_human_in_the_loop.gif)
-
-<br/>
+连接您已经使用的模型——云端 API、企业网关或本地推理——无需被单一供应商锁定。
 
 ### 👐 100% 开源
 
 Eigent 完全开源。您可以下载、检查和修改代码，确保透明度并促进多智能体创新的社区驱动生态系统。
 
-![Opensource][image-opensource]
-
-<br/>
-
 ## 🧩 使用案例 - 开源 Cowork
 
-了解全球开发者如何利用 Eigent 的开源 Cowork能力，在各行各业自动化复杂工作流程并提升生产力。
+探索 Eigent 如何将复杂的桌面工作转化为可重复执行的智能体工作流。
 
-### 1. 棕榈泉网球旅行行程与 Slack 摘要 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
+### 面向开发者
 
-<details>
-<summary><strong>提示：</strong> <kbd>我们是两个网球爱好者，想去观看 2026 年棕榈泉的网球比赛... <kbd></summary>
-<br>
-我们是两个网球爱好者，想去观看 2026 年棕榈泉的网球比赛。我住在旧金山——请准备一个详细的行程，包括航班、酒店、为期 3 天的活动安排——围绕半决赛/决赛的时间。我们喜欢徒步、素食和 Spa。预算为 5,000 美元。行程应是一个详细的时间表，包括时间、活动、费用、其他细节，以及购买门票/预订的链接（如适用）。完成后，请生成一份关于此次旅行的 HTML 报告；编写此计划的摘要，并将文本摘要和报告 HTML 链接发送到 Slack #tennis-trip-sf 频道。
-</details>
+#### [使用 Eigent 构建 10 款春节 HTML5 游戏](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
-<br>
+协调多个智能体并行构建十款精致、适配移动设备的浏览器游戏，覆盖多种类型，并包含计分、难度递增和重新开始流程。
 
-### 2. 从 CSV 银行数据生成 Q2 报告 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM1MjY4OTE4MDgtODczOSI.aIjJmQ.WTdoX9mATwrcBr_w53BmGEHPo8U__1753526891808-8739)
+[观看演示 →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
 
-<details>
-<summary><strong>提示：</strong> <kbd>请根据我桌面上的银行转账记录文件 bank_transacation.csv... <kbd></summary>
-<br>
-请根据我桌面上的银行转账记录文件 bank_transacation.csv，帮我准备一份 Q2 财务报表，生成带图表的 HTML 报告，向投资者展示我们的支出情况。
-</details>
+[查看指南 →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
-<br>
+#### [使用 Gemini 3.1 Pro 构建 3D Snow Bros 平台游戏](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
-### 3. 英国医疗市场调研报告自动化 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTMzOTM1NTg3OTctODcwNyI.aIey-Q.Jh9QXzYrRYarY0kz_qsgoj3ewX0__1753393558797-8707)
+创建完整的浏览器 3D 平台游戏，包含雪球战斗、敌人连锁、计分、生命值、难度递增和分层场景。
 
-<details>
-<summary><strong>提示：</strong> <kbd>分析英国医疗保健行业以支持我下一家公司的规划... <kbd></summary>
-<br>
-分析英国医疗保健行业以支持我下一家公司的规划。提供全面的市场概览，包括当前趋势、增长预测和相关法规。识别市场中5-10个主要机会、缺口或服务不足的细分领域。将所有发现整理成结构清晰、专业的HTML报告。完成后，向Slack的#eigentr-product-test频道发送消息，以便与团队成员对齐报告内容。。
-</details>
+[观看演示 →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
 
-<br>
+[查看指南 →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
-### 4. 德国电动滑板市场可行性 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
+#### [通过 Ollama 与 DeepSeek 自动生成月度开发报告](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
-<details>
-<summary><strong>提示：</strong> <kbd>我们是一家生产高端电动滑板的公司... <kbd></summary>
-<br>
-我们是一家生产高端电动滑板的公司，正在考虑进入德国市场。请为我准备一份详细的市场进入可行性报告。报告需涵盖以下方面：1. 市场规模与法规；2. 消费者画像；3. 渠道与分销；4. 成本与定价；5. 综合报告与演示。
-</details>
+使用本地托管模型回顾一个月的 GitHub 拉取请求，生成 Word 摘要，并准备对应的 Slack 发布更新。
 
-<br>
+[观看演示 →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
 
-### 5. 多智能体产品发布的 SEO 审计 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2OTk5NzExNDQtNTY5NiI.aIex0w.jc_NIPmfIf9e3zGt-oG9fbMi3K4__1753699971144-5696)
+[查看指南 →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
-<details>
-<summary><strong>提示：</strong> <kbd>为了支持我们新的多智能体产品发布... <kbd></summary>
-<br>
-为了支持我们新的多智能体产品发布，请对我们的官方网站 (https://www.camel-ai.org/) 进行全面的 SEO 审计，并提供带有可操作建议的详细优化报告。
-</details>
+### 精选
 
-<br>
+#### [整理桌面文件](https://www.eigent.ai/use-cases/organize-desktop-files)
 
-### 6. 识别下载文件夹中的重复文件 [回放 ▶️](https://www.eigent.ai/download?share_token=IjE3NTM3NjAzODgxNzEtMjQ4Ig.aIhKLQ.epOG--0Nj0o4Bqjtdqm9OZdaqRQ__1753760388171-248)
+让 Eigent 检查杂乱的桌面，并直接在您的机器上将文件整理成更清晰、更实用的结构。
 
-<details>
-<summary><strong>提示：</strong> <kbd>我的 Documents 目录中有一个名为 mydocs 的文件夹... <kbd></summary>
-<br>
-我的 Documents 目录中有一个名为 mydocs 的文件夹。请扫描并识别所有完全或近似重复的文件——包括内容相同、文件大小或格式相同的文件（即使文件名或扩展名不同）。清晰列出它们，按相似性分组。
-</details>
+[观看演示 →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
 
-<br>
+[查看指南 →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
-### 7. 添加签名到 PDF [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTQwOTU0ODM0NTItNTY2MSI.aJCHrA.Mg5yPOFqj86H_GQvvRNditzepXc__1754095483452-5661)
+#### [使用 Gemini 3.5 Flash 在 Eigent 中审计 ML CI 故障](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
-<details>
-<summary><strong>提示:</strong> <kbd>请将此签名图片添加到 PDF 中的签名区域 ... <kbd></summary>
-<br>
-请将此签名图片添加到 PDF 中的签名区域。你可以安装命令行工具 “tesseract”（该工具通过 OCR 技术可可靠定位“签名区域”），以帮助完成此任务。
-</details>
+编排多智能体 CI 调查：获取日志、比较基准值、追踪证据、委派深度推理，并生成结构化审计报告。
 
-<br>
+[观看演示 →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+
+#### [工单管理系统集成与报告](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+
+将本地工单数据导入基于浏览器的管理系统，然后生成包含图表和可视化摘要的统计报告。
+
+[观看演示 →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+
+[探索更多使用案例 →](https://www.eigent.ai/use-cases)
 
 ## 🛠️ 技术栈
 
@@ -385,7 +351,7 @@ Eigent 基于 [CAMEL-AI.org][camel-ai-org-github] 的研究和基础设施构建
 [image-public-beta]: https://eigent-ai.github.io/.github/assets/banner.png
 [image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
-[join-us]: https://eigent-ai.notion.site/eigent-ai-careers
+[join-us]: https://www.eigent.ai/careers
 [join-us-image]: https://img.shields.io/badge/Join%20Us-yellow?style=plastic
 [reddit-image]: https://img.shields.io/reddit/subreddit-subscribers/CamelAI?style=plastic&logo=reddit&label=r%2FCAMEL&labelColor=white
 [reddit-url]: https://www.reddit.com/r/CamelAI/

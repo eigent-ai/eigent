@@ -12,31 +12,34 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
+import { useHost } from '@/host';
 import { Minus, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import './index.css';
 
+/** Renders when host provides window controls. */
 export default function WindowControls() {
+  const { t } = useTranslation();
+  const host = useHost();
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) return;
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
 
-    // Hide custom controls on macOS (uses native traffic lights)
-    // and on Windows (now uses native frame with native controls)
     if (p === 'darwin' || p === 'win32') {
       if (controlsRef.current) {
         controlsRef.current.style.display = 'none';
       }
     }
-  }, []);
+  }, [host]);
 
-  // Don't render custom controls on macOS or Windows (both use native controls)
-  if (platform === 'darwin' || platform === 'win32') {
-    return null;
-  }
+  if (!host?.electronAPI) return null;
+  if (platform === 'darwin' || platform === 'win32') return null;
 
   return (
     <div
@@ -45,33 +48,39 @@ export default function WindowControls() {
       ref={controlsRef}
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
-      <div
-        className="control-btn h-full flex-1"
-        onClick={() => window.electronAPI.minimizeWindow()}
+      <button
+        type="button"
+        aria-label={t('layout.minimize', { defaultValue: 'Minimize' })}
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
+        onClick={() => host?.electronAPI?.minimizeWindow()}
       >
-        <Minus className="h-4 w-4" />
-      </div>
-      <div
-        className="control-btn h-full flex-1"
-        onClick={() => window.electronAPI.toggleMaximizeWindow()}
+        <DsIcon icon={Minus} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={t('layout.maximize', { defaultValue: 'Maximize' })}
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
+        onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
       >
-        <Square className="h-4 w-4" />
-      </div>
-      <div
-        className="control-btn h-full flex-1"
+        <DsIcon icon={Square} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={t('layout.close', { defaultValue: 'Close' })}
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
           // Trigger window close - this will go through the before-close handler
           // which checks if tasks are running and shows confirmation if needed
-          window.electronAPI.closeWindow(false);
+          host?.electronAPI?.closeWindow(false);
         }}
         onMouseDown={(e) => {
           e.stopPropagation();
         }}
       >
-        <X className="h-4 w-4" />
-      </div>
+        <DsIcon icon={X} aria-hidden />
+      </button>
     </div>
   );
 }

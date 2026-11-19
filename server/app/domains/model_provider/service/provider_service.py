@@ -65,10 +65,21 @@ class ProviderService:
             ).first()
             if not model:
                 return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
-            # H10: only allow updating safe fields
-            _UPDATABLE_FIELDS = {"provider_name", "api_key", "api_base", "extra_config", "prefer", "is_vaild"}
+            # Only allow updating provider fields owned by this CRUD surface.
+            _UPDATABLE_FIELDS = {
+                "provider_name",
+                "api_key",
+                "endpoint_url",
+                "encrypted_config",
+                "model_type",
+                "prefer",
+                "is_valid",
+                "is_vaild",
+            }
             for key, value in data.items():
                 if key in _UPDATABLE_FIELDS:
+                    if key == "is_vaild":
+                        key = "is_valid"
                     setattr(model, key, value)
             model.save(s)
             s.refresh(model)
@@ -95,7 +106,7 @@ class ProviderService:
             ).first()
             if not model:
                 return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
-            model.is_vaild = VaildStatus.not_valid
+            model.is_valid = VaildStatus.not_valid
             model.save(s)
             s.refresh(model)
             logger.info("Provider invalidated", extra={"user_id": user_id, "provider_id": provider_id})

@@ -13,19 +13,34 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchPost } from '@/api/http';
+import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
 import { lazy, useEffect, useReducer } from 'react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { warnAuthClearedForEnvironment } from '@/lib/authEnvironment';
+import { SESSION_WINDOW_ROUTE } from '@/lib/sessionWindows';
+import {
+  LegacyRouteRedirect,
+  LegacySettingRedirect,
+} from './LegacyRouteCompatibility';
+import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Home = lazy(() => import('@/pages/Home'));
-const History = lazy(() => import('@/pages/History'));
+const loadWorkspace = () => import('@/pages/Workspace');
+const loadHome = () => import('@/pages/Home');
+const loadSettings = () => import('@/pages/Settings');
+const Workspace = lazy(loadWorkspace);
+const Home = lazy(loadHome);
+const Settings = lazy(loadSettings);
 const NotFound = lazy(() => import('@/pages/NotFound'));
+const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
+const SessionWindow = lazy(() => import('@/pages/SessionWindow'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
 
 interface AuthState {
   loading: boolean;
@@ -58,6 +73,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 
 // Route guard: Check if user is logged in
 const ProtectedRoute = () => {
+  const location = useLocation();
   const [state, dispatch] = useReducer(authReducer, {
     loading: false,
     isAuthenticated: false,
@@ -82,7 +98,7 @@ const ProtectedRoute = () => {
 
       // If stored value exists and differs from current, logout
       if (storedProxyValue !== null && storedProxyValue !== currentProxyValue) {
-        console.warn('VITE_USE_LOCAL_PROXY value changed, logging out user');
+        warnAuthClearedForEnvironment(['local']);
         logout();
         dispatch({ type: 'LOGOUT' });
         return;
@@ -120,39 +136,97 @@ const ProtectedRoute = () => {
     }
 
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [token, localProxyValue, logout, setAuth, setLocalProxyValue]);
+  }, [
+    token,
+    localProxyValue,
+    logout,
+    setAuth,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+    setModelType,
+  ]);
 
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-x-0 border-t-0 border-b-2 border-blue-600"></div>
       </div>
     );
   }
-  return state.isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  if (state.isAuthenticated) {
+    return <Outlet />;
+  }
+
+  const redirect = `${location.pathname}${location.search}`;
+  return (
+    <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />
+  );
 };
 
-// Main route configuration
-const AppRoutes = () => (
-  <Routes>
-    <Route path="/login" element={<Login />} />
-    <Route path="/signup" element={<Signup />} />
-    <Route element={<ProtectedRoute />}>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/history" element={<History />} />
-        <Route
-          path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
-        />
-        <Route
-          path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
-        />
+/** Fetch the main pages once the app is idle, so the first click doesn't. */
+function usePreloadPages() {
+  useEffect(() => {
+    const preload = () => {
+      void Promise.all([
+        loadWorkspace(),
+        loadHome(),
+        loadSettings(),
+        import('@/components/Workspace/SpaceWorkspacePage'),
+      ]).catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+}
+
+const AppRoutes = () => {
+  usePreloadPages();
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
+        <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
+      ) : null}
+      <Route element={<ProtectedRoute />}>
+        {/* A Session in its own window: no app shell, sidebar or top bar. */}
+        <Route path={SESSION_WINDOW_ROUTE} element={<SessionWindow />} />
+        <Route element={<Layout />}>
+          <Route
+            element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+          >
+            <Route index element={null} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route
+            path="/history"
+            element={<LegacyRouteRedirect kind="history" />}
+          />
+          <Route
+            path="/workspace-configuration"
+            element={<LegacyRouteRedirect kind="workspace-configuration" />}
+          />
+          <Route
+            path="/workspace-bundles/install"
+            element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+          />
+          <Route
+            path="/agent-plugins/import"
+            element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+          />
+          <Route path="/setting" element={<LegacySettingRedirect />} />
+          <Route path="/setting/*" element={<LegacySettingRedirect />} />
+        </Route>
       </Route>
-    </Route>
-    <Route path="*" element={<NotFound />} />
-  </Routes>
-);
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+};
 
 export default AppRoutes;

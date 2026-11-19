@@ -16,7 +16,6 @@ import i18n from '@/i18n';
 import { toast } from 'sonner';
 
 export function showTrafficToast() {
-  toast.dismiss();
   toast(
     <div>
       {i18n.t(
@@ -24,6 +23,7 @@ export function showTrafficToast() {
       )}
     </div>,
     {
+      id: 'eigent-traffic',
       duration: 5000,
       closeButton: true,
     }

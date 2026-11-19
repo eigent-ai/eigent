@@ -12,6 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createHost } from '@/host';
+import {
+  recordAppLaunchFailed,
+  recordOnboardingStepCompleted,
+} from '@/lib/events/appEvents';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -42,6 +47,7 @@ interface InstallationStoreState {
   backendError?: string; // Separate error for backend startup failures
   isVisible: boolean;
   isBackendReady: boolean; // Non-persisted, defaults to false on each app launch
+  backendReadyRevision: number; // Advances for every readiness confirmation, including true → true
   needsBackendRestart: boolean; // Flag to indicate backend is restarting after logout
 
   // Actions
@@ -73,8 +79,11 @@ const initialState = {
   backendError: undefined,
   isVisible: false,
   isBackendReady: false,
+  backendReadyRevision: 0,
   needsBackendRestart: false,
 };
+
+const getElectronAPI = () => createHost().electronAPI;
 
 // Create the installation store
 export const useInstallationStore = create<InstallationStoreState>()(
@@ -103,11 +112,12 @@ export const useInstallationStore = create<InstallationStoreState>()(
       }),
 
     setSuccess: () =>
-      set({
+      set((state) => ({
         state: 'completed',
         progress: 100,
         isBackendReady: true,
-      }),
+        backendReadyRevision: state.backendReadyRevision + 1,
+      })),
 
     setError: (error: string) =>
       set((state) => ({
@@ -154,6 +164,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
 
     retryBackend: async () => {
       try {
+        const electronAPI = getElectronAPI();
         // Clear backend error and go back to waiting-backend state
         set({
           backendError: undefined,
@@ -163,9 +174,9 @@ export const useInstallationStore = create<InstallationStoreState>()(
         });
 
         // Call restart-backend via electronAPI
-        const result = await window.electronAPI.restartBackend();
+        const result = await electronAPI?.restartBackend();
 
-        if (!result.success) {
+        if (!result?.success) {
           set({
             backendError: result.error || 'Failed to restart backend',
             state: 'error',
@@ -200,9 +211,10 @@ export const useInstallationStore = create<InstallationStoreState>()(
 
       try {
         startInstallation();
-        const result = await window.electronAPI.checkAndInstallDepsOnUpdate();
+        const electronAPI = getElectronAPI();
+        const result = await electronAPI?.checkAndInstallDepsOnUpdate();
 
-        if (result.success) {
+        if (result?.success) {
           // Keep waiting state until useInstallationSetup confirms backend readiness.
           setWaitingBackend();
         } else {
@@ -214,8 +226,10 @@ export const useInstallationStore = create<InstallationStoreState>()(
     },
 
     exportLog: async () => {
+      const electronAPI = getElectronAPI();
+      if (!electronAPI?.exportLog) return;
       try {
-        const response = await window.electronAPI.exportLog();
+        const response = await electronAPI.exportLog();
 
         if (!response.success) {
           alert('Export cancelled: ' + response.error);
@@ -232,6 +246,61 @@ export const useInstallationStore = create<InstallationStoreState>()(
       }
     },
   }))
+);
+
+/**
+ * Resolve when the single renderer-side backend readiness authority reports
+ * that the local Brain can accept durable work.
+ *
+ * This intentionally has no wall-clock timeout. A slow local startup must not
+ * turn into a permanently skipped reconciliation, and callers must not create
+ * competing /health polling loops. The post-subscribe state check closes the
+ * race where readiness changes between the initial read and subscription.
+ */
+export const waitForBackendReadiness = (): Promise<void> => {
+  if (useInstallationStore.getState().isBackendReady) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe: () => void = () => undefined;
+    const resolveOnce = () => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolve();
+    };
+
+    unsubscribe = useInstallationStore.subscribe(
+      (state) => state.isBackendReady,
+      (isBackendReady) => {
+        if (isBackendReady) resolveOnce();
+      }
+    );
+
+    if (useInstallationStore.getState().isBackendReady) {
+      resolveOnce();
+    }
+  });
+};
+
+// Analytics: one subscription tracks the install/setup lifecycle so we don't
+// have to instrument every individual setter. Progress phases feed the
+// onboarding funnel; an `error` phase is also reported as `app_launch_failed`.
+useInstallationStore.subscribe(
+  (s) => s.state,
+  (state, prevState) => {
+    if (state === prevState || state === 'idle') return;
+    if (state === 'error') {
+      recordAppLaunchFailed('install_error');
+      return;
+    }
+    recordOnboardingStepCompleted({
+      step_id: `install:${state}`,
+      phase: 'installation',
+    });
+  }
 );
 
 // Computed selectors

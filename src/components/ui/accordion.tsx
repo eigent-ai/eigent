@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
@@ -26,7 +27,7 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn('border-b', className)}
+    className={cn('border-x-0 border-t-0 border-b', className)}
     {...props}
   />
 ));
@@ -40,13 +41,16 @@ const AccordionTrigger = React.forwardRef<
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        'flex flex-1 items-center justify-between py-4 text-left text-sm font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180',
+        'flex flex-1 items-center justify-between py-4 text-left text-sm font-medium hover:underline [&[data-state=open]>svg]:rotate-180',
         className
       )}
       {...props}
     >
       {children}
-      <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-200" />
+      <DsIcon
+        icon={ChevronDown}
+        className="shrink-0 text-ds-ink-muted-default transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+      />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
 ));
@@ -58,7 +62,7 @@ const AccordionContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <AccordionPrimitive.Content
     ref={ref}
-    className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden text-sm"
+    className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden text-sm motion-reduce:data-[state=closed]:animate-none motion-reduce:data-[state=open]:animate-none"
     {...props}
   >
     <div className={cn('p-0', className)}>{children}</div>

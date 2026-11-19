@@ -1,0 +1,54 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from app.auth.brain_auth import (
+    BrainAuthContext,
+    get_brain_auth_context,
+    get_brain_auth_provider,
+    set_brain_auth_provider,
+    with_brain_auth_provider,
+)
+from app.auth.file_access import (
+    FileAccessScope,
+    issue_file_access_grant,
+    require_file_preview_access,
+    require_file_stream_access,
+)
+from app.auth.interface import IAuthProvider, NoneAuth
+from app.auth.local_control import (
+    LOCAL_CONTROL_CAPABILITY_ENV,
+    LOCAL_CONTROL_CAPABILITY_HEADER,
+    LocalControlPrincipal,
+    require_local_control_if_configured,
+    require_local_control_principal,
+)
+
+__all__ = [
+    "BrainAuthContext",
+    "FileAccessScope",
+    "IAuthProvider",
+    "NoneAuth",
+    "get_brain_auth_context",
+    "get_brain_auth_provider",
+    "set_brain_auth_provider",
+    "with_brain_auth_provider",
+    "issue_file_access_grant",
+    "require_file_preview_access",
+    "require_file_stream_access",
+    "LOCAL_CONTROL_CAPABILITY_ENV",
+    "LOCAL_CONTROL_CAPABILITY_HEADER",
+    "LocalControlPrincipal",
+    "require_local_control_if_configured",
+    "require_local_control_principal",
+]

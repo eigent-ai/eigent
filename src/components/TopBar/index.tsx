@@ -13,448 +13,268 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
-import defaultFolderIcon from '@/assets/Folder.svg';
-import giftWhiteIcon from '@/assets/gift-white.svg';
-import giftIcon from '@/assets/gift.svg';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
+  GlobalSearchButton,
+  GlobalSearchHost,
+} from '@/components/GlobalSearch';
+import { useAppCommand } from '@/components/Layout/AppCommandProvider';
+import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
+import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
+import UpdateButton from '@/components/TopBar/UpdateButton';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { SITE_URL } from '@/lib';
-import { share } from '@/lib/share';
+import { useShellHistory } from '@/hooks/useShellHistory';
+import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
+import { useHost } from '@/host';
+import { cn } from '@/lib/utils';
+import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
-import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useSidebarStore } from '@/store/sidebarStore';
-import { ChatTaskStatus } from '@/types/constants';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
-  ChevronDown,
-  ChevronLeft,
-  FileDown,
-  House,
+  ArrowLeft,
+  ArrowRight,
+  CircleHelp,
   Minus,
-  Plus,
-  Power,
-  Settings,
+  PanelLeft,
+  PanelLeftOpen,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 
-function HeaderWin() {
+interface HeaderWinProps {
+  /** False while the install or onboarding screen covers the app. */
+  searchEnabled?: boolean;
+}
+
+function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
-  const navigate = useNavigate();
-  const location = useLocation();
-  //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
-  const { toggle } = useSidebarStore();
-  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
-  const appearance = useAuthStore((state) => state.appearance);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
-  const [endProjectLoading, setEndProjectLoading] = useState(false);
-  const { isInstalling, installationState } = useInstallationUI();
-  const _isInstallationActive =
-    isInstalling || installationState === 'waiting-backend';
+  const executeAppCommand = useAppCommand();
+  const { canGoBack, canGoForward, goBack, goForward } = useShellHistory();
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spacesById = useSpaceStore((s) => s.spaces);
+  const workspaceSidebarHidden = usePageTabStore(
+    (s) => s.workspaceSidebarHidden
+  );
+  const toggleWorkspaceSidebar = usePageTabStore(
+    (s) => s.toggleWorkspaceSidebar
+  );
+  const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) return;
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-  }, []);
-  const exportLog = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
+  }, [host]);
 
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
-        return;
-      }
-      if (response.savedPath) {
-        window.location.href =
-          'https://github.com/eigent-ai/eigent/issues/new/choose';
-        alert(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: any) {
-      alert(t('layout.export-error') + e.message);
-    }
-  };
+  const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
-  // create new project handler reused by plus icon and label
-  const createNewProject = () => {
-    //Handles refocusing id & nonduplicate internally
-    projectStore.createProject('new project');
-    navigate('/');
-  };
+  const sidebarToggleLabel = workspaceSidebarHidden
+    ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
+    : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
 
-  const summaryTask =
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
-
-  const activeTaskTitle = useMemo(() => {
-    if (chatStore?.activeTaskId && summaryTask) {
-      return summaryTask.split('|')[0];
-    }
-    return t('layout.new-project');
-  }, [chatStore?.activeTaskId, summaryTask, t]);
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
-  const getReferFriendsLink = async () => {
-    try {
-      const res: any = await proxyFetchGet('/api/v1/user/invite_code');
-      if (res?.invite_code) {
-        const inviteLink = `${SITE_URL}/signup?invite_code=${res.invite_code}`;
-        await navigator.clipboard.writeText(inviteLink);
-        toast.success(t('layout.invitation-link-copied'));
-      } else {
-        toast.error(t('layout.failed-to-get-invite-code'));
-      }
-    } catch (error) {
-      console.error('Failed to get referral link:', error);
-      toast.error(t('layout.failed-to-get-invitation-link'));
-    }
-  };
-
-  //TODO: Mark ChatStore details as completed
-  const handleEndProject = async () => {
-    const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
-
-    if (!taskId) {
-      toast.error(t('layout.no-active-project-to-end'));
-      return;
-    }
-
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
-
-    setEndProjectLoading(true);
-    try {
-      const task = chatStore.tasks[taskId];
-
-      // Stop the task if it's running
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
-      }
-
-      // Stop Workforce
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch (error) {
-        console.log('Task may not exist on backend:', error);
-      }
-
-      // Delete from history using historyId
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          // Remove from local store
-          chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
-        }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
-        );
-      }
-
-      // Create a completely new project instead of just a new task
-      // This ensures we start fresh without any residual state
-      projectStore.createProject('new project');
-
-      // Navigate to home with replace to force refresh
-      navigate('/', { replace: true });
-
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
-      });
-    } catch (error) {
-      console.error('Failed to end project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
-        closeButton: true,
-      });
-    } finally {
-      setEndProjectLoading(false);
-      setEndDialogOpen(false);
-    }
-  };
-
-  const handleShare = async (taskId: string) => {
-    share(taskId);
-  };
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
+  // The Space menu lives on the Workspace page now; the save shortcut stays
+  // here because the top bar is always mounted.
+  const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const versionHistory = useWorkspaceSavePoint({
+    spaceId: activeSpaceId,
+    space: activeSpace,
+    email,
+    userId,
+    shortcut: true,
+  });
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
-        platform === 'darwin' ? 'pl-16' : 'pl-2'
-      }`}
+      className={cn(
+        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        // Support is a 28px ghost button: 10px puts its 16px icon 16px from
+        // the edge, in line with the page headers' end.
+        platform === 'darwin' && 'pr-ds-10'
+      )}
+      style={{ paddingLeft: topBarLeadingInset }}
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* left */}
-      <div
-        className={`no-drag ml-2 mt-[1.5px] flex items-center justify-center gap-1 ${platform === 'darwin' ? 'w-8' : 'w-auto pr-4'}`}
-      >
-        <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
-        {platform !== 'darwin' && (
-          <span className="whitespace-nowrap text-label-md font-bold text-text-heading">
-            Eigent
-          </span>
-        )}
-      </div>
-
-      {/* center */}
-      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
-        <div className="relative z-50 flex h-full items-center">
-          {location.pathname === '/history' && (
-            <div className="mr-1 flex items-center">
-              <Button
-                variant="ghost"
-                size="xs"
-                className="no-drag rounded-full"
-                onClick={() => navigate('/')}
-              >
-                <ChevronLeft className="h-4 w-4 text-text-label" />
-              </Button>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
-            <div className="flex items-center">
-              <TooltipSimple
-                content={t('layout.home')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={() => navigate('/history')}
-                >
-                  <House className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.new-project')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={createNewProject}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
+      <AlertDialog
+        isOpen={versionHistory.enableConfirmOpen}
+        onClose={() => versionHistory.setEnableConfirmOpen(false)}
+        onConfirm={() => {
+          versionHistory.setEnableConfirmOpen(false);
+          void versionHistory.enable(true);
+        }}
+        title={t('layout.workspace-version-enable-title')}
+        message={t('layout.workspace-version-enable-message')}
+        confirmText={t('layout.workspace-enable-version-history')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+      />
+      <GlobalSearchHost enabled={searchEnabled} />
+      {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
+        <TopBarPrimaryNavigation
+          sidebarHidden={workspaceSidebarHidden}
+          leadingInset={topBarLeadingInset}
+          sidebarControls={
             <>
-              {activeTaskTitle === t('layout.new-project') ? (
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={sidebarToggleLabel}
+                    shortcutId="toggle-workspace-sidebar"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  buttonRadius="shell"
+                  className={cn(
+                    'no-drag',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
+                >
+                  {workspaceSidebarHidden ? (
+                    <DsIcon icon={PanelLeftOpen} aria-hidden />
+                  ) : (
+                    <DsIcon icon={PanelLeft} aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+              <div className="flex shrink-0 items-center gap-0.5">
                 <TooltipSimple
-                  content={t('layout.new-project')}
+                  content={t('layout.back')}
+                  compact
                   side="bottom"
                   align="center"
+                  variant="instant"
                 >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    className="no-drag rounded-full text-base font-bold"
-                    onClick={toggle}
-                    size="sm"
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {t('layout.new-project')}
-                    </span>
-                    <ChevronDown />
-                  </Button>
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      buttonRadius="shell"
+                      className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
+                      disabled={!canGoBack}
+                      onClick={goBack}
+                      aria-label={t('layout.back')}
+                    >
+                      <DsIcon icon={ArrowLeft} aria-hidden />
+                    </Button>
+                  </span>
                 </TooltipSimple>
-              ) : (
                 <TooltipSimple
-                  content={activeTaskTitle}
+                  content={t('layout.forward')}
+                  compact
                   side="bottom"
                   align="center"
+                  variant="instant"
                 >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    size="sm"
-                    className="no-drag text-base font-bold"
-                    onClick={toggle}
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {activeTaskTitle}
-                    </span>
-                    <ChevronDown />
-                  </Button>
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      buttonRadius="shell"
+                      className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
+                      disabled={!canGoForward}
+                      onClick={goForward}
+                      aria-label={t('layout.forward')}
+                    >
+                      <DsIcon icon={ArrowRight} aria-hidden />
+                    </Button>
+                  </span>
                 </TooltipSimple>
-              )}
+              </div>
             </>
-          )}
-        </div>
+          }
+          contentControls={<GlobalSearchButton />}
+        />
 
-        {/* right */}
-        {location.pathname !== '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+        <div
+          className={cn(
+            'no-drag relative z-50 flex h-7 shrink-0 items-center gap-0.5',
+            platform === 'darwin' && 'px-0'
+          )}
+        >
+          <UpdateButton />
+          <TooltipSimple
+            content={t('layout.support')}
+            side="bottom"
+            align="center"
+            variant="instant"
           >
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] &&
-              ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
-                ?.length || 0) > 0 ||
-                chatStore.tasks[chatStore.activeTaskId as string]
-                  ?.hasMessages ||
-                chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                  ChatTaskStatus.PENDING) && (
-                <TooltipSimple
-                  content={t('layout.end-project')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() => setEndDialogOpen(true)}
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
-                  >
-                    <Power />
-                    {t('layout.end-project')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                ChatTaskStatus.FINISHED && (
-                <TooltipSimple
-                  content={t('layout.share')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() =>
-                      handleShare(chatStore.activeTaskId as string)
-                    }
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag rounded-full bg-surface-information !text-text-information"
-                  >
-                    {t('layout.share')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] && (
-                <TooltipSimple
-                  content={t('layout.report-bug')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={exportLog}
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag rounded-full"
-                  >
-                    <FileDown className="h-4 w-4" />
-                  </Button>
-                </TooltipSimple>
-              )}
-            <TooltipSimple
-              content={t('layout.refer-friends')}
-              side="bottom"
-              align="end"
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn('no-drag', TOP_BAR_CONTROL_STATE_CLASS)}
+              aria-label={t('layout.support')}
+              onClick={() => executeAppCommand(APP_COMMAND.reportBug)}
+              buttonContent="icon-only"
+              buttonRadius="shell"
             >
-              <Button
-                onClick={getReferFriendsLink}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
-              >
-                <img
-                  src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                  alt="gift-icon"
-                  className="h-4 w-4"
-                />
-              </Button>
-            </TooltipSimple>
-            <TooltipSimple
-              content={t('layout.settings')}
-              side="bottom"
-              align="end"
-            >
-              <Button
-                onClick={() => navigate('/history?tab=settings')}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        )}
-        {location.pathname === '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
-          ></div>
-        )}
+              <DsIcon icon={CircleHelp} aria-hidden />
+            </Button>
+          </TooltipSimple>
+        </div>
       </div>
-      {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
-      {platform !== 'darwin' && platform !== 'win32' && (
+
+      {/* Linux uses the in-app window controls; macOS and Windows use native chrome. */}
+      {platform === 'linux' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"
           ref={controlsRef}
         >
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.minimizeWindow()}
+          <button
+            type="button"
+            aria-label={t('layout.minimize', { defaultValue: 'Minimize' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.minimizeWindow()}
           >
-            <Minus className="h-4 w-4" />
-          </div>
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.toggleMaximizeWindow()}
+            <DsIcon icon={Minus} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t('layout.maximize', { defaultValue: 'Maximize' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
-            <Square className="h-4 w-4" />
-          </div>
-          <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.closeWindow()}
+            <DsIcon icon={Square} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t('layout.close', { defaultValue: 'Close' })}
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
+            onClick={() => host?.electronAPI?.closeWindow(false)}
           >
-            <X className="h-4 w-4" />
-          </div>
+            <DsIcon icon={X} aria-hidden />
+          </button>
         </div>
       )}
-      <EndNoticeDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={handleEndProject}
-        loading={endProjectLoading}
-      />
     </div>
   );
 }

@@ -14,7 +14,10 @@
 
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSessionProjectId } from '@/hooks/useSessionProjectId';
+import { useHost } from '@/host';
 import {
   ArrowDown,
   ArrowUp,
@@ -34,69 +37,74 @@ import { Button } from '../ui/button';
 
 export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
+  const { chatStore } = useChatStoreAdapter();
+  const sessionProjectId = useSessionProjectId();
   const { t } = useTranslation();
   const [isSingleMode, setIsSingleMode] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isTakeControl, setIsTakeControl] = useState(false);
 
-  const activeTaskId = chatStore?.activeTaskId;
-  const taskAssigning = chatStore?.tasks[activeTaskId as string]?.taskAssigning;
+  const targetChatStore = chatStore;
+  const activeTaskId = targetChatStore?.activeTaskId;
+  const taskAssigning =
+    targetChatStore?.tasks[activeTaskId as string]?.taskAssigning;
   const activeWorkspace =
-    chatStore?.tasks[activeTaskId as string]?.activeWorkspace;
+    targetChatStore?.tasks[activeTaskId as string]?.activeWorkspace;
 
   // Use useMemo to derive activeAgent from taskAssigning and activeWorkspace
   const activeAgent = useMemo(() => {
-    if (!chatStore || !taskAssigning) return null;
+    if (!targetChatStore || !taskAssigning) return null;
     return (
       taskAssigning.find((item) => item.agent_id === activeWorkspace) || null
     );
-  }, [chatStore, taskAssigning, activeWorkspace]);
+  }, [targetChatStore, taskAssigning, activeWorkspace]);
 
-  if (!chatStore) {
+  if (!targetChatStore) {
     return <div>Loading...</div>;
   }
 
   const agentMap = {
     developer_agent: {
       name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
+      icon: <DsIcon icon={CodeXml} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
+      bgColor: 'bg-ds-bg-terminal-default-default',
+      shapeColor: 'bg-ds-bg-terminal-subtle-default',
+      borderColor: 'border-ds-border-terminal-default-default',
       bgColorLight: 'bg-emerald-200',
     },
     browser_agent: {
       name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
+      icon: <DsIcon icon={Globe} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
+      bgColor: 'bg-ds-bg-browser-default-default',
+      shapeColor: 'bg-ds-bg-browser-subtle-default',
+      borderColor: 'border-ds-border-browser-default-default',
       bgColorLight: 'bg-blue-200',
     },
     document_agent: {
       name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
+      icon: <DsIcon icon={FileText} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
+      bgColor: 'bg-ds-bg-document-default-default',
+      shapeColor: 'bg-ds-bg-document-subtle-default',
+      borderColor: 'border-ds-border-document-default-default',
       bgColorLight: 'bg-yellow-200',
     },
     multi_modal_agent: {
       name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
+      icon: <DsIcon icon={Image} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
+      bgColor: 'bg-ds-neutral-default-default',
+      shapeColor: 'bg-ds-neutral-subtle-default',
+      borderColor: 'border-ds-hairline-default-default',
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
       name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
+      icon: <DsIcon icon={Bird} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -106,30 +114,30 @@ export default function TerminalAgentWorkspace() {
   };
   const _handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+    fetchPut(`/task/${sessionProjectId}/take-control`, {
       action: 'pause',
     });
     setIsTakeControl(true);
   };
 
   return isTakeControl ? (
-    <div className="flex h-full w-full flex-col items-center justify-start border border-solid border-border-success bg-menutabs-bg-default">
+    <div className="flex h-full w-full flex-col items-center justify-start border border-x border-y border-solid border-ds-border-status-completed-default-default bg-ds-neutral-strong-default">
       <div className="flex w-full items-start justify-start p-sm">
-        <div className="rounded-full border border-solid border-border-primary bg-transparent p-1">
+        <div className="rounded-full border border-x border-y border-solid border-ds-hairline-strong-default bg-transparent p-1">
           <Button
             size="sm"
             variant="success"
             onClick={() => {
-              fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
+              fetchPut(`/task/${sessionProjectId}/take-control`, {
                 action: 'resume',
               });
               setIsTakeControl(false);
-              window.electronAPI.hideAllWebview();
+              electronAPI?.hideAllWebview();
             }}
             className="rounded-full"
           >
-            <ChevronLeft size={16} className="text-text-inverse-primary" />
-            <span className="text-sm font-bold leading-13 text-text-inverse-primary">
+            <DsIcon icon={ChevronLeft} />
+            <span className="text-sm leading-13 font-bold">
               {t('chat.give-back-to-agent')}
             </span>
           </Button>
@@ -138,23 +146,22 @@ export default function TerminalAgentWorkspace() {
       <div id="webview-container" className="h-full w-full"></div>
     </div>
   ) : (
-    <div
-      className={`flex h-full w-full flex-1 items-center justify-center transition-all duration-300 ease-in-out`}
-    >
-      <div className="blur-bg relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-surface-secondary">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+    <div className="flex h-full w-full flex-1 items-center justify-center">
+      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-neutral-default-default backdrop-blur-sm">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl px-2 pt-3 pb-2">
           <div className="flex items-center justify-start gap-sm">
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkspace(
-                  chatStore.activeTaskId as string,
+                targetChatStore.setActiveWorkspace(
+                  activeTaskId as string,
                   'workflow'
                 );
               }}
             >
-              <ChevronLeft size={16} />
+              <DsIcon recipe="main-compact" icon={ChevronLeft} />
             </Button>
             <div
               className={`flex h-[26px] items-center gap-xs rounded-lg px-2 py-0.5 ${
@@ -162,9 +169,9 @@ export default function TerminalAgentWorkspace() {
                   ?.bgColorLight
               }`}
             >
-              <Bot className="h-4 w-4 text-icon-primary" />
+              <DsIcon icon={Bot} className="text-ds-ink-default-default" />
               <div
-                className={`text-[10px] font-bold leading-17 ${
+                className={`text-[10px] leading-17 font-bold ${
                   agentMap[activeAgent?.type as keyof typeof agentMap]
                     ?.textColor
                 }`}
@@ -172,7 +179,7 @@ export default function TerminalAgentWorkspace() {
                 {agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
               </div>
             </div>
-            <div className="text-[10px] font-medium leading-17 text-text-tertiary">
+            <div className="text-[10px] leading-17 font-medium text-ds-ink-muted-default">
               {
                 activeAgent?.tasks?.filter(
                   (task) => task.status && task.status !== 'running'
@@ -181,8 +188,8 @@ export default function TerminalAgentWorkspace() {
               /{activeAgent?.tasks?.length}
             </div>
           </div>
-          <Button size="icon" variant="ghost">
-            <Settings2 size={16} />
+          <Button size="xs" buttonContent="icon-only" variant="ghost">
+            <DsIcon recipe="main-compact" icon={Settings2} />
           </Button>
         </div>
 
@@ -209,10 +216,10 @@ export default function TerminalAgentWorkspace() {
                     )[0].terminal
                   }
                 />
-                {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
-									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
-										<Hand size={24} className="text-icon-inverse-primary" />
-										<span className="text-base leading-9 font-medium text-text-inverse-primary">
+                {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-b-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none">
+									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-accent-default-default">
+										<Hand size={24} className="text-ds-neutral-on-strong" />
+										<span className="text-base leading-9 font-medium text-ds-neutral-on-strong">
 											Take Control
 										</span>
 									</Button>
@@ -245,14 +252,14 @@ export default function TerminalAgentWorkspace() {
                       <Terminal instanceId={task.id} content={task.terminal} />
                       {/* <div
 												onClick={() => handleTakeControl(task.id)}
-												className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none"
+										className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none"
 											>
-												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
+												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-accent-default-default">
 													<Hand
 														size={24}
-														className="text-icon-inverse-primary"
+														className="text-ds-neutral-on-strong"
 													/>
-													<span className="text-base leading-9 font-medium text-text-inverse-primary">
+													<span className="text-base leading-9 font-medium text-ds-neutral-on-strong">
 														Take Control
 													</span>
 												</Button>
@@ -266,10 +273,11 @@ export default function TerminalAgentWorkspace() {
         {activeAgent?.tasks.filter(
           (task) => task?.terminal && task?.terminal.length > 0
         ).length !== 1 && (
-          <div className="absolute bottom-2 right-2 z-[200] flex w-auto items-center gap-1 rounded-lg border border-solid border-border-primary bg-menutabs-bg-default p-1">
+          <div className="absolute right-2 bottom-2 z-[200] flex w-auto items-center gap-1 rounded-lg border border-x border-y border-solid border-ds-hairline-strong-default bg-ds-neutral-strong-default p-1">
             {isSingleMode && (
               <Button
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 variant="ghost"
                 onClick={() => {
                   if (scrollContainerRef.current) {
@@ -290,12 +298,13 @@ export default function TerminalAgentWorkspace() {
                   }
                 }}
               >
-                <ArrowDown size={16} />
+                <DsIcon icon={ArrowDown} />
               </Button>
             )}
             {isSingleMode && (
               <Button
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 variant="ghost"
                 onClick={() => {
                   if (scrollContainerRef.current) {
@@ -313,11 +322,12 @@ export default function TerminalAgentWorkspace() {
                   }
                 }}
               >
-                <ArrowUp size={16} />
+                <DsIcon icon={ArrowUp} />
               </Button>
             )}
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
                 setIsSingleMode(!isSingleMode);
@@ -329,7 +339,7 @@ export default function TerminalAgentWorkspace() {
                 }
               }}
             >
-              <GalleryThumbnails size={16} />
+              <DsIcon icon={GalleryThumbnails} />
             </Button>
           </div>
         )}

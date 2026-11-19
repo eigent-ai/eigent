@@ -12,17 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { CircleCheckBig, CircleSlash2, LoaderCircle } from 'lucide-react';
+import {
+  Circle,
+  CircleCheckBig,
+  CircleSlash2,
+  LoaderCircle,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export type TaskStateType =
-  | 'all'
-  | 'done'
-  | 'reassigned'
-  | 'ongoing'
-  | 'pending'
-  | 'failed';
+  'all' | 'done' | 'reassigned' | 'ongoing' | 'pending' | 'failed';
 
 export interface TaskStateProps {
   all?: number;
@@ -62,7 +63,7 @@ export const TaskState = ({
     return selectedState === state;
   };
 
-  const numberClass = `rounded-lg inline-block align-bottom transition-all duration-300 ease-in-out max-w-[40px] group-hover:max-w-[40px] group-hover:opacity-100`;
+  const numberClass = `rounded-lg inline-block align-bottom max-w-[40px] group-hover:max-w-[40px] group-hover:opacity-100`;
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -74,12 +75,14 @@ export const TaskState = ({
         {/* All */}
         {all && (forceVisible || all > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-2 py-0.5 transition-all duration-200 hover:bg-tag-surface ${
-              isSelected('all') ? 'bg-tag-surface' : 'bg-transparent'
+            className={`group flex items-center gap-xs rounded-md px-2 py-0.5 transition-colors duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('all')
+                ? 'bg-ds-neutral-subtle-default'
+                : 'bg-transparent'
             } ${clickable ? 'cursor-pointer' : ''}`}
             onClick={() => handleStateClick('all')}
           >
-            <span className="text-xs font-normal text-text-body">
+            <span className="text-xs font-normal text-ds-ink-default-default">
               {t('chat.all')} <span className={numberClass}>{all}</span>
             </span>
           </div>
@@ -88,21 +91,20 @@ export const TaskState = ({
         {/* Done */}
         {done && (forceVisible || done > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-0.5 py-0.5 transition-all duration-200 hover:bg-tag-surface ${
-              isSelected('done') && 'bg-tag-surface'
-            } ${
-              clickable && 'cursor-pointer transition-opacity hover:opacity-80'
-            }`}
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('done') && 'bg-ds-neutral-subtle-default'
+            } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('done')}
           >
-            <CircleCheckBig
-              className={`h-[10px] w-[10px] text-icon-secondary group-hover:text-icon-success ${
-                (isSelected('done') || forceVisible) && '!text-icon-success'
-              }`}
+            <DsIcon
+              icon={CircleCheckBig}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-completed-default-default ${(isSelected('done') || forceVisible) && '!text-ds-icon-status-completed-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-text-label transition-all duration-200 group-hover:text-text-success ${
-                (isSelected('done') || forceVisible) && '!text-text-success'
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-completed-strong-default ${
+                (isSelected('done') || forceVisible) &&
+                '!text-ds-text-status-completed-strong-default'
               }`}
             >
               {t('chat.done')} <span className={numberClass}>{done}</span>
@@ -113,23 +115,20 @@ export const TaskState = ({
         {/* Reassigned */}
         {reAssignTo && (forceVisible || reAssignTo > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-0.5 py-0.5 transition-all duration-200 hover:bg-tag-surface ${
-              isSelected('reassigned') && 'bg-tag-surface'
-            } ${
-              clickable && 'cursor-pointer transition-opacity hover:opacity-80'
-            }`}
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('reassigned') && 'bg-ds-neutral-subtle-default'
+            } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('reassigned')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-icon-secondary group-hover:text-icon-warning ${
-                (isSelected('reassigned') || forceVisible) &&
-                '!text-icon-warning'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('reassigned') || forceVisible) && '!text-ds-icon-status-pending-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-text-label transition-all duration-200 group-hover:text-text-warning ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-warning-strong-default ${
                 (isSelected('reassigned') || forceVisible) &&
-                '!text-text-warning'
+                '!text-ds-text-warning-strong-default'
               }`}
             >
               {t('chat.reassigned')}{' '}
@@ -141,26 +140,22 @@ export const TaskState = ({
         {/* Ongoing */}
         {progress && (forceVisible || progress > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-0.5 py-0.5 hover:bg-tag-surface ${
-              isSelected('ongoing') && 'bg-tag-surface'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-neutral-subtle-default ${
+              isSelected('ongoing') && 'bg-ds-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
             }`}
             onClick={() => handleStateClick('ongoing')}
           >
-            <LoaderCircle
-              className={`h-[10px] w-[10px] text-icon-secondary group-hover:text-icon-information ${
-                (isSelected('ongoing') || forceVisible) &&
-                '!text-icon-information'
-              } ${
-                chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                  'running' && 'animate-spin'
-              }`}
+            <DsIcon
+              icon={LoaderCircle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-splitting-default-default ${(isSelected('ongoing') || forceVisible) && '!text-ds-icon-status-splitting-default-default'} ${chatStore.tasks[chatStore.activeTaskId as string]?.status === 'running' && 'animate-spin'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-text-label transition-all duration-200 group-hover:text-text-information ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-splitting-strong-default ${
                 (isSelected('ongoing') || forceVisible) &&
-                '!text-text-information'
+                '!text-ds-text-status-splitting-strong-default'
               }`}
             >
               {t('chat.ongoing')}{' '}
@@ -172,21 +167,20 @@ export const TaskState = ({
         {/* Failed */}
         {failed && (forceVisible || failed > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-0.5 py-0.5 transition-all duration-200 hover:bg-tag-surface ${
-              isSelected('failed') && 'bg-tag-surface'
-            } ${
-              clickable && 'cursor-pointer transition-opacity hover:opacity-80'
-            }`}
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 transition-[background-color,opacity] duration-200 hover:bg-ds-neutral-subtle-default ${
+              isSelected('failed') && 'bg-ds-neutral-subtle-default'
+            } ${clickable && 'cursor-pointer hover:opacity-80'}`}
             onClick={() => handleStateClick('failed')}
           >
-            <CircleSlash2
-              className={`h-[10px] w-[10px] text-icon-secondary group-hover:text-icon-cuation ${
-                (isSelected('failed') || forceVisible) && '!text-icon-cuation'
-              }`}
+            <DsIcon
+              icon={CircleSlash2}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-error-default-default ${(isSelected('failed') || forceVisible) && '!text-ds-icon-status-error-default-default'}`}
             />
             <span
-              className={`text-xs font-normal leading-tight text-text-label transition-all duration-200 group-hover:!text-icon-cuation ${
-                (isSelected('failed') || forceVisible) && '!text-text-cuation'
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default transition-colors duration-200 group-hover:text-ds-text-status-error-strong-default ${
+                (isSelected('failed') || forceVisible) &&
+                '!text-ds-text-status-error-strong-default'
               }`}
             >
               {t('chat.failed')} <span className={numberClass}>{failed}</span>
@@ -196,23 +190,24 @@ export const TaskState = ({
         {/* Pending */}
         {skipped && (forceVisible || skipped > 0) ? (
           <div
-            className={`group flex items-center gap-xs px-0.5 py-0.5 hover:bg-tag-surface ${
-              isSelected('pending') ? 'bg-tag-surface' : 'bg-transparent'
+            className={`group flex items-center gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-status-pending-subtle-hover ${
+              isSelected('pending')
+                ? 'bg-ds-bg-status-pending-subtle-default'
+                : 'bg-transparent'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
             }`}
             onClick={() => handleStateClick('pending')}
           >
-            <LoaderCircle
-              className={`group-hover:text-primary-foreground h-[10px] w-[10px] text-icon-secondary ${
-                (isSelected('pending') || forceVisible) &&
-                'text-primary-foreground'
-              }`}
+            <DsIcon
+              icon={Circle}
+              recipe="main-compact"
+              className={`text-ds-ink-muted-default group-hover:text-ds-icon-status-pending-default-default ${(isSelected('pending') || forceVisible) && 'text-ds-icon-status-pending-default-default'}`}
             />
             <span
-              className={`group-hover:text-primary-foreground text-xs font-normal leading-tight text-text-label ${
+              className={`text-xs leading-tight font-normal text-ds-ink-muted-default group-hover:text-ds-text-status-pending-strong-default ${
                 (isSelected('pending') || forceVisible) &&
-                'text-primary-foreground'
+                'text-ds-text-status-pending-strong-default'
               }`}
             >
               {t('chat.pending')} <span className={numberClass}>{skipped}</span>

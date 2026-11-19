@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,12 +31,99 @@ from camel.tasks.task import TaskState
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.exception.exception import UserException
+from app.run_journal.store import SQLiteRunJournal
+from app.run_runtime.active_timeout import pause_active_execution_timeout
+from app.run_runtime.step_coordinator import RunStepCoordinator, stable_step_id
 from app.service.task import (
     ActionAssignTaskData,
     ActionTaskStateData,
+    TaskLock,
     create_task_lock,
 )
-from app.utils.workforce import _ANALYZE_TASK_MAX_RETRIES, Workforce
+from app.utils.workforce import (
+    _ANALYZE_TASK_MAX_RETRIES,
+    Workforce,
+    _persist_workforce_subtask_step,
+    default_workforce_stall_timeout,
+    default_workforce_task_timeout,
+)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_persists_running_step_before_dispatch(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    task_lock = MagicMock()
+    task_lock.run_context = SimpleNamespace(
+        run_id="run-1",
+        project_id="project-1",
+    )
+
+    with patch(
+        "app.utils.workforce.get_default_run_journal",
+        return_value=journal,
+    ):
+        step_id = await _persist_workforce_subtask_step(
+            task_lock,
+            task_id="task-1",
+            title="Build report",
+            agent_id="agent-1",
+            phase="running",
+        )
+
+    assert step_id == stable_step_id("run-1", "subtask:task-1")
+    snapshot = RunStepCoordinator(journal).replay("run-1")[step_id]
+    assert snapshot.status == "running"
+    assert snapshot.owner_kind == "workforce"
+    assert snapshot.source == "workforce"
+    task_lock.mark_local_history_degraded.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_post_orders_step_before_queue_and_dispatch():
+    workforce = Workforce(api_task_id="project-1", description="Workforce")
+    workforce._task = Task(content="Main task", id="main-task")
+    subtask = Task(content="Build report", id="task-1")
+    order: list[str] = []
+    task_lock = MagicMock()
+
+    async def persist(*_args, **_kwargs):
+        order.append("persist")
+        return "step-1"
+
+    async def put_queue(_data):
+        order.append("queue")
+
+    async def dispatch(_self, _task, _assignee_id):
+        order.append("dispatch")
+
+    task_lock.put_queue.side_effect = put_queue
+    with (
+        patch("app.utils.workforce.get_task_lock", return_value=task_lock),
+        patch.object(
+            workforce,
+            "_get_agent_id_from_node_id",
+            return_value="agent-1",
+        ),
+        patch(
+            "app.utils.workforce._persist_workforce_subtask_step",
+            side_effect=persist,
+        ),
+        patch.object(BaseWorkforce, "_post_task", new=dispatch),
+    ):
+        await workforce._post_task(subtask, "worker-node-1")
+
+    assert order == ["persist", "queue", "dispatch"]
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +146,126 @@ def test_workforce_initialization():
 
     assert workforce.api_task_id == api_task_id
     assert workforce.description == description
+
+
+@pytest.mark.unit
+def test_long_running_workforce_defaults_keep_only_stall_watchdog():
+    with patch(
+        "app.run_runtime.timeout_config.env",
+        side_effect=lambda _name, default: default,
+    ):
+        assert default_workforce_task_timeout() is None
+        assert default_workforce_stall_timeout() == 1800
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_has_no_cumulative_limit_when_disabled():
+    workforce = Workforce(
+        api_task_id="long-run",
+        description="Long task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0,
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        await asyncio.sleep(0.02)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+
+    assert workforce.task_timeout_seconds is None
+    assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_excludes_human_wait_from_its_timeout_budgets():
+    workforce = Workforce(
+        api_task_id="approval-run",
+        description="Approval task",
+        task_timeout_seconds=0.01,
+        stall_timeout_seconds=0.01,
+    )
+    task_lock = TaskLock(
+        "approval-run", asyncio.Queue(), {"agent": asyncio.Queue()}
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        async with pause_active_execution_timeout(task_lock):
+            await asyncio.sleep(0.03)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+
+    with (
+        patch(
+            "app.utils.workforce.get_task_lock_if_exists",
+            return_value=task_lock,
+        ),
+        patch("app.utils.workforce._WORKFORCE_PROGRESS_POLL_SECONDS", 0.002),
+    ):
+        assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_progress_renews_stall_watchdog():
+    workforce = Workforce(
+        api_task_id="progressing-run",
+        description="Progressing task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0.02,
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        await asyncio.sleep(0.035)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+    workforce._progress_marker = MagicMock(
+        side_effect=["started", "made-progress"]
+    )
+
+    assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_stall_watchdog_cancels_no_progress_wait():
+    workforce = Workforce(
+        api_task_id="stalled-run",
+        description="Stalled task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0.01,
+    )
+
+    async def never_returns(_node_id):
+        await asyncio.Event().wait()
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        never_returns
+    )
+    workforce._progress_marker = MagicMock(return_value="unchanged")
+    workforce._report_wait_timeout = AsyncMock()
+
+    with pytest.raises(TimeoutError, match="made no progress"):
+        await workforce._get_returned_task()
+
+    workforce._report_wait_timeout.assert_awaited_once()
 
 
 @pytest.mark.unit

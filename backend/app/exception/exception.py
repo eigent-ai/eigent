@@ -14,9 +14,16 @@
 
 
 class UserException(Exception):
-    def __init__(self, code: int, description: str):
+    def __init__(
+        self,
+        code: int,
+        description: str,
+        *,
+        error_code: str | None = None,
+    ):
         self.code = code
         self.description = description
+        self.error_code = error_code
 
 
 class TokenException(Exception):

@@ -15,38 +15,18 @@
 import { getAuthStore } from '@/store/authStore';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { LocaleEnum, resolveLocale } from './locale';
 import { resources } from './locales';
 
-export enum LocaleEnum {
-  SimplifiedChinese = 'zh-Hans',
-  TraditionalChinese = 'zh-Hant',
-  English = 'en-US',
-  German = 'de',
-  Korean = 'ko',
-  Japanese = 'ja',
-  French = 'fr',
-  Russian = 'ru',
-  Italian = 'it',
-  Arabic = 'ar',
-  Spanish = 'es',
-}
+export { LocaleEnum, resolveLocale } from './locale';
 
 const { language } = getAuthStore();
 
-const savedLanguage = language?.toLowerCase();
-const systemLanguage = navigator.language.toLowerCase();
-const availableLanguages = Object.values(LocaleEnum);
-
-let initialLanguage: string;
-
-if (savedLanguage && availableLanguages.includes(savedLanguage as LocaleEnum)) {
-  initialLanguage = savedLanguage;
-} else {
-  const matched = availableLanguages.find((lang) =>
-    systemLanguage.startsWith(lang)
-  );
-  initialLanguage = matched || LocaleEnum.English;
-}
+const systemLanguage = resolveLocale(navigator.language);
+const initialLanguage =
+  language && language !== 'system'
+    ? resolveLocale(language, systemLanguage)
+    : systemLanguage;
 
 i18n.use(initReactI18next).init({
   resources,

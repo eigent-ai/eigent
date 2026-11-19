@@ -1,0 +1,1189 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import replace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi import HTTPException
+
+from app.controller.run_controller import (
+    CancelRunBody,
+    ForkRunBody,
+    InteractionDecisionBody,
+    ResumeRunBody,
+    RunSignalBody,
+    _resolved_model_for_attempt,
+    cancel_run,
+    decide_run_interaction,
+    fork_run,
+    get_run,
+    list_project_runs,
+    list_run_interactions,
+    resume_run,
+    signal_run,
+)
+from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_policy import ToolSafetyClass
+from app.run_runtime import RunCoordinator
+from app.service.task import TaskLock
+from app.workspace_config import EnvironmentConfigResolver
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    LegacyEnvironmentImporter,
+)
+
+
+@pytest.mark.asyncio
+async def test_run_control_api_creates_attempt_fork_and_cancel_intent(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.reconcile_startup(now=1)
+        coordinator = RunCoordinator(journal)
+        with patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ):
+            resumed = await resume_run(
+                "run-1",
+                ResumeRunBody(request_id="resume-1"),
+            )
+            assert resumed["attempt"]["status"] == "pending"
+            assert resumed["execution_state"] == "awaiting_execution_context"
+
+            forked = await fork_run(
+                "run-1",
+                ForkRunBody(request_id="fork-1", new_run_id="run-fork"),
+            )
+            assert forked["run"]["parent_run_id"] == "run-1"
+            assert forked["requires_resume"] is True
+
+            cancelled = await cancel_run(
+                "run-1",
+                CancelRunBody(request_id="cancel-1"),
+            )
+            assert cancelled["status"] == "cancelled"
+            retried = await cancel_run(
+                "run-1", CancelRunBody(request_id="cancel-1")
+            )
+            assert retried["status"] == "cancelled"
+            assert retried["version"] == cancelled["version"]
+            assert (
+                len(
+                    journal.list_events(
+                        "run-1", event_type_prefix="run.cancelled"
+                    )
+                )
+                == 1
+            )
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("later_unbound", [False, True])
+async def test_resume_control_inherits_latest_environment_binding(
+    tmp_path, later_unbound
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-env", project_id="project-1")
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5",
+            auth_source="api_key",
+            requested_effort="high",
+            allow_local_system=True,
+        )
+        environment = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-env",
+            space_id="space-1",
+            working_directory=workspace,
+            created_by="test-user",
+            template=template,
+        )
+        journal.create_run_attempt(
+            "run-env",
+            request_id="initial:run-env",
+            reason="initial_execution",
+            activate=True,
+            environment=environment.binding,
+            now=1,
+        )
+        journal.reconcile_startup(now=2)
+
+        if later_unbound:
+            journal.create_run_attempt(
+                "run-env",
+                request_id="unbound-resume",
+                reason="explicit_resume",
+                activate=True,
+                now=3,
+            )
+            journal.reconcile_startup(now=4)
+
+        coordinator = RunCoordinator(journal)
+        with patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ):
+            resumed = await resume_run(
+                "run-env",
+                ResumeRunBody(request_id="resume-env"),
+            )
+
+        attempt = resumed["attempt"]
+        assert attempt["environment_spec_id"] == environment.spec.spec_id
+        assert attempt["environment_spec_digest"] == environment.spec.digest
+        assert attempt["thinking_effort_effective"] == "high"
+        assert (
+            attempt["provider_capability_revision"]
+            == environment.spec.provider_capability_revision
+        )
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_signal_api_rejects_cross_run_approval_mutation(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.ensure_run(run_id="run-2", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Continue?"},
+            now=2,
+        )
+        with patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ):
+            with pytest.raises(HTTPException) as error:
+                await signal_run(
+                    "run-2",
+                    RunSignalBody(
+                        signal_type="approval.decided",
+                        signal_id="signal-1",
+                        payload={
+                            "approval_id": "approval-1",
+                            "decision": "approved",
+                            "expected_version": 0,
+                        },
+                    ),
+                )
+        assert error.value.status_code == 409
+        assert journal.list_approvals("run-1")[0].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_typed_interaction_api_lists_and_resolves_question(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        task_lock = AsyncMock()
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="choice",
+            request={"question": "Pick one", "agent": "worker"},
+            options=[
+                {"id": "a", "label": "A"},
+                {"id": "b", "label": "B"},
+            ],
+            now=2,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            listed = await list_run_interactions("run-1", status="pending")
+            resolved = await decide_run_interaction(
+                "run-1",
+                "question-1",
+                InteractionDecisionBody(
+                    decision_request_id="decision-1",
+                    decision={"option_id": "b"},
+                    expected_version=0,
+                ),
+            )
+
+        assert [item["interaction_id"] for item in listed["interactions"]] == [
+            "question-1"
+        ]
+        assert [
+            option["option_id"]
+            for option in listed["interactions"][0]["options"]
+        ] == [
+            "a",
+            "b",
+        ]
+        assert resolved["status"] == "resolved"
+        assert resolved["response"] == {"option_id": "b"}
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", '{"option_id":"b"}'
+        )
+
+
+@pytest.mark.asyncio
+async def test_interaction_decision_converges_on_terminal_state(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        task_lock = AsyncMock()
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        approval = journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        journal.decide_approval(
+            "approval-1",
+            decision="rejected",
+            expected_version=0,
+            action_digest=approval.action_digest,
+            decision_request_id="system-rejected",
+            continue_active_attempt=True,
+            now=3,
+        )
+
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            result = await decide_run_interaction(
+                "run-1",
+                "approval-1",
+                InteractionDecisionBody(
+                    decision_request_id="stale-user-decision",
+                    decision={"decision": "approved", "scope": "once"},
+                    expected_version=0,
+                    action_digest=approval.action_digest,
+                ),
+            )
+
+            recovered = await list_run_interactions("run-1", status="all")
+
+        assert result["status"] == "resolved"
+        assert result["response"]["decision"] == "rejected"
+        assert result["action_digest"] == approval.action_digest
+        assert (
+            recovered["interactions"][0]["response"]["decision"] == "rejected"
+        )
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
+        assert journal.list_approvals("run-1")[0].status == "rejected"
+        task_lock.put_human_input.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lost_approval_receipt_retry_does_not_deliver_twice(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        task_lock = AsyncMock()
+        body = InteractionDecisionBody(
+            decision_request_id="original-request",
+            decision={"decision": "approved", "scope": "once"},
+            expected_version=0,
+            action_digest="digest-1",
+            continue_active_attempt=True,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            committed = await decide_run_interaction(
+                "run-1", "approval-1", body
+            )
+            retried = await decide_run_interaction("run-1", "approval-1", body)
+            recovered = await list_run_interactions("run-1", status="all")
+        assert retried == committed
+        assert (
+            recovered["interactions"][0]["response"] == committed["response"]
+        )
+        assert committed["response"]["decision"] == "approved"
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", "approved"
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="older", project_id="project-1", now=1)
+        journal.create_run_attempt(
+            "older",
+            request_id="initial-older",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.reconcile_startup(now=2)
+        journal.ensure_run(run_id="other", project_id="project-2", now=3)
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.run_sync.runtime.notify_default_cloud_sync_worker"
+            ) as notify_sync,
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=True,
+            ),
+            patch(
+                "app.run_sync.runtime.bootstrap_default_cloud_history",
+                new_callable=AsyncMock,
+            ) as bootstrap_history,
+        ):
+            result = await list_project_runs(
+                project_id="project-1",
+                status=["interrupted"],
+                limit=1,
+            )
+
+    assert [run["run_id"] for run in result["runs"]] == ["older"]
+    assert result["runs"][0]["status"] == "interrupted"
+    assert result["runs"][0]["resolved_model"] is None
+    assert result["cloud_restore_pending"] is True
+    # Startup recovery must not count the unobserved process-down interval as
+    # active execution time. This attempt never persisted a later heartbeat.
+    assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
+    notify_sync.assert_called_once_with()
+    bootstrap_history.assert_not_awaited()
+
+
+def _start_run(journal: SQLiteRunJournal) -> str:
+    journal.ensure_run(run_id="run-1", project_id="project-1", now=100)
+    return journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+        now=100,
+    ).attempt_id
+
+
+async def _listed_and_detailed_elapsed_ms(
+    journal: SQLiteRunJournal, now: float
+) -> tuple[int, int]:
+    """Read the Run listing and the Run details at a controlled time."""
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=RunCoordinator(journal),
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+        patch("app.controller.run_controller.time.time", return_value=now),
+    ):
+        listed = await list_project_runs(
+            project_id="project-1", status=None, limit=20
+        )
+        summary = await get_run("run-1")
+    return (
+        listed["runs"][0]["total_attempt_elapsed_ms"],
+        summary["total_attempt_elapsed_ms"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_an_approval_wait(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+
+        async def elapsed_at(now: float) -> tuple[int, int]:
+            return await _listed_and_detailed_elapsed_ms(journal, now)
+
+        readings = [await elapsed_at(102)]
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=102,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        # A Session reopened during the wait reads the time the Attempt had
+        # worked when it started waiting, and that value does not grow.
+        readings += [await elapsed_at(132), await elapsed_at(162)]
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-once",
+            now=162,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await elapsed_at(165))
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1:completed",
+                event_type="run.completed",
+                payload={},
+                created_at=165,
+            ),
+        )
+        assert journal.get_run_attempt(attempt_id).status == "completed"
+        readings.append(await elapsed_at(400))
+
+    assert readings == [
+        (2_000, 2_000),
+        (2_000, 2_000),
+        (2_000, 2_000),
+        (5_000, 5_000),
+        (5_000, 5_000),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_overlapping_approvals_once(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+        # Two workers ask at once: 102-130 and 110-150 overlap into one wait.
+        for approval_id, now in (("approval-1", 102), ("approval-2", 110)):
+            journal.create_approval(
+                approval_id=approval_id,
+                run_id="run-1",
+                attempt_id=attempt_id,
+                prompt={"question": f"Allow {approval_id}?"},
+                now=now,
+            )
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-1",
+            now=130,
+        )
+        # The other request is still open, so the Attempt keeps waiting.
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        readings = [await _listed_and_detailed_elapsed_ms(journal, 140)]
+        journal.decide_approval(
+            "approval-2",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-2",
+            now=150,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await _listed_and_detailed_elapsed_ms(journal, 153))
+
+    assert readings == [(2_000, 2_000), (5_000, 5_000)]
+
+
+@pytest.mark.asyncio
+async def test_listed_elapsed_time_leaves_out_waiting_for_an_answer(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt_id = _start_run(journal)
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            interaction_type="question",
+            request={"question": "Which region?"},
+            now=102,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "waiting_for_user"
+        readings = [await _listed_and_detailed_elapsed_ms(journal, 130)]
+        journal.resolve_human_interaction(
+            "question-1",
+            decision_request_id="answer-1",
+            decision={"answer": "eu-west"},
+            expected_version=0,
+            continue_active_attempt=True,
+            now=160,
+        )
+        assert journal.get_run_attempt(attempt_id).status == "running"
+        readings.append(await _listed_and_detailed_elapsed_ms(journal, 163))
+
+    assert readings == [(2_000, 2_000), (5_000, 5_000)]
+
+
+@pytest.mark.asyncio
+async def test_run_listing_reads_the_waits_of_every_run_at_once(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        # An earlier Run worked 15s, 9s of which it waited for an approval.
+        journal.ensure_run(run_id="run-0", project_id="project-1", now=10)
+        earlier = journal.create_run_attempt(
+            "run-0",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=10,
+        )
+        journal.create_approval(
+            approval_id="approval-0",
+            run_id="run-0",
+            attempt_id=earlier.attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=11,
+        )
+        journal.decide_approval(
+            "approval-0",
+            decision="approved",
+            expected_version=0,
+            continue_active_attempt=True,
+            decision_request_id="approve-0",
+            now=20,
+        )
+        journal.append_event(
+            "run-0",
+            RunEventDraft(
+                event_id="run-0:completed",
+                event_type="run.completed",
+                payload={},
+                created_at=25,
+            ),
+        )
+        # The current Run has waited since 2s after it started.
+        attempt_id = _start_run(journal)
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt_id,
+            prompt={"question": "Allow the write?"},
+            now=102,
+        )
+
+        with (
+            patch.object(
+                journal,
+                "list_attempt_user_waits",
+                wraps=journal.list_attempt_user_waits,
+            ) as list_waits,
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+            patch("app.controller.run_controller.time.time", return_value=300),
+        ):
+            listed = await list_project_runs(
+                project_id="project-1", status=None, limit=20
+            )
+
+    assert list_waits.call_count == 1
+    assert {
+        run["run_id"]: run["total_attempt_elapsed_ms"]
+        for run in listed["runs"]
+    } == {"run-0": 6_000, "run-1": 2_000}
+
+
+@pytest.mark.asyncio
+async def test_run_summary_names_unsafe_resume_blockers(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        shell = dict(
+            tool_call_id="shell-call",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="shell_exec",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"command": "npm install"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **shell)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **shell)
+        # The app quits mid-command; restart cannot confirm its outcome.
+        journal.reconcile_startup(now=4)
+        journal.ensure_run(run_id="run-2", project_id="project-1", now=5)
+        coordinator = RunCoordinator(journal)
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.run_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=False,
+            ),
+        ):
+            listed = await list_project_runs(
+                project_id="project-1", status=None, limit=20
+            )
+            snapshot = await get_run("run-1")
+            with pytest.raises(HTTPException) as refused:
+                await resume_run("run-1", ResumeRunBody(request_id="resume-1"))
+        await coordinator.close()
+
+    blockers = [
+        {
+            "tool_call_id": "shell-call",
+            "tool_name": "shell_exec",
+            "display_title": "Ran command",
+        }
+    ]
+    runs = {run["run_id"]: run for run in listed["runs"]}
+    assert runs["run-1"]["status"] == "interrupted"
+    assert runs["run-1"]["unsafe_resume_blockers"] == blockers
+    assert runs["run-2"]["unsafe_resume_blockers"] == []
+    assert snapshot["unsafe_resume_blockers"] == blockers
+    # Blocked Resume is not read-only history: Cancel remains available.
+    assert snapshot["resume_blocked_reason"] is None
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {
+        "code": "unsafe_resume_blocked",
+        "tool_call_ids": ["shell-call"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_overlapping_retry_delivers_only_once(tmp_path, monkeypatch):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        original_to_thread = asyncio.to_thread
+        readers = 0
+        both_read = asyncio.Event()
+
+        async def synchronized_read(fn, *args, **kwargs):
+            nonlocal readers
+            result = await original_to_thread(fn, *args, **kwargs)
+            if (
+                getattr(fn, "__name__", "") == "get_human_interaction"
+                and readers < 2
+            ):
+                readers += 1
+                if readers == 2:
+                    both_read.set()
+                await both_read.wait()
+            return result
+
+        monkeypatch.setattr(asyncio, "to_thread", synchronized_read)
+        task_lock = AsyncMock()
+        first_waiter = asyncio.get_running_loop().create_future()
+        subsequent_waiter = asyncio.get_running_loop().create_future()
+
+        async def deliver(_agent, reply):
+            waiter = subsequent_waiter if first_waiter.done() else first_waiter
+            waiter.set_result(reply)
+
+        task_lock.put_human_input.side_effect = deliver
+        body = InteractionDecisionBody(
+            decision_request_id="original-request",
+            decision={"decision": "approved", "scope": "once"},
+            expected_version=0,
+            action_digest="digest-1",
+            continue_active_attempt=True,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            committed, retried = await asyncio.gather(
+                decide_run_interaction("run-1", "approval-1", body),
+                decide_run_interaction("run-1", "approval-1", body),
+            )
+            # The next live waiter must not receive a retry of the prior decision.
+            await decide_run_interaction("run-1", "approval-1", body)
+            assert first_waiter.result() == "approved"
+            assert not subsequent_waiter.done()
+            recovered = await list_run_interactions("run-1", status="all")
+        assert retried == committed
+        assert (
+            recovered["interactions"][0]["response"] == committed["response"]
+        )
+        assert committed["response"]["decision"] == "approved"
+        assert len(journal.list_human_interaction_decisions("approval-1")) == 1
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", "approved"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("commit_name", "decision", "reply"),
+    [
+        ("resolve_human_interaction", {"reply": "report.csv"}, "report.csv"),
+        ("decide_approval", {"decision": "approved"}, "approved"),
+    ],
+)
+async def test_cancelled_request_still_delivers_committed_decision(
+    tmp_path, monkeypatch, commit_name, decision, reply
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        if commit_name == "decide_approval":
+            journal.create_approval(
+                approval_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Allow write?", "agent": "worker"},
+                action_digest="digest-1",
+                now=2,
+            )
+        else:
+            journal.create_human_interaction(
+                interaction_id="interaction-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                interaction_type="question",
+                request={"question": "Which file?", "agent": "worker"},
+                now=2,
+            )
+        task_lock = TaskLock("project-1", asyncio.Queue(), {})
+        task_lock.add_human_input_listen("worker")
+        waiters = [
+            asyncio.create_task(task_lock.get_human_input("worker"))
+            for _ in range(2)
+        ]
+        await asyncio.sleep(0)
+        loop = asyncio.get_running_loop()
+        commit = getattr(journal, commit_name)
+        request = None
+
+        def commit_then_disconnect(*args, **kwargs):
+            committed = commit(*args, **kwargs)
+            # The client leaves after the commit, before the worker thread
+            # returns the transition to the request coroutine.
+            loop.call_soon_threadsafe(request.cancel)
+            return committed
+
+        monkeypatch.setattr(journal, commit_name, commit_then_disconnect)
+        body = InteractionDecisionBody(
+            decision_request_id="decision-1",
+            decision=decision,
+            expected_version=0,
+            action_digest="digest-1",
+        )
+        try:
+            with (
+                patch(
+                    "app.controller.run_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.service.task.get_task_lock_if_exists",
+                    return_value=task_lock,
+                ),
+            ):
+                request = asyncio.create_task(
+                    decide_run_interaction("run-1", "interaction-1", body)
+                )
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+                assert await asyncio.wait_for(waiters[0], 1) == reply
+                retried = await decide_run_interaction(
+                    "run-1", "interaction-1", body
+                )
+            assert retried["status"] == "resolved"
+            assert not waiters[1].done(), "A retry answered the next waiter"
+            assert (
+                len(journal.list_human_interaction_decisions("interaction-1"))
+                == 1
+            )
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)
+
+
+@pytest.fixture
+def model_run(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-env", project_id="project-1")
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5",
+            auth_source="api_key",
+            requested_effort="high",
+            allow_local_system=True,
+        )
+        environment = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-env",
+            space_id="space-1",
+            working_directory=workspace,
+            created_by="test-user",
+            template=template,
+        )
+        yield journal, template, environment
+
+
+def _bind_model_attempt(
+    model_run,
+    *,
+    owner_type="run",
+    owner_id="run-env",
+    manifest=None,
+    attempt_id="bound-attempt",
+    now=1,
+):
+    journal, template, environment = model_run
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=template.manifest,
+        owner_type=owner_type,
+        owner_id=owner_id,
+        local_materialization=environment.spec.local_materialization,
+        provider_capability=template.provider_capability,
+        thinking_effort_override=template.thinking_effort_requested,
+        runtime_capability_manifest=(
+            template.runtime_capability_manifest
+            if manifest is None
+            else manifest
+        ),
+    )
+    record = journal.put_effective_environment_spec(spec)
+    binding = replace(
+        environment.binding,
+        environment_spec_id=spec.spec_id,
+        environment_spec_digest=spec.digest,
+    )
+    attempt = journal.create_run_attempt(
+        "run-env",
+        attempt_id=attempt_id,
+        request_id=f"initial:{attempt_id}",
+        reason="initial_execution",
+        activate=True,
+        environment=binding,
+        now=now,
+    )
+    return spec, record, attempt
+
+
+async def _read_model_run(journal, run_id="run-env"):
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=RunCoordinator(journal),
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+    ):
+        listing = await list_project_runs(
+            project_id="project-1", status=None, limit=100
+        )
+        detail = await get_run(run_id)
+    item = next(item for item in listing["runs"] if item["run_id"] == run_id)
+    return item, detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner_type", ["run", "run_attempt"])
+@pytest.mark.parametrize("later_unbound", [False, True])
+async def test_run_reads_expose_bound_model_without_auth_details(
+    model_run, owner_type, later_unbound
+):
+    journal, _, _ = model_run
+    spec, _, attempt = _bind_model_attempt(
+        model_run,
+        owner_type=owner_type,
+        owner_id="run-env" if owner_type == "run" else "bound-attempt",
+    )
+    if later_unbound:
+        journal.reconcile_startup(now=2)
+        journal.create_run_attempt(
+            "run-env", request_id="unbound", reason="explicit_resume", now=3
+        )
+    item, detail = await _read_model_run(journal)
+
+    expected = {"platform": "openai", "type": "gpt-5"}
+    assert item["resolved_model"] == detail["resolved_model"] == expected
+    assert "auth_source" not in item["resolved_model"]
+    assert "auth_source" not in detail["resolved_model"]
+    if later_unbound:
+        assert item["latest_attempt"]["environment_spec_id"] is None
+        assert detail["latest_attempt"]["environment_spec_id"] is None
+        assert detail["latest_attempt"]["attempt_id"] != attempt.attempt_id
+        binding = RunCoordinator._latest_environment_binding(
+            journal.list_run_attempts("run-env")
+        )
+        assert binding.environment_spec_id == spec.spec_id
+
+
+@pytest.mark.asyncio
+async def test_fresh_fork_has_no_admitted_model(model_run):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.fork_run(
+        "run-env", new_run_id="forked-run", request_id="fork-request"
+    )
+    item, detail = await _read_model_run(journal, "forked-run")
+    assert item["parent_run_id"] == "run-env"
+    assert detail["latest_attempt"]["outcome"] == "fork_checkpoint"
+    assert item["resolved_model"] is None
+    assert detail["resolved_model"] is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"owner_id": "another-run"},
+        {"owner_type": "run_attempt", "owner_id": "another-attempt"},
+        {"owner_type": "unsupported"},
+        {"environment_spec_id": "another-spec"},
+        {"environment_spec_digest": "another-digest"},
+    ],
+)
+def test_resolved_model_rejects_unrelated_specs(model_run, changes):
+    _, record, attempt = _bind_model_attempt(model_run)
+    assert (
+        _resolved_model_for_attempt(replace(record, **changes), attempt)
+        is None
+    )
+    assert _resolved_model_for_attempt(None, attempt) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {},
+        {"model": None},
+        {"model": "invalid"},
+        {"model": {"platform": "openai"}},
+        {"model": {"platform": "", "type": "gpt-5"}},
+        {"model": {"platform": "openai", "type": "  "}},
+        {"model": {"platform": 42, "type": "gpt-5"}},
+    ],
+)
+async def test_run_reads_leave_invalid_model_identity_unknown(
+    model_run, manifest
+):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run, manifest=manifest)
+    item, detail = await _read_model_run(journal)
+    assert item["resolved_model"] is None
+    assert detail["resolved_model"] is None
+
+
+def test_model_accessors_use_local_spec_and_exclude_auth(model_run):
+    spec, record, attempt = _bind_model_attempt(model_run)
+    expected = {"platform": "openai", "type": "gpt-5"}
+    assert spec.bound_model() == record.bound_model() == expected
+    # The Cloud projection is independently versioned and can omit this data.
+    assert (
+        _resolved_model_for_attempt(replace(record, redacted_spec={}), attempt)
+        == expected
+    )
+    for semantic in (None, [], {"runtime_capability_manifest": []}):
+        assert (
+            replace(record, spec={"semantic_spec": semantic}).bound_model()
+            is None
+        )
+        assert (
+            spec.model_copy(update={"semantic_spec": semantic}).bound_model()
+            is None
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_list_batch_loads_attempts_and_model_specs(model_run):
+    journal, template, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.reconcile_startup(now=2)
+    journal.ensure_run(run_id="second-run", project_id="project-1")
+    second = EnvironmentAdmissionService(journal).persist_for_run(
+        run_id="second-run",
+        space_id="space-1",
+        working_directory=journal.path.parent,
+        created_by="test-user",
+        template=template,
+    )
+    journal.create_run_attempt(
+        "second-run",
+        request_id="initial:second-run",
+        reason="initial_execution",
+        activate=True,
+        environment=second.binding,
+    )
+    queries = []
+    journal._connection.set_trace_callback(queries.append)
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        patch(
+            "app.run_sync.runtime.is_default_cloud_history_bootstrap_pending",
+            return_value=False,
+        ),
+    ):
+        listing = await list_project_runs(
+            project_id="project-1", status=None, limit=100
+        )
+    journal._connection.set_trace_callback(None)
+    assert len(listing["runs"]) == 2
+    assert all(item["resolved_model"] for item in listing["runs"])
+    assert all(item["latest_attempt"] for item in listing["runs"])
+    for table in ("run_attempts", "effective_environment_specs"):
+        assert (
+            len([query for query in queries if f"FROM {table}" in query]) == 1
+        )
+    assert journal.list_attempts_for_runs([]) == {}
+    attempts = journal.list_attempts_for_runs(
+        ["second-run", "run-env", "second-run", "missing"]
+    )
+    assert list(attempts) == ["second-run", "run-env", "missing"]
+    assert [a.attempt_id for a in attempts["run-env"]] == ["bound-attempt"]
+    assert attempts["missing"] == []
+    assert journal.get_effective_environment_specs([]) == {}
+    specs = journal.get_effective_environment_specs(
+        [second.spec.spec_id, second.spec.spec_id, "missing"]
+    )
+    assert list(specs) == [second.spec.spec_id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "manifest, expected",
+    [
+        (
+            {"model": {"platform": "openai", "type": "gpt-5.5"}},
+            {"platform": "openai", "type": "gpt-5.5"},
+        ),
+        ({}, None),
+    ],
+)
+async def test_run_reads_use_latest_binding_even_when_identity_is_missing(
+    model_run, manifest, expected
+):
+    journal, _, _ = model_run
+    _bind_model_attempt(model_run)
+    journal.reconcile_startup(now=2)
+    _bind_model_attempt(
+        model_run, manifest=manifest, attempt_id="new-bound-attempt", now=3
+    )
+    item, detail = await _read_model_run(journal)
+    assert item["resolved_model"] == detail["resolved_model"] == expected
+    assert detail["latest_attempt"]["attempt_id"] == "new-bound-attempt"

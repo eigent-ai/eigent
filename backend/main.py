@@ -18,6 +18,7 @@ import os
 import pathlib
 import signal
 import sys
+import threading
 
 # Add project root to Python path to import shared utils
 _project_root = pathlib.Path(__file__).parent.parent
@@ -40,13 +41,44 @@ logging.getLogger("camel.societies").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+
+def _enable_system_trust_store() -> None:
+    try:
+        import truststore
+
+        truststore.inject_into_ssl()
+        logging.getLogger("main").info("System trust store enabled")
+    except Exception:
+        logging.getLogger("main").warning(
+            "Failed to enable system trust store; falling back to default CA bundle",
+            exc_info=True,
+        )
+
+
+_enable_system_trust_store()
+
+from app.auth.local_control import capture_local_control_capability
+
+# Electron passes this once at process creation. Consume it before routers,
+# toolkits, or model-controlled subprocesses can inspect the Brain environment.
+capture_local_control_capability()
+
 from app import api
 from app.component.environment import env
 from app.router import register_routers
+from app.run_sync.middleware import cloud_sync_configuration_middleware
+from app.utils.event_loop_utils import set_main_event_loop
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
+_fallback_camel_log_dir = (
+    pathlib.Path.home() / ".eigent" / "fallback" / "camel_logs"
+)
+_fallback_camel_log_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("CAMEL_LOG_DIR", str(_fallback_camel_log_dir))
 
 app_logger = logging.getLogger("main")
+
+api.middleware("http")(cloud_sync_configuration_middleware)
 
 # Log application startup
 app_logger.info("Starting Eigent Multi-Agent System API")
@@ -55,6 +87,9 @@ app_logger.info(f"Environment: {os.environ.get('ENVIRONMENT', 'development')}")
 
 prefix = env("url_prefix", "")
 app_logger.info(f"Loading routers with prefix: '{prefix}'")
+app_logger.info(
+    f"MCP will be at: {prefix}/mcp/list, health at: {prefix}/health"
+)
 register_routers(api, prefix)
 app_logger.info("All routers loaded successfully")
 
@@ -101,8 +136,138 @@ pid_task = None
 @api.on_event("startup")
 async def startup_event():
     global pid_task
+    set_main_event_loop(asyncio.get_running_loop())
     pid_task = asyncio.create_task(write_pid_file())
     app_logger.info("PID write task created")
+
+    # Reconcile durable execution facts before accepting new Run admission.
+    # No Python coroutine or external Tool call is restarted implicitly.
+    from app.artifacts import finalize_recoverable_run_artifacts
+    from app.run_journal.runtime import get_default_run_journal
+
+    journal = get_default_run_journal()
+    artifact_recovery = await asyncio.to_thread(
+        finalize_recoverable_run_artifacts,
+        journal,
+    )
+
+    reconciliation = await asyncio.to_thread(journal.reconcile_startup)
+    from app.workspace_git.scheduler import (
+        get_default_workspace_writer_scheduler,
+    )
+    from app.workspace_git.startup import reconcile_workspace_git_startup
+
+    writer_scheduler = get_default_workspace_writer_scheduler()
+    writer_reconciliation = await asyncio.to_thread(
+        writer_scheduler.reconcile_orphaned_admissions
+    )
+    workspace_git_reconciliation = await asyncio.to_thread(
+        reconcile_workspace_git_startup,
+        journal,
+    )
+    # Git reconciliation settles interrupted writes before holders are judged.
+    writer_reclamation = await asyncio.to_thread(
+        writer_scheduler.reclaim_lost_writers
+    )
+    from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
+    from app.workspace_config.legacy_migration import (
+        migrate_legacy_workspace_bundle_on_startup,
+    )
+
+    legacy_bundle_migration = await asyncio.to_thread(
+        migrate_legacy_workspace_bundle_on_startup,
+        journal,
+    )
+    if legacy_bundle_migration.status == "degraded":
+        app_logger.warning(
+            "Legacy Workspace Bundle migration degraded without blocking "
+            "startup: %s",
+            legacy_bundle_migration.error,
+        )
+    legacy_memory_migration = await asyncio.to_thread(
+        migrate_legacy_memory_v1_on_startup
+    )
+    if legacy_memory_migration.status == "degraded":
+        app_logger.warning(
+            "Legacy Memory V1 migration degraded without blocking startup: "
+            "%s files",
+            legacy_memory_migration.degraded_files,
+        )
+    app_logger.info(
+        "RunJournal startup reconciliation complete",
+        extra={
+            "recovered_artifact_manifests": len(artifact_recovery),
+            "interrupted_runs": len(reconciliation.interrupted_run_ids),
+            "completed_cancels": len(reconciliation.completed_cancel_run_ids),
+            "deadline_runs": len(reconciliation.deadline_run_ids),
+            "detached_attempts": len(reconciliation.detached_attempt_ids),
+            "outcome_unknown_tools": len(
+                reconciliation.outcome_unknown_tool_call_ids
+            ),
+            "outcome_unknown_model_invocations": len(
+                reconciliation.outcome_unknown_model_invocation_ids
+            ),
+            "pending_approvals": len(reconciliation.pending_approval_ids),
+            "interrupted_orphaned_workspace_writers": len(
+                writer_reconciliation.interrupted_request_ids
+            ),
+            "reclaimed_workspace_writers": len(
+                writer_reclamation.reclaimed_request_ids
+            ),
+            "promoted_workspace_writers": len(
+                writer_reconciliation.promoted_request_ids
+            )
+            + len(writer_reclamation.promoted_request_ids),
+            "preserved_workspace_writers": len(
+                writer_reconciliation.preserved_request_ids
+            ),
+            "workspace_writer_reconciliation_failures": len(
+                writer_reconciliation.failed_request_ids
+            )
+            + len(writer_reclamation.failed_request_ids),
+            "workspace_git_reconciliation_skipped": (
+                workspace_git_reconciliation.skipped
+            ),
+            "workspace_git_reconciliation_skip_reason": (
+                workspace_git_reconciliation.skipped_reason
+            ),
+            "recovered_agent_workspaces": len(
+                workspace_git_reconciliation.workforce.recovered_workspace_ids
+            ),
+            "agent_workspaces_needing_attention": len(
+                workspace_git_reconciliation.workforce.needs_attention_workspace_ids
+            ),
+            "reconcilable_commands": len(
+                reconciliation.reconcilable_command_ids
+            ),
+            "recovered_git_change_sets": len(
+                workspace_git_reconciliation.mutations.recovered_change_set_ids
+            ),
+            "git_change_sets_needing_attention": len(
+                workspace_git_reconciliation.mutations.needs_attention_change_set_ids
+            ),
+            "finalized_terminal_git_runs": len(
+                workspace_git_reconciliation.terminal.finalizations
+            ),
+            "terminal_git_finalization_failures": len(
+                workspace_git_reconciliation.terminal.failed_run_ids
+            ),
+            "external_git_changes": len(
+                workspace_git_reconciliation.observation.changes
+            ),
+            "git_observation_failures": len(
+                workspace_git_reconciliation.observation.failed_repository_ids
+            ),
+            "legacy_memory_imported": (legacy_memory_migration.imported_count),
+            "legacy_memory_skipped": legacy_memory_migration.skipped_count,
+        },
+    )
+
+    # Initialize EnvironmentHands from Brain deployment (full on local/cloud_vm, sandbox in Docker)
+    from app.router_layer.hands_resolver import init_environment_hands
+
+    hands = init_environment_hands()
+    app_logger.info(f"EnvironmentHands initialized: mode={hands.mode}")
 
     # Initialize telemetry tracer provider
     from app.utils.telemetry.workforce_metrics import (
@@ -112,14 +277,67 @@ async def startup_event():
     initialize_tracer_provider()
     app_logger.info("Telemetry tracer provider initialized")
 
+    # Optional isolated owners start only after durable fact reconciliation.
+    # Deployment registration supplies explicit policies and worker adapters.
+    from app.workspace_runtime.runtime import (
+        initialize_execution_service,
+        start_default_execution_service,
+    )
 
-# Graceful shutdown handler
-shutdown_event = asyncio.Event()
+    initialize_execution_service(env("EIGENT_MANAGED_EXECUTION_MANIFEST", ""))
+    await start_default_execution_service()
+    from app.utils.runtime_environment_cleanup import (
+        runtime_environment_gc_loop,
+    )
+
+    global runtime_environment_gc_task
+    runtime_environment_gc_task = asyncio.create_task(
+        runtime_environment_gc_loop(journal)
+    )
+
+
+@api.on_event("shutdown")
+async def shutdown_event_handler():
+    r"""Run cleanup when uvicorn receives SIGINT/SIGTERM and shuts down."""
+    await cleanup_resources()
 
 
 async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
+    gc_task = globals().get("runtime_environment_gc_task")
+    if gc_task is not None:
+        gc_task.cancel()
+        await asyncio.gather(gc_task, return_exceptions=True)
     app_logger.info("Starting graceful shutdown process")
+
+    from app.run_runtime.runtime import mark_process_shutting_down
+
+    # Quitting is not a tool outcome: undispatched tools and their approvals
+    # stay open so restart recovery records the interruption.
+    mark_process_shutting_down()
+
+    from app.workspace_runtime.runtime import close_default_execution_service
+
+    # Stop new claims and drain owned preparation/execution before the shared
+    # coordinator, compatibility resources or journal are closed.
+    await close_default_execution_service()
+
+    # Stop detached execution consumers before cleaning their compatibility
+    # TaskLocks. RunJournal remains open until all producers have stopped.
+    try:
+        from app.run_runtime import close_default_run_coordinator
+
+        await close_default_run_coordinator()
+    except Exception as e:
+        app_logger.warning(f"RunCoordinator shutdown failed: {e}")
+
+    # Stop cloud outbox drain before closing its shared SQLite journal.
+    try:
+        from app.run_sync.runtime import close_default_cloud_sync_worker
+
+        await close_default_cloud_sync_worker()
+    except Exception as e:
+        app_logger.warning(f"CloudSyncWorker shutdown failed: {e}")
 
     from app.service.task import _cleanup_task, task_locks
 
@@ -130,31 +348,65 @@ async def cleanup_resources():
         except asyncio.CancelledError:
             pass
 
-    # Cleanup all task locks
+    # Cleanup all task locks. Runs still active here become interrupted on
+    # the next start, so keep their environment copies for Resume.
     for task_id in list(task_locks.keys()):
         try:
             task_lock = task_locks[task_id]
-            await task_lock.cleanup()
+            await task_lock.cleanup(keep_run_environments=True)
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
+
+    # Close the process-owned SQLite RunJournal after producers have stopped.
+    try:
+        from app.run_journal.runtime import close_default_run_journal
+
+        close_default_run_journal()
+    except Exception as e:
+        app_logger.warning(f"RunJournal shutdown failed: {e}")
 
     # Remove PID file
     pid_file = dir / "run.pid"
     if pid_file.exists():
         pid_file.unlink()
 
+    # Shutdown OpenTelemetry tracer (releases BatchSpanProcessor worker threads)
+    try:
+        from app.utils.telemetry.workforce_metrics import (
+            shutdown_tracer_provider,
+        )
+
+        shutdown_tracer_provider()
+    except Exception as e:
+        app_logger.warning(f"Telemetry shutdown failed: {e}")
+
+    # Shutdown TerminalToolkit thread pool (prevents non-daemon threads blocking exit)
+    try:
+        from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+
+        if TerminalToolkit._thread_pool is not None:
+            TerminalToolkit._thread_pool.shutdown(wait=False)
+            TerminalToolkit._thread_pool = None
+    except Exception as e:
+        app_logger.warning(f"TerminalToolkit shutdown failed: {e}")
+
+    # Best-effort close Browser toolkit WebSocket/Node connections.
+    # Use a timeout so shutdown stays responsive even if a wrapper is stuck.
+    try:
+        from app.agent.toolkit.hybrid_browser_toolkit import (
+            websocket_connection_pool,
+        )
+
+        await asyncio.wait_for(
+            websocket_connection_pool.close_all(), timeout=3.0
+        )
+    except TimeoutError:
+        app_logger.warning("Browser WebSocket pool shutdown timed out")
+    except Exception as e:
+        app_logger.warning(f"Browser WebSocket pool shutdown failed: {e}")
+
+    set_main_event_loop(None)
     app_logger.info("All resources cleaned up successfully")
-
-
-def signal_handler(signum, frame):
-    r"""Handle shutdown signals"""
-    app_logger.warning(f"Received shutdown signal: {signum}")
-    asyncio.create_task(cleanup_resources())
-    shutdown_event.set()
-
-
-signal.signal(signal.SIGTERM, signal_handler)
-signal.signal(signal.SIGINT, signal_handler)
 
 
 # Register cleanup on exit with safe synchronous wrapper
@@ -174,3 +426,90 @@ atexit.register(sync_cleanup)
 
 # Log successful initialization
 app_logger.info("Application initialization completed successfully")
+
+DEFAULT_BRAIN_HOST = "127.0.0.1"
+
+
+def run_standalone():
+    """Run Brain in standalone mode (no Electron dependency)."""
+    import uvicorn
+
+    port = int(env("EIGENT_BRAIN_PORT", "5001"))
+    # Exposing Brain is an explicit deployment choice. Desktop and local dev
+    # default to loopback so LAN peers cannot reach mutable Chat/Run APIs.
+    host = env("EIGENT_BRAIN_HOST", DEFAULT_BRAIN_HOST)
+    reload = os.environ.get("EIGENT_DEBUG", "").lower() in ("1", "true", "yes")
+
+    app_logger.info(
+        f"Starting Brain in standalone mode: {host}:{port} (reload={reload})"
+    )
+    if reload:
+        uvicorn.run(
+            "main:api",
+            host=host,
+            port=port,
+            reload=reload,
+            timeout_graceful_shutdown=5,
+        )
+        return
+
+    config = uvicorn.Config(
+        "main:api",
+        host=host,
+        port=port,
+        reload=False,
+        timeout_graceful_shutdown=5,
+    )
+    server = uvicorn.Server(config)
+    server.install_signal_handlers = lambda: None
+
+    force_exit_timer = None
+    signal_count = {"count": 0}
+    old_sigint = signal.getsignal(signal.SIGINT)
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def _force_exit(signum: int):
+        signame = signal.Signals(signum).name
+        app_logger.error(
+            "Force exiting Brain after %s because graceful shutdown did not finish",
+            signame,
+        )
+        os._exit(128 + signum)
+
+    def _handle_signal(signum, _frame):
+        nonlocal force_exit_timer
+        signame = signal.Signals(signum).name
+        signal_count["count"] += 1
+
+        if signal_count["count"] == 1:
+            app_logger.warning(
+                "%s received, requesting graceful shutdown. Press Ctrl+C again to force exit.",
+                signame,
+            )
+            server.should_exit = True
+            if force_exit_timer is None:
+                force_exit_timer = threading.Timer(
+                    5.0, _force_exit, args=(signum,)
+                )
+                force_exit_timer.daemon = True
+                force_exit_timer.start()
+            return
+
+        app_logger.error(
+            "%s received again, force exiting Brain immediately", signame
+        )
+        _force_exit(signum)
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    try:
+        server.run()
+    finally:
+        if force_exit_timer is not None:
+            force_exit_timer.cancel()
+        signal.signal(signal.SIGINT, old_sigint)
+        signal.signal(signal.SIGTERM, old_sigterm)
+
+
+if __name__ == "__main__":
+    run_standalone()

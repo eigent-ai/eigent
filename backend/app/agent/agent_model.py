@@ -23,10 +23,112 @@ from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.model.anthropic_tools import configure_anthropic_tool_compatibility
 from app.model.chat import AgentModelConfig, Chat
-from app.model.model_platform import patch_bedrock_cloud_config
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.model.effort import resolve_model_effort_config
+from app.model.model_platform import (
+    configure_meta_model_api_backend,
+    is_eigent_cloud_model_endpoint,
+    patch_azure_cloud_config,
+    patch_bedrock_cloud_config,
+    resolve_cloud_model_runtime_platform,
+)
+from app.model.responses_input import configure_responses_input
+from app.model.subscription_runtime import (
+    apply_subscription_runtime,
+    is_subscription_auth,
+)
+from app.run_journal.model_capture import instrument_model_backend
+from app.run_runtime.owned_tasks import get_task_lock
+from app.service.task import ActionCreateAgentData, Agents
 from app.utils.event_loop_utils import _schedule_async_task
+
+# OpenAI chat-completions streaming only returns token usage when
+# `stream_options.include_usage` is requested. Without it the request-level
+# usage callback (on_request_usage) fires with 0 tokens, and because the
+# step-level deactivate is zeroed once request-level reporting is active,
+# streaming steps end up uncounted. These platforms use native (non-OpenAI)
+# SDKs that reject `stream_options` and surface streaming usage on their own,
+# so they are excluded from the injection below.
+_NATIVE_STREAM_USAGE_PLATFORMS = {
+    "anthropic",
+    "aws-bedrock",
+    "aws-bedrock-converse",
+    "cohere",
+    "mistral",
+    "reka",
+    "watsonx",
+}
+
+
+def _responses_instructions(system_message: str | BaseMessage) -> str:
+    """Return the trusted agent prompt for the Responses instructions field."""
+    if isinstance(system_message, str):
+        return system_message
+
+    content = getattr(system_message, "content", "")
+    return content if isinstance(content, str) else ""
+
+
+def _configure_responses_instructions(model_backend: Any) -> None:
+    """Keep system/developer text only in Responses `instructions`.
+
+    CAMEL converts the agent system message into an input item. Eigent also
+    supplies that trusted text through `instructions` so it is present on every
+    chained response. Remove the duplicate input item to avoid sending and
+    billing the same prompt twice.
+    """
+    configure_responses_input(model_backend)
+    if getattr(model_backend, "_eigent_instructions_configured", False):
+        return
+
+    prepare = getattr(
+        model_backend, "_prepare_responses_input_and_chain", None
+    )
+    if not callable(prepare):
+        return
+
+    def prepare_without_instruction_messages(messages, chain_enabled=True):
+        state = prepare(messages, chain_enabled=chain_enabled)
+        input_messages = state.get("input_messages")
+        if not isinstance(input_messages, list):
+            return state
+
+        filtered = [
+            item
+            for item in input_messages
+            if not (
+                isinstance(item, dict)
+                and item.get("role") in {"system", "developer"}
+            )
+        ]
+        if len(filtered) == len(input_messages):
+            return state
+
+        return {**state, "input_messages": filtered}
+
+    model_backend._prepare_responses_input_and_chain = (  # noqa: SLF001
+        prepare_without_instruction_messages
+    )
+    model_backend._eigent_instructions_configured = True  # noqa: SLF001
+
+
+def append_resume_browser_notice(
+    system_message: str | BaseMessage, options: Chat
+):
+    if (
+        not options.resume_request_id
+        or not options.browser_unavailable_on_resume
+    ):
+        return system_message
+    notice = (
+        "\nThe browser could not be reconnected for this resumed task. "
+        "If your remaining work needs the browser, tell the user it is "
+        "unavailable. Do not claim to have opened or checked a page."
+    )
+    if isinstance(system_message, str):
+        return system_message + notice
+    return system_message.create_new_instance(system_message.content + notice)
 
 
 def agent_model(
@@ -39,7 +141,9 @@ def agent_model(
     toolkits_to_register_agent: list[RegisteredAgentToolkit] | None = None,
     enable_snapshot_clean: bool = False,
     custom_model_config: AgentModelConfig | None = None,
+    managed_resources=None,
 ):
+    system_message = append_resume_browser_notice(system_message, options)
     task_lock = get_task_lock(options.project_id)
     agent_id = str(uuid.uuid4())
     logger.info(
@@ -66,11 +170,21 @@ def agent_model(
 
     if custom_model_config and custom_model_config.has_custom_config():
         for attr in config_attrs:
-            effective_config[attr] = getattr(
-                custom_model_config, attr, None
-            ) or getattr(options, attr)
+            custom_value = getattr(custom_model_config, attr, None)
+            effective_config[attr] = (
+                custom_value
+                if custom_value is not None
+                else getattr(options, attr)
+            )
         extra_params = (
-            custom_model_config.extra_params or options.extra_params or {}
+            custom_model_config.extra_params
+            if custom_model_config.extra_params is not None
+            else options.extra_params or {}
+        )
+        explicit_model_config = (
+            custom_model_config.model_config_dict
+            if custom_model_config.model_config_dict is not None
+            else options.model_config_dict or {}
         )
         logger.info(
             f"Agent {agent_name} using custom model config: "
@@ -81,107 +195,298 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
-    # Cloud mode: inject default Bedrock region and adjust URL for proxy.
+        explicit_model_config = options.model_config_dict or {}
+
+    has_explicit_custom_api_key = (
+        custom_model_config is not None
+        and custom_model_config.has_custom_config()
+        and custom_model_config.api_key is not None
+    )
+    use_subscription_runtime = (
+        is_subscription_auth(options) and not has_explicit_custom_api_key
+    )
+
+    base_effective_config = dict(effective_config)
+    base_extra_params = dict(extra_params or {})
+    base_model_config = dict(explicit_model_config or {})
     if (
-        effective_config.get("model_platform") == "aws-bedrock-converse"
-        and options.is_cloud()
+        custom_model_config
+        and custom_model_config.has_custom_config()
+        and custom_model_config.extra_params is None
+        and any(
+            effective_config[key] != getattr(options, key)
+            for key in ("model_platform", "model_type", "api_url")
+        )
     ):
-        effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
-            effective_config["api_url"], extra_params
-        )
-    init_param_keys = {
-        "api_version",
-        "azure_ad_token",
-        "azure_ad_token_provider",
-        "max_retries",
-        "timeout",
-        "client",
-        "async_client",
-        "azure_deployment_name",
-        "region_name",
-        "aws_access_key_id",
-        "aws_secret_access_key",
-        "aws_session_token",
-    }
+        # A task's declaration is scoped to its provider/model. An agent that
+        # inherits other constructor settings must resolve its own capability.
+        base_extra_params.pop("model_capability", None)
 
-    init_params = {}
-    model_config: dict[str, Any] = {}
+    def build_model(force_refresh: bool = False):
+        effective_config = dict(base_effective_config)
+        extra_params = dict(base_extra_params)
+        explicit_model_config = dict(base_model_config)
 
-    if options.is_cloud():
-        model_config["user"] = str(options.project_id)
-
-    excluded_keys = {"model_platform", "model_type", "api_key", "url"}
-
-    # Distribute extra_params between init_params and model_config
-    for k, v in extra_params.items():
-        if k in excluded_keys:
-            continue
-        # Skip empty values
-        if v is None or (isinstance(v, str) and not v.strip()):
-            continue
-
-        if k in init_param_keys:
-            init_params[k] = v
-        else:
-            model_config[k] = v
-
-    # Auto-inject prompt caching based on model platform
-    try:
-        model_platform_enum = ModelPlatformType(
-            effective_config["model_platform"].lower()
-        )
-        if model_platform_enum in {
-            ModelPlatformType.ANTHROPIC,
-            ModelPlatformType.AWS_BEDROCK_CONVERSE,
-        }:
-            model_config.setdefault("cache_control", "5m")
-        elif model_platform_enum == ModelPlatformType.OPENAI:
-            model_config.setdefault(
-                "prompt_cache_key", str(options.project_id)
+        if use_subscription_runtime:
+            effective_config, extra_params = apply_subscription_runtime(
+                options,
+                effective_config,
+                extra_params,
+                force_refresh=force_refresh,
             )
-    except (ValueError, AttributeError):
-        logging.error(
-            f"Invalid model platform: {effective_config['model_platform']}",
-            exc_info=True,
-        )
 
-    if agent_name == Agents.task_agent:
-        model_config["stream"] = True
-    if agent_name == Agents.browser_agent:
+        effective_api_url = effective_config.get("api_url")
+        is_effective_cloud = is_eigent_cloud_model_endpoint(effective_api_url)
+
+        # Cloud mode: inject default Bedrock region and adjust URL for proxy.
+        if (
+            effective_config.get("model_platform") == "aws-bedrock-converse"
+            and is_effective_cloud
+        ):
+            (
+                effective_config["api_url"],
+                extra_params,
+            ) = patch_bedrock_cloud_config(
+                effective_config["api_url"], extra_params
+            )
+        # Cloud mode: default api_version for Azure-backed models so AzureOpenAI
+        # construction does not blow up when the frontend omits extra_params.
+        if (
+            effective_config.get("model_platform") == "azure"
+            and is_effective_cloud
+        ):
+            extra_params = patch_azure_cloud_config(extra_params)
+        provider_override = extra_params.pop("model_capability", None)
+        init_param_keys = {
+            "api_version",
+            "azure_ad_token",
+            "azure_ad_token_provider",
+            "max_retries",
+            "timeout",
+            "client",
+            "async_client",
+            "azure_deployment_name",
+            "region_name",
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "aws_session_token",
+            "default_headers",
+            "api_mode",
+        }
+
+        init_params = {}
+        model_config: dict[str, Any] = {}
+
+        # A nested model_config_dict may arrive inside legacy extra_params
+        # while stored providers migrate to the explicit top-level field.
+        # Treat it as less specific than the explicit request field.
+        nested_model_config = extra_params.pop("model_config_dict", None)
+
+        excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+
+        # Distribute extra_params between init_params and model_config
+        for k, v in extra_params.items():
+            if k in excluded_keys:
+                continue
+            # Skip empty values
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            if k in init_param_keys:
+                init_params[k] = v
+            else:
+                model_config[k] = v
+
+        if isinstance(nested_model_config, dict):
+            model_config.update(nested_model_config)
+
+        # The explicit model config is the canonical API and wins over legacy
+        # flat values from extra_params.
+        model_config.update(explicit_model_config)
+
+        # Auto-inject prompt caching based on model platform
         try:
             model_platform_enum = ModelPlatformType(
                 effective_config["model_platform"].lower()
             )
             if model_platform_enum in {
-                ModelPlatformType.OPENAI,
-                ModelPlatformType.AZURE,
-                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-                ModelPlatformType.LITELLM,
-                ModelPlatformType.OPENROUTER,
+                ModelPlatformType.ANTHROPIC,
+                ModelPlatformType.AWS_BEDROCK_CONVERSE,
             }:
-                model_config["parallel_tool_calls"] = False
+                model_config.setdefault("cache_control", "5m")
+            elif model_platform_enum == ModelPlatformType.OPENAI:
+                model_config.setdefault(
+                    "prompt_cache_key", str(options.project_id)
+                )
         except (ValueError, AttributeError):
             logging.error(
-                f"Invalid model platform for browser agent: "
+                f"Invalid model platform: "
                 f"{effective_config['model_platform']}",
                 exc_info=True,
             )
-            model_platform_enum = None
 
-    if effective_config["model_platform"].lower() == "anthropic":
-        if model_config.get("max_tokens") is None:
-            model_config["max_tokens"] = 128000
+        # Resolve only configuration here; the Responses input adapter below
+        # independently owns instructions and message normalization.
+        use_task_effort = not (
+            custom_model_config and custom_model_config.has_custom_config()
+        )
 
-    model = ModelFactory.create(
-        model_platform=effective_config["model_platform"],
-        model_type=effective_config["model_type"],
-        api_key=effective_config["api_key"],
-        url=effective_config["api_url"],
-        model_config_dict=model_config or None,
-        timeout=600,  # 10 minutes
-        **init_params,
+        def pinned_string(name: str) -> str | None:
+            value = getattr(task_lock, name, None) if use_task_effort else None
+            return value if isinstance(value, str) else None
+
+        model_config, transport = resolve_model_effort_config(
+            model_platform=str(effective_config["model_platform"]),
+            model_type=str(effective_config["model_type"]),
+            model_config=model_config,
+            api_mode=init_params.get("api_mode"),
+            provider_override=provider_override,
+            auth_source=options.auth_source
+            if use_subscription_runtime
+            else None,
+            requested_effort=options.thinking_effort
+            if use_task_effort
+            else None,
+            pinned_parameter=pinned_string("provider_effort_parameter_name"),
+            pinned_value=pinned_string("provider_effort_parameter_value"),
+            pinned_transport=pinned_string("provider_model_transport"),
+            has_function_tools=bool(
+                tools
+                or tool_names
+                or toolkits_to_register_agent
+                or model_config.get("tools")
+                or (
+                    isinstance(model_config.get("extra_body"), dict)
+                    and model_config["extra_body"].get("tools")
+                )
+            ),
+            is_cloud=is_effective_cloud,
+            **(
+                {"pinned_capability": managed_resources.provider_capability}
+                if managed_resources is not None
+                else {}
+            ),
+        )
+        uses_responses_transport = transport == "responses"
+        if uses_responses_transport or "api_mode" in init_params:
+            init_params["api_mode"] = transport
+
+        if uses_responses_transport:
+            # Responses does not carry a prior response's `instructions`
+            # forward when `previous_response_id` is used. Send the trusted
+            # agent prompt on every call so the proxy Prompt Guard can validate
+            # continuation/tool turns without weakening its fail-closed rule.
+            instructions = _responses_instructions(system_message)
+            if instructions:
+                model_config["instructions"] = instructions
+
+        runtime_model_platform = resolve_cloud_model_runtime_platform(
+            model_platform=str(effective_config["model_platform"]),
+            api_url=effective_api_url,
+            api_mode=init_params.get("api_mode"),
+        )
+        if runtime_model_platform != effective_config["model_platform"]:
+            # These options belong to AzureOpenAI's constructor.  Passing
+            # them to AsyncOpenAI would fail before the request is sent.
+            for azure_only_param in (
+                "api_version",
+                "azure_ad_token",
+                "azure_ad_token_provider",
+                "azure_deployment_name",
+            ):
+                init_params.pop(azure_only_param, None)
+        if is_effective_cloud:
+            model_config["user"] = str(options.project_id)
+        if use_subscription_runtime:
+            model_config["stream"] = True
+            model_config["store"] = False
+        if agent_name == Agents.task_agent and managed_resources is None:
+            model_config["stream"] = True
+        if agent_name == Agents.browser_agent:
+            try:
+                model_platform_enum = ModelPlatformType(
+                    effective_config["model_platform"].lower()
+                )
+                if model_platform_enum in {
+                    ModelPlatformType.OPENAI,
+                    ModelPlatformType.AZURE,
+                    ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                    ModelPlatformType.LITELLM,
+                    ModelPlatformType.OPENROUTER,
+                }:
+                    model_config["parallel_tool_calls"] = False
+            except (ValueError, AttributeError):
+                logging.error(
+                    f"Invalid model platform for browser agent: "
+                    f"{effective_config['model_platform']}",
+                    exc_info=True,
+                )
+                model_platform_enum = None
+
+        if effective_config["model_platform"].lower() == "anthropic":
+            if model_config.get("max_tokens") is None:
+                model_config["max_tokens"] = 128000
+
+        # Ensure streaming steps still report token usage. OpenAI-family
+        # providers omit usage from streamed responses unless include_usage
+        # is set, which would otherwise make request-level accounting count 0.
+        # `stream_options: false` in extra_params opts out entirely, for
+        # endpoints that reject the parameter (e.g. older vLLM/Azure).
+        if uses_responses_transport:
+            # stream_options belongs to Chat Completions. Azure Responses
+            # rejects it, including when a caller supplied it explicitly.
+            model_config.pop("stream_options", None)
+        elif model_config.get("stream_options") is False:
+            model_config.pop("stream_options")
+        elif model_config.get("stream") and (
+            effective_config["model_platform"].lower()
+            not in _NATIVE_STREAM_USAGE_PLATFORMS
+        ):
+            stream_options = model_config.setdefault("stream_options", {})
+            if isinstance(stream_options, dict):
+                stream_options.setdefault("include_usage", True)
+
+        # Preserve the existing default without duplicating explicit options.
+        init_params.setdefault("timeout", 600)
+        if managed_resources is not None:
+            init_params.update(managed_resources.constructor_arguments())
+        model_backend = ModelFactory.create(
+            model_platform=runtime_model_platform,
+            model_type=effective_config["model_type"],
+            api_key=effective_config["api_key"],
+            url=effective_config["api_url"],
+            model_config_dict=model_config or None,
+            **init_params,
+        )
+        configure_meta_model_api_backend(model_backend, effective_api_url)
+        configure_anthropic_tool_compatibility(model_backend)
+        # Install SDK observers before the Responses adapter wraps clients.
+        model_backend = instrument_model_backend(
+            model_backend,
+            agent_id=agent_id,
+            provider=str(effective_config["model_platform"]),
+            model_name=str(effective_config["model_type"]),
+        )
+        # Empty instructions still need the shared multimodal input adapter.
+        configure_responses_input(model_backend)
+        if uses_responses_transport and model_config.get("instructions"):
+            _configure_responses_instructions(model_backend)
+        if managed_resources is not None:
+            model_backend = managed_resources.bind(model_backend)
+        return model_backend
+
+    model = build_model()
+
+    managed_options = (
+        {}
+        if managed_resources is None
+        else {
+            "step_timeout": options.extra_params["timeout"],
+            "stall_timeout": 0,
+            "max_iteration": 64,
+            "tool_log_dir": None,
+        }
     )
-
     return ListenChatAgent(
         options.project_id,
         agent_name,
@@ -192,5 +497,11 @@ def agent_model(
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
+        model_reload_callback=(
+            (lambda: build_model(force_refresh=True))
+            if use_subscription_runtime
+            else None
+        ),
         stream_accumulate=False,
+        **managed_options,
     )

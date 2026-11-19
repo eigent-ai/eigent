@@ -1,0 +1,266 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { useHost } from '@/host';
+import {
+  ensureShellSession,
+  getShellSessionState,
+  resetShellSession,
+  resizeShell,
+  retainShellView,
+  subscribeShellData,
+  subscribeShellState,
+  writeToShell,
+  type ShellSessionState,
+} from '@/lib/shellSessions';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
+import { RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import './previewTerminal.css';
+import {
+  TERMINAL_BASE_THEME,
+  TERMINAL_FONT_FAMILY,
+  TERMINAL_FONT_SIZE,
+  TERMINAL_LINE_HEIGHT,
+  TERMINAL_SCREEN_BACKGROUND,
+} from './terminalTheme';
+
+type ShellView = {
+  element: HTMLDivElement;
+  terminal: Terminal;
+  fit: FitAddon;
+  openLink?: (url: string) => void;
+};
+const shellViews = new Map<string, ShellView>();
+
+export interface ShellTerminalProps {
+  /** Stable PTY id (from the tab); the shell survives tab switches under it. */
+  shellId: string;
+  /** Directory the shell starts in; falls back to the home directory. */
+  cwd?: string;
+  /** Hold the cached terminal size while the display panel animates. */
+  viewportSettled?: boolean;
+  /** Called with the URL when a link in the output is clicked. */
+  onOpenLink?: (url: string) => void;
+}
+
+/**
+ * A real interactive terminal — xterm in front, a main-process PTY running
+ * the user's login shell behind. Feels like the desktop terminal: native
+ * prompt, arrow keys, colors, Ctrl+C, full-screen programs. The cached parser
+ * and scrollback are reattached when the tab remounts.
+ */
+export function ShellTerminal({
+  shellId,
+  cwd,
+  viewportSettled = true,
+  onOpenLink,
+}: ShellTerminalProps) {
+  const { t } = useTranslation();
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const [session, setSession] = useState<ShellSessionState>(() =>
+    getShellSessionState(shellId)
+  );
+  const onOpenLinkRef = useRef(onOpenLink);
+  useEffect(() => {
+    onOpenLinkRef.current = onOpenLink;
+  }, [onOpenLink]);
+  // Bump to re-run the mount effect after "Restart shell".
+  const [runId, setRunId] = useState(0);
+  const focusTargetRef = useRef<Element | null>(null);
+  useEffect(() => {
+    focusTargetRef.current = document.activeElement;
+  }, [shellId, runId, electronAPI]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const api = electronAPI;
+    if (!container || !api?.terminalCreate) return;
+
+    let view = shellViews.get(shellId);
+    if (!view) {
+      const element = document.createElement('div');
+      element.className = 'h-full w-full';
+      const terminal = new Terminal({
+        cursorBlink: true,
+        fontSize: TERMINAL_FONT_SIZE,
+        lineHeight: TERMINAL_LINE_HEIGHT,
+        fontFamily: TERMINAL_FONT_FAMILY,
+        scrollback: 5000,
+        theme: {
+          ...TERMINAL_BASE_THEME,
+          cursor: TERMINAL_BASE_THEME.foreground,
+          cursorAccent: TERMINAL_SCREEN_BACKGROUND,
+        },
+      });
+      const fit = new FitAddon();
+      terminal.loadAddon(fit);
+      const created: ShellView = { element, terminal, fit };
+      terminal.loadAddon(
+        new WebLinksAddon((event, uri) => {
+          event.preventDefault();
+          created.openLink?.(uri);
+        })
+      );
+      container.appendChild(element);
+      terminal.open(element);
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key === 'c' &&
+          terminal.hasSelection()
+        ) {
+          void navigator.clipboard?.writeText(terminal.getSelection());
+          return false;
+        }
+        return true;
+      });
+      // The parser and its bounded scrollback outlive the React view. Output
+      // continues to be parsed while detached; never replay raw cursor commands.
+      const unsubscribeData = subscribeShellData(shellId, (chunk) =>
+        terminal.write(chunk)
+      );
+      const input = terminal.onData((data) => writeToShell(api, shellId, data));
+      retainShellView(shellId, () => {
+        unsubscribeData();
+        input.dispose();
+        terminal.dispose();
+        element.remove();
+        shellViews.delete(shellId);
+      });
+      shellViews.set(shellId, created);
+      view = created;
+    }
+    view.openLink = (url) => onOpenLinkRef.current?.(url);
+    container.appendChild(view.element);
+    const { terminal, fit: fitAddon } = view;
+    terminalRef.current = terminal;
+    setSession(getShellSessionState(shellId));
+    const unsubscribeState = subscribeShellState(shellId, () =>
+      setSession(getShellSessionState(shellId))
+    );
+
+    const safeFit = () => {
+      // Display panel entrance and exit can shrink the viewport to two columns.
+      // Reflow at that width can evict history from xterm's bounded buffer and
+      // trigger shell prompt redraws. Keep parsing at the last settled size.
+      if (!viewportSettled) return;
+      if (!container.clientWidth || !container.clientHeight) return;
+      try {
+        fitAddon.fit();
+        resizeShell(api, shellId, terminal.cols, terminal.rows);
+      } catch {
+        // Ignore: the next resize will refit.
+      }
+    };
+
+    // Fit once layout settles, spawn the shell at that size, then track
+    // container resizes (panel drag, window resize, side panel fold).
+    let disposed = false;
+    const initialFrame = requestAnimationFrame(() => {
+      if (!viewportSettled) return;
+      safeFit();
+      void ensureShellSession(api, {
+        id: shellId,
+        cwd,
+        cols: terminal.cols,
+        rows: terminal.rows,
+      }).then((next) => {
+        if (!disposed) setSession(next);
+      });
+      // Fitting may wait for the entrance animation. Do not take focus back
+      // if the user has moved to another input during that wait.
+      if (
+        document.activeElement === focusTargetRef.current ||
+        document.activeElement === document.body ||
+        container.contains(document.activeElement)
+      ) {
+        terminal.focus();
+      }
+    });
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(safeFit);
+    });
+    observer.observe(container);
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(initialFrame);
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      unsubscribeState();
+      view.element.remove();
+      terminalRef.current = null;
+    };
+    // cwd only matters at spawn time; a change never restarts a live shell.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shellId, runId, electronAPI, viewportSettled]);
+
+  const handleRestart = async () => {
+    if (!electronAPI) return;
+    const disposed = await resetShellSession(electronAPI, shellId);
+    if (!disposed) return;
+    setSession(getShellSessionState(shellId));
+    setRunId((id) => id + 1);
+  };
+
+  const notice = session.error
+    ? t('layout.terminal-error', {
+        defaultValue: 'Could not start the shell: {{error}}',
+        error: session.error,
+      })
+    : session.exited
+      ? t('layout.terminal-exited', {
+          defaultValue: 'The shell session has ended.',
+        })
+      : null;
+
+  return (
+    <div
+      className="preview-terminal-screen relative h-full w-full"
+      style={{ backgroundColor: TERMINAL_SCREEN_BACKGROUND }}
+    >
+      <div ref={containerRef} className="h-full w-full p-3" />
+      {notice ? (
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-ds-neutral-strong-default px-3 py-2">
+          <span className="truncate text-xs text-ds-neutral-on-strong">
+            {notice}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="xs"
+            onClick={() => void handleRestart()}
+          >
+            <DsIcon icon={RotateCcw} recipe="main-compact" aria-hidden />
+            {t('layout.terminal-restart', { defaultValue: 'Restart shell' })}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default ShellTerminal;

@@ -14,14 +14,13 @@
 
 import logging
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app import api
+from app.auth.file_access import redact_file_access
 from app.component import code
-from app.component.pydantic.i18n import get_language, trans
 from app.exception.exception import (
     NoPermissionException,
     ProgramException,
@@ -32,49 +31,64 @@ from app.exception.exception import (
 logger = logging.getLogger("exception_handler")
 
 
-@api.exception_handler(RequestValidationError)
+def _request_path(request: Request) -> str:
+    """Request path for logs, without any file access grant in it."""
+    return redact_file_access(str(request.url.path))
+
+
 async def request_exception(request: Request, e: RequestValidationError):
-    if (lang := get_language(request.headers.get("Accept-Language"))) is None:
-        lang = "en_US"
-    logger.warning(f"Validation error on {request.url.path}: {e.errors()}")
+    logger.warning(
+        f"Validation error on {_request_path(request)}: {e.errors()}"
+    )
+    errors = list(e.errors())
+    try:
+        # Translation support is optional in the packaged local runtime. Keep
+        # exception registration independent from fastapi-babel/Jinja2 so a
+        # missing template dependency cannot prevent the API from starting.
+        from app.component.pydantic.i18n import get_language, trans
+
+        lang = get_language(request.headers.get("Accept-Language")) or "en_US"
+        errors = trans.translate(errors, locale=lang)
+    except ImportError:
+        logger.info("Validation translation unavailable; using raw errors")
 
     return JSONResponse(
         content={
             "code": code.form_error,
-            "error": jsonable_encoder(
-                trans.translate(list(e.errors()), locale=lang)
-            ),
+            "error": jsonable_encoder(errors),
         }
     )
 
 
-@api.exception_handler(TokenException)
 async def token_exception(request: Request, e: TokenException):
-    logger.warning(f"Token exception on {request.url.path}: {e.text}")
+    logger.warning(f"Token exception on {_request_path(request)}: {e.text}")
     return JSONResponse(content={"code": e.code, "text": e.text})
 
 
-@api.exception_handler(UserException)
 async def user_exception(request: Request, e: UserException):
-    logger.info(f"User exception on {request.url.path}: {e.description}")
-    return JSONResponse(content={"code": e.code, "text": e.description})
+    logger.info(f"User exception on {_request_path(request)}: {e.description}")
+    payload: dict[str, int | str] = {
+        "code": e.code,
+        "text": e.description,
+    }
+    if e.error_code is not None:
+        payload["error_code"] = e.error_code
+    return JSONResponse(content=payload)
 
 
-@api.exception_handler(NoPermissionException)
 async def no_permission(request: Request, exception: NoPermissionException):
-    logger.warning(f"No permission on {request.url.path}: {exception.text}")
+    logger.warning(
+        f"No permission on {_request_path(request)}: {exception.text}"
+    )
     return JSONResponse(
         status_code=200,
         content={"code": code.no_permission_error, "text": exception.text},
     )
 
 
-@api.exception_handler(ProgramException)
-async def program_exception(
-    request: Request, exception: NoPermissionException
-):
+async def program_exception(request: Request, exception: ProgramException):
     logger.error(
-        f"Program exception on {request.url.path}: {exception.text}",
+        f"Program exception on {_request_path(request)}: {exception.text}",
         exc_info=True,
     )
     return JSONResponse(
@@ -83,15 +97,14 @@ async def program_exception(
     )
 
 
-@api.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(
-        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+        f"Unhandled exception on {request.method} {_request_path(request)}: {exc}",
         exc_info=True,
         extra={
             "request_method": request.method,
-            "request_path": str(request.url.path),
-            "request_query": str(request.url.query),
+            "request_path": _request_path(request),
+            "request_query": redact_file_access(str(request.url.query)),
             "client_host": request.client.host if request.client else None,
         },
     )
@@ -103,3 +116,13 @@ async def global_exception_handler(request: Request, exc: Exception):
             "message": str(exc),
         },
     )
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Register Eigent's API error envelope on a FastAPI application."""
+    app.add_exception_handler(RequestValidationError, request_exception)
+    app.add_exception_handler(TokenException, token_exception)
+    app.add_exception_handler(UserException, user_exception)
+    app.add_exception_handler(NoPermissionException, no_permission)
+    app.add_exception_handler(ProgramException, program_exception)
+    app.add_exception_handler(Exception, global_exception_handler)

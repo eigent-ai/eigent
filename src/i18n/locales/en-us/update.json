@@ -1,11 +1,15 @@
 {
   "update-check-failed": "Update check failed",
   "new-version-available": "New version available",
+  "update": "Update",
   "download": "Download",
   "update-error": "Update error",
   "downloading-update": "Downloading update",
   "complete": "Complete",
   "download-completed": "Download completed",
   "click-to-install-update": "Click to install update",
-  "install": "Install"
+  "install": "Install",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

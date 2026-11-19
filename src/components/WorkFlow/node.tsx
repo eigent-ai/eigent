@@ -14,7 +14,9 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
@@ -23,13 +25,12 @@ import {
   TaskStatus,
 } from '@/types/constants';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Circle,
   CircleCheckBig,
   CircleSlash,
   CircleSlash2,
-  Copy,
   Ellipsis,
   LoaderCircle,
   SquareChevronLeft,
@@ -38,6 +39,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Folder from '../Folder';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
@@ -48,9 +50,9 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { agentMap } from './agents';
-import { MarkDown } from './MarkDown';
+import { agentMap, type WorkflowAgentType } from './agents';
+import { getAgentToolkitLabels } from './agentToolkitLabels';
+import { TaskLogPanelContent } from './TaskLogPanelContent';
 
 interface NodeProps {
   id: string;
@@ -72,6 +74,10 @@ interface NodeProps {
 }
 
 export function Node({ id, data }: NodeProps) {
+  const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const [isExpanded, setIsExpanded] = useState(data.isExpanded);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -239,11 +245,11 @@ export function Node({ id, data }: NodeProps) {
       setViewport(
         { x: -node.position.x, y: 0, zoom: 1 },
         {
-          duration: 500,
+          duration: shouldReduceMotion ? 0 : 250,
         }
       );
     }, 100);
-  }, [activeAgent, id, getNode, setViewport]);
+  }, [activeAgent, id, getNode, setViewport, shouldReduceMotion]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -273,10 +279,10 @@ export function Node({ id, data }: NodeProps) {
     setTimeout(() => {
       el.scrollTo({
         top: el.scrollHeight,
-        behavior: 'smooth',
+        behavior: shouldReduceMotion ? 'auto' : 'smooth',
       });
     }, 50);
-  }, []);
+  }, [shouldReduceMotion]);
 
   const toolkits = selectedTask?.toolkits;
   const lastToolkit = toolkits?.[toolkits.length - 1];
@@ -339,26 +345,6 @@ export function Node({ id, data }: NodeProps) {
     };
   }, [wheelHandler, isExpanded, selectedTask, selectedTask?.report]);
 
-  const agentToolkits = {
-    developer_agent: [
-      '# Terminal & Shell ',
-      '# Web Deployment ',
-      '# Screen Capture ',
-    ],
-    browser_agent: ['# Web Browser ', '# Search Engines '],
-    multi_modal_agent: [
-      '# Image Analysis ',
-      '# Video Processing ',
-      '# Audio Processing ',
-      '# Image Generation ',
-    ],
-    document_agent: [
-      '# File Management ',
-      '# Data Processing ',
-      '# Document Creation ',
-    ],
-  };
-
   const getTaskId = (taskId: string) => {
     const list = taskId.split('.');
     let idStr = '';
@@ -369,13 +355,7 @@ export function Node({ id, data }: NodeProps) {
     return idStr;
   };
 
-  const customToolkits =
-    data.agent?.tools
-      ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
-      .filter(Boolean) || [];
-  const toolkitLabels =
-    agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
-    (customToolkits.length > 0 ? customToolkits : ['No Toolkits']);
+  const toolkitLabels = getAgentToolkitLabels(data.agent);
   const browserImages = (data.img || []).filter((img) => img?.img).slice(0, 4);
   const browserImageGridClass =
     browserImages.length === 1
@@ -396,6 +376,11 @@ export function Node({ id, data }: NodeProps) {
         : 'grid-cols-2 grid-rows-2';
   const terminalPlaceholderCount =
     terminalTasks.length >= 3 ? Math.max(0, 4 - terminalTasks.length) : 0;
+  const workflowAgentType =
+    data.type in agentMap ? (data.type as WorkflowAgentType) : undefined;
+  const displayInfo = workflowAgentType
+    ? agentMap[workflowAgentType]
+    : undefined;
 
   return chatStore ? (
     <>
@@ -414,9 +399,9 @@ export function Node({ id, data }: NodeProps) {
         id="top"
       />
       <motion.div
-        layout
+        layout={!shouldReduceMotion}
         ref={nodeRef}
-        transition={{ layout: { duration: 0.3, ease: 'easeIn' } }}
+        transition={{ layout: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
         className={`${
           data.isEditMode
             ? `w-full ${isExpanded ? 'min-w-[684px]' : 'min-w-[342px]'}`
@@ -425,42 +410,53 @@ export function Node({ id, data }: NodeProps) {
               : 'w-[342px]'
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
-        } flex overflow-hidden rounded-xl border border-solid border-worker-border-default bg-worker-surface-primary ${
+        } flex overflow-hidden rounded-xl border border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-sm ${
           getCurrentTask()?.activeAgent === id
-            ? `${agentMap[data.type]?.borderColor} z-50`
-            : 'z-10 border-worker-border-default'
-        } transition-all duration-300 ease-in-out ${
+            ? `${displayInfo?.borderColor} z-50`
+            : 'z-10 border-ds-hairline-default-default'
+        } transition-[border-color,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
-        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-l-0 border-r-[0.5px] border-solid border-border-secondary">
-          <div className="flex items-center justify-between gap-sm px-3 pb-1 pt-2">
+        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid border-ds-hairline-default-default">
+          {/* header */}
+          <div className="flex items-center justify-between gap-sm px-3 pt-2 pb-1">
             <div className="flex items-center justify-between gap-md">
               <div
-                className={`text-base font-bold leading-relaxed ${
-                  agentMap[data.type]?.textColor
+                className={`text-base leading-relaxed font-bold ${
+                  displayInfo?.textColor
                 }`}
               >
-                {agentMap[data.type]?.name || data.agent?.name}
+                {displayInfo?.name || data.agent?.name}
               </div>
             </div>
             <div className="flex items-center gap-xs">
-              <Button onClick={handleShowLog} variant="ghost" size="icon">
-                {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
+              <Button
+                onClick={handleShowLog}
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+              >
+                {isExpanded ? (
+                  <DsIcon icon={SquareChevronLeft} recipe="main-compact" />
+                ) : (
+                  <DsIcon icon={SquareCode} recipe="main-compact" />
+                )}
               </Button>
-              {!Object.keys(agentMap).find((key) => key === data.type) &&
+              {!workflowAgentType &&
                 getCurrentTask()?.messages?.length === 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         onClick={(e) => e.stopPropagation()}
                         variant="ghost"
-                        size="icon"
+                        size="xs"
+                        buttonContent="icon-only"
                       >
-                        <Ellipsis />
+                        <DsIcon icon={Ellipsis} recipe="main-compact" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm">
+                    <PopoverContent className="w-[98px] rounded-[12px] border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-sm">
                       <div className="space-y-1">
                         <PopoverClose asChild>
                           <AddWorker
@@ -481,9 +477,9 @@ export function Node({ id, data }: NodeProps) {
                               setWorkerList(newWorkerList);
                             }}
                           >
-                            <Trash2
-                              size={16}
-                              className="text-icon-primary group-hover:text-icon-cuation"
+                            <DsIcon
+                              icon={Trash2}
+                              className="text-ds-ink-default-default group-hover:text-ds-icon-status-error-default-default"
                             />
                             Delete
                           </Button>
@@ -494,9 +490,10 @@ export function Node({ id, data }: NodeProps) {
                 )}
             </div>
           </div>
+          {/* tools */}
           <div
             ref={toolsRef}
-            className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-text-label"
+            className="mb-sm flex min-h-4 shrink-0 flex-wrap px-3 text-xs leading-tight font-normal text-ds-ink-muted-default"
           >
             {/* {JSON.stringify(data.agent)} */}
             {toolkitLabels.map((toolkit, index) => (
@@ -505,6 +502,7 @@ export function Node({ id, data }: NodeProps) {
               </span>
             ))}
           </div>
+          {/* workspace */}
           <div
             className="mb-2 max-h-[180px] px-3"
             onClick={() => {
@@ -513,7 +511,7 @@ export function Node({ id, data }: NodeProps) {
                 data.agent?.agent_id as string
               );
 
-              window.electronAPI.hideAllWebview();
+              electronAPI?.hideAllWebview();
             }}
           >
             {browserImages.length > 0 && (
@@ -526,7 +524,7 @@ export function Node({ id, data }: NodeProps) {
                     className="relative h-full w-full overflow-hidden rounded-lg"
                   >
                     <img
-                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
                       src={img.img}
                       alt={data.type}
                     />
@@ -536,7 +534,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`browser-placeholder-${index}`}
-                      className="h-full w-full rounded-sm bg-surface-primary"
+                      className="h-full w-full rounded-sm bg-ds-neutral-subtle-default"
                     />
                   )
                 )}
@@ -546,7 +544,7 @@ export function Node({ id, data }: NodeProps) {
               data?.agent?.tasks &&
               data.agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
-                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
+                  <div className="absolute top-0 left-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={data.agent as Agent} />
                   </div>
                 </div>
@@ -561,7 +559,7 @@ export function Node({ id, data }: NodeProps) {
                     key={task.id}
                     className="relative h-full w-full overflow-hidden rounded-lg object-cover"
                   >
-                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                    <div className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -570,15 +568,16 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="h-full w-full rounded-lg bg-surface-primary"
+                      className="h-full w-full rounded-lg bg-ds-neutral-subtle-default"
                     />
                   )
                 )}
               </div>
             )}
           </div>
+          {/* subtasks */}
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
-            <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-t border-solid border-task-border-default px-3 py-sm">
+            <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-x-[0px] border-t border-b-[0px] border-solid border-ds-hairline-default-default px-3 py-sm">
               {/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
               <div className="flex flex-1 justify-end">
                 <TaskState
@@ -630,7 +629,7 @@ export function Node({ id, data }: NodeProps) {
             onWheel={(e) => {
               e.stopPropagation();
             }}
-            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4"
+            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-4"
             style={{
               maxHeight:
                 data.img && data.img.length > 0
@@ -643,6 +642,35 @@ export function Node({ id, data }: NodeProps) {
                 const lastActiveToolkit = task.toolkits
                   ?.filter((tool: any) => tool.toolkitName !== 'notice')
                   .at(-1);
+                const taskRowBgHover =
+                  task.reAssignTo || task.status === TaskStatus.BLOCKED
+                    ? 'bg-ds-bg-status-blocked-subtle-default hover:bg-ds-bg-status-blocked-subtle-hover'
+                    : task.status === TaskStatus.COMPLETED
+                      ? 'bg-ds-bg-status-completed-subtle-default hover:bg-ds-bg-status-completed-subtle-hover'
+                      : task.status === TaskStatus.FAILED
+                        ? 'bg-ds-bg-status-error-subtle-default hover:bg-ds-bg-status-error-subtle-hover'
+                        : task.status === TaskStatus.RUNNING
+                          ? 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover'
+                          : task.status === TaskStatus.SKIPPED ||
+                              task.status === TaskStatus.WAITING ||
+                              task.status === TaskStatus.EMPTY
+                            ? 'bg-ds-bg-status-pending-subtle-default hover:bg-ds-bg-status-pending-subtle-hover'
+                            : 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover';
+                const taskTextClass = task.reAssignTo
+                  ? 'text-ds-text-status-blocked-strong-default'
+                  : task.status === TaskStatus.COMPLETED
+                    ? 'text-ds-text-status-completed-strong-default'
+                    : task.status === TaskStatus.FAILED
+                      ? 'text-ds-text-status-error-strong-default'
+                      : task.status === TaskStatus.RUNNING
+                        ? 'text-ds-text-status-running-strong-default'
+                        : task.status === TaskStatus.BLOCKED
+                          ? 'text-ds-text-status-blocked-strong-default'
+                          : task.status === TaskStatus.SKIPPED ||
+                              task.status === TaskStatus.WAITING ||
+                              task.status === TaskStatus.EMPTY
+                            ? 'text-ds-text-status-pending-strong-default'
+                            : 'text-ds-text-status-running-strong-default';
                 return (
                   <div
                     onClick={() => {
@@ -658,123 +686,115 @@ export function Node({ id, data }: NodeProps) {
                           chatStore.activeTaskId as string,
                           task.agent?.agent_id
                         );
-                        window.electronAPI.hideAllWebview();
+                        electronAPI?.hideAllWebview();
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`flex gap-2 rounded-xl px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
-                      task.reAssignTo
-                        ? 'bg-task-fill-warning'
-                        : task.status === TaskStatus.COMPLETED
-                          ? 'bg-task-fill-success'
-                          : task.status === TaskStatus.FAILED
-                            ? 'bg-task-fill-error'
-                            : task.status === TaskStatus.RUNNING
-                              ? 'bg-task-fill-running'
-                              : task.status === TaskStatus.BLOCKED
-                                ? 'bg-task-fill-warning'
-                                : 'bg-task-fill-running'
-                    } cursor-pointer border border-solid border-transparent ${
+                    className={`flex gap-2 rounded-xl px-sm py-sm transition-[background-color,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
-                        ? 'hover:border-task-border-focus-success'
+                        ? 'hover:border-ds-border-status-completed-subtle-hover'
                         : task.status === TaskStatus.FAILED
-                          ? 'hover:border-task-border-focus-error'
+                          ? 'hover:border-ds-border-status-error-subtle-hover'
                           : task.status === TaskStatus.RUNNING
-                            ? 'hover:border-border-primary'
+                            ? 'hover:border-ds-hairline-subtle-default'
                             : task.status === TaskStatus.BLOCKED
-                              ? 'hover:border-task-border-focus-warning'
-                              : 'hover:border-task-border-focus'
+                              ? 'hover:border-ds-border-status-blocked-subtle-hover'
+                              : 'hover:border-ds-hairline-subtle-hover'
                     } ${
                       selectedTask?.id === task.id
                         ? task.status === TaskStatus.COMPLETED
-                          ? '!border-task-border-focus-success'
+                          ? '!border-ds-border-status-completed-subtle-hover'
                           : task.status === TaskStatus.FAILED
-                            ? '!border-task-border-focus-error'
+                            ? '!border-ds-border-status-error-subtle-hover'
                             : task.status === TaskStatus.RUNNING
-                              ? '!border-border-primary'
+                              ? '!border-ds-hairline-subtle-hover'
                               : task.status === TaskStatus.BLOCKED
-                                ? '!border-task-border-focus-warning'
-                                : '!border-task-border-focus'
+                                ? '!border-ds-border-status-blocked-subtle-hover'
+                                : task.status === TaskStatus.SKIPPED ||
+                                    task.status === TaskStatus.WAITING ||
+                                    task.status === TaskStatus.EMPTY
+                                  ? '!border-ds-border-status-pending-default-hover'
+                                  : '!border-ds-hairline-subtle-hover'
                         : 'border-transparent'
                     }`}
                   >
                     <div className="">
                       {task.reAssignTo ? (
                         //  reassign to other agent
-                        <CircleSlash2 size={16} className="text-icon-warning" />
+                        <DsIcon
+                          icon={CircleSlash2}
+                          className="text-ds-icon-status-blocked-default-default"
+                        />
                       ) : (
                         // normal task
                         <>
                           {task.status === TaskStatus.RUNNING && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-icon-information ${
-                                chatStore.tasks[
-                                  chatStore.activeTaskId as string
-                                ].status === ChatTaskStatus.RUNNING &&
-                                'animate-spin'
-                              }`}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className={`text-ds-icon-status-running-default-default ${chatStore.tasks[chatStore.activeTaskId as string].status === ChatTaskStatus.RUNNING && 'animate-spin'}`}
                             />
                           )}
                           {task.status === TaskStatus.SKIPPED && (
-                            <LoaderCircle
-                              size={16}
-                              className={`text-icon-secondary`}
+                            <DsIcon
+                              icon={LoaderCircle}
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
-                            <CircleCheckBig
-                              size={16}
-                              className="text-icon-success"
+                            <DsIcon
+                              icon={CircleCheckBig}
+                              className="text-ds-icon-status-completed-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
-                            <CircleSlash
-                              size={16}
-                              className="text-icon-cuation"
+                            <DsIcon
+                              icon={CircleSlash}
+                              className="text-ds-icon-status-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
-                            <TriangleAlert
-                              size={16}
-                              className="text-icon-warning"
+                            <DsIcon
+                              icon={TriangleAlert}
+                              className="text-ds-icon-status-blocked-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle size={16} className="text-slate-400" />
+                            <DsIcon
+                              icon={Circle}
+                              className="text-ds-icon-status-pending-default-default"
+                            />
                           )}
                         </>
                       )}
                     </div>
                     <div className="flex flex-1 flex-col items-start justify-center">
                       <div
-                        className={`w-full flex-grow-0 ${
-                          task.status === TaskStatus.FAILED
-                            ? 'text-text-cuation-default'
-                            : task.status === TaskStatus.BLOCKED
-                              ? 'text-text-body'
-                              : 'text-text-primary'
-                        } pointer-events-auto select-text whitespace-pre-line text-wrap break-all text-xs font-medium leading-13`}
+                        className={`w-full grow-0 ${taskTextClass} pointer-events-auto text-xs leading-13 font-medium text-wrap break-all whitespace-pre-line select-text`}
                       >
                         <div className="flex items-center gap-sm">
-                          <div className="text-xs font-bold leading-13 text-text-body">
+                          <div
+                            className={`text-xs leading-13 font-bold ${taskTextClass}`}
+                          >
                             No. {getTaskId(task.id)}
                           </div>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-tag-fill-document px-1 py-0.5 text-xs font-bold leading-none text-text-warning">
-                              Reassigned to {task.reAssignTo}
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs leading-none font-bold text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover">
+                              {t('chat.reassigned-to', {
+                                name: task.reAssignTo,
+                                defaultValue: 'Reassigned to {{name}}',
+                              })}
                             </div>
                           ) : (
                             (task.failure_count ?? 0) > 0 && (
                               <div
                                 className={`${
                                   task.status === TaskStatus.FAILED
-                                    ? 'bg-surface-error-subtle text-text-cuation'
+                                    ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-default-default hover:bg-ds-bg-status-error-subtle-hover'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-text-success-default bg-tag-fill-developer'
-                                      : 'bg-tag-surface-hover text-text-label'
-                                } rounded-lg px-1 py-0.5 text-xs font-bold leading-none`}
+                                      ? 'bg-ds-neutral-subtle-default text-ds-text-status-completed-default-default'
+                                      : 'bg-ds-neutral-subtle-default text-ds-ink-default-default hover:bg-ds-neutral-subtle-hover'
+                                } rounded-lg px-1 py-0.5 text-xs leading-none font-bold`}
                               >
                                 Attempt {task.failure_count}
                               </div>
@@ -784,11 +804,11 @@ export function Node({ id, data }: NodeProps) {
                         <div>{task.content}</div>
                       </div>
                       {task?.status === TaskStatus.RUNNING && (
-                        <div className="duration-400 mt-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
+                        <div className="mt-xs flex items-center gap-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
                           {lastActiveToolkit?.toolkitStatus ===
                             AgentStatusValue.RUNNING && (
-                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-right-2">
                               {getToolkitIcon(
                                 lastActiveToolkit.toolkitName ?? ''
                               )}
@@ -799,11 +819,11 @@ export function Node({ id, data }: NodeProps) {
                                   ].activeWorkspace
                                     ? '!w-[100px]'
                                     : '!w-[500px]'
-                                } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
+                                } min-w-0 shrink-0 grow-0 overflow-hidden pt-1 text-xs leading-17 text-ellipsis whitespace-nowrap text-ds-text-status-running-default-default`}
                               >
                                 <ShinyText
                                   text={task.toolkits?.[0].toolkitName}
-                                  className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-text-primary"
+                                  className="pointer-events-auto w-full overflow-hidden text-xs leading-17 font-bold text-ellipsis whitespace-nowrap text-ds-text-status-running-default-default select-text"
                                 />
                               </div>
                             </div>
@@ -820,187 +840,61 @@ export function Node({ id, data }: NodeProps) {
           {isExpanded && (
             <motion.div
               key="log-panel"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.3, ease: 'easeIn' }}
-              className="flex w-[342px] shrink-0 flex-col gap-sm overflow-hidden rounded-r-xl bg-worker-surface-secondary py-2 pl-sm"
+              initial={{
+                opacity: 0,
+                transform: shouldReduceMotion
+                  ? 'translateX(0px)'
+                  : 'translateX(24px)',
+              }}
+              animate={{ opacity: 1, transform: 'translateX(0px)' }}
+              exit={{
+                opacity: 0,
+                transform: shouldReduceMotion
+                  ? 'translateX(0px)'
+                  : 'translateX(24px)',
+              }}
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.2,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+              className="flex w-[342px] shrink-0 flex-col gap-sm overflow-hidden rounded-r-xl bg-ds-neutral-subtle-default py-2 pl-sm"
             >
               <div
                 ref={logRef}
                 onWheel={(e) => {
                   e.stopPropagation();
                 }}
-                className="scrollbar scrollbar-always-visible max-h-[calc(100vh-200px)] overflow-y-scroll pr-sm"
+                className="scrollbar scrollbar-always-visible max-h-[calc(100vh-200px)] overflow-y-scroll rounded-xl pr-sm"
               >
                 <AnimatePresence mode="wait">
                   {selectedTask && (
                     <motion.div
                       key={selectedTask.id}
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -16 }}
-                      transition={{ duration: 0.25, ease: 'easeIn' }}
+                      initial={{
+                        opacity: 0,
+                        transform: shouldReduceMotion
+                          ? 'translateX(0px)'
+                          : 'translateX(-16px)',
+                      }}
+                      animate={{ opacity: 1, transform: 'translateX(0px)' }}
+                      exit={{
+                        opacity: 0,
+                        transform: shouldReduceMotion
+                          ? 'translateX(0px)'
+                          : 'translateX(-16px)',
+                      }}
+                      transition={{
+                        duration: shouldReduceMotion ? 0.16 : 0.2,
+                        ease: [0.23, 1, 0.32, 1],
+                      }}
                       className="flex w-full flex-col gap-sm"
                     >
-                      {selectedTask.toolkits &&
-                        selectedTask.toolkits.length > 0 &&
-                        selectedTask.toolkits.map(
-                          (toolkit: any, index: number) => (
-                            <div key={`toolkit-${toolkit.toolkitId}`}>
-                              {toolkit.toolkitName === 'notice' ? (
-                                <div
-                                  key={`notice-${index}`}
-                                  className="flex w-full flex-col gap-sm px-2 py-1"
-                                >
-                                  <MarkDown
-                                    content={toolkit?.message}
-                                    enableTypewriter={false}
-                                    pTextSize="text-label-xs"
-                                  />
-                                </div>
-                              ) : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      key={`toolkit-${index}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (
-                                          toolkit.toolkitMethods ===
-                                          'write to file'
-                                        ) {
-                                          chatStore.tasks[
-                                            chatStore.activeTaskId as string
-                                          ].activeWorkspace =
-                                            'documentWorkSpace';
-                                        } else if (
-                                          toolkit.toolkitMethods ===
-                                          'visit page'
-                                        ) {
-                                          const parts =
-                                            toolkit.message.split('\n');
-                                          const url = parts[0]; // the first line is the URL
-                                          window.location.href = url;
-                                        } else if (
-                                          toolkit.toolkitMethods === 'scrape'
-                                        ) {
-                                          window.location.href =
-                                            toolkit.message;
-                                        }
-                                      }}
-                                      className="flex flex-col items-start justify-center gap-1 rounded-lg bg-log-default p-1 px-2 transition-all duration-300 hover:opacity-50"
-                                    >
-                                      {/* first row: icon + toolkit name */}
-                                      <div className="flex w-full items-center justify-start gap-sm">
-                                        {toolkit.toolkitStatus ===
-                                        AgentStatusValue.RUNNING ? (
-                                          <LoaderCircle
-                                            size={16}
-                                            className={`${
-                                              chatStore.tasks[
-                                                chatStore.activeTaskId as string
-                                              ].status ===
-                                                ChatTaskStatus.RUNNING &&
-                                              'animate-spin'
-                                            }`}
-                                          />
-                                        ) : (
-                                          getToolkitIcon(toolkit.toolkitName)
-                                        )}
-                                        <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-text-primary">
-                                          {toolkit.toolkitName}
-                                        </span>
-                                      </div>
-                                      {/* second row: method + message */}
-                                      <div className="pointer-events-auto flex w-full select-text items-start justify-center gap-sm overflow-hidden pl-6">
-                                        <div className="text-nowrap text-label-xs font-bold text-text-primary">
-                                          {toolkit.toolkitMethods
-                                            ? toolkit.toolkitMethods
-                                                .charAt(0)
-                                                .toUpperCase() +
-                                              toolkit.toolkitMethods.slice(1)
-                                            : ''}
-                                        </div>
-                                        <div
-                                          className={`max-w-full flex-1 truncate text-label-xs font-normal text-text-primary ${
-                                            data.isEditMode
-                                              ? 'overflow-hidden'
-                                              : 'overflow-hidden truncate'
-                                          }`}
-                                        >
-                                          {toolkit.message}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </TooltipTrigger>
-                                  {toolkit.message && (
-                                    <TooltipContent
-                                      align="start"
-                                      className="scrollbar pointer-events-auto !fixed left-6 z-[9999] max-h-[200px] w-max max-w-[296px] select-text overflow-y-auto text-wrap break-words rounded-lg border border-solid border-task-border-default bg-surface-tertiary p-2 text-label-xs"
-                                      side="bottom"
-                                      sideOffset={4}
-                                    >
-                                      <MarkDown
-                                        content={toolkit.message}
-                                        enableTypewriter={false}
-                                        pTextSize="text-label-xs"
-                                        olPadding="pl-4"
-                                      />
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              )}
-                            </div>
-                          )
-                        )}
-                      {selectedTask.report && (
-                        <div
-                          ref={rePortRef}
-                          onWheel={(e) => {
-                            e.stopPropagation();
-                          }}
-                          className="group relative my-2 flex w-full flex-col rounded-lg bg-surface-primary"
-                        >
-                          <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg bg-surface-primary py-2 pl-2 pr-2">
-                            <div className="text-label-sm font-bold text-text-primary">
-                              Completion Report
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const reportText =
-                                  typeof selectedTask?.report === 'string'
-                                    ? selectedTask.report
-                                    : '';
-                                if (
-                                  reportText &&
-                                  navigator.clipboard?.writeText
-                                ) {
-                                  navigator.clipboard
-                                    .writeText(reportText)
-                                    .catch(() => {
-                                      // silently fail if clipboard is unavailable
-                                    });
-                                }
-                              }}
-                              className="text-label-xs"
-                            >
-                              <Copy className="text-icon-secondary" />
-                              <span className="text-icon-secondary">Copy</span>
-                            </Button>
-                          </div>
-                          <div className="px-2 py-2">
-                            <MarkDown
-                              content={selectedTask?.report}
-                              enableTypewriter={false}
-                              pTextSize="text-label-xs"
-                            />
-                          </div>
-                        </div>
-                      )}
+                      <TaskLogPanelContent
+                        selectedTask={selectedTask}
+                        chatStore={chatStore}
+                        isEditMode={data.isEditMode}
+                        reportRef={rePortRef}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>

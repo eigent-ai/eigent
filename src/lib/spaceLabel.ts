@@ -1,0 +1,243 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import type { Space } from '@/store/spaceStore';
+import type { TFunction } from 'i18next';
+
+const normalizedText = (value?: string | null) =>
+  (value ?? '').trim().toLowerCase();
+
+/**
+ * Static check (no i18n) for default/placeholder Project names produced by the
+ * runtime or seeded by the server. Used by stores where pulling translations
+ * isn't worth the dependency.
+ */
+export function isPlaceholderProjectName(
+  name: string | null | undefined,
+  projectId: string
+) {
+  const normalized = normalizedText(name);
+  return (
+    !normalized ||
+    normalized === 'new project' ||
+    normalized === 'new space' ||
+    normalized === `project ${projectId}`.toLowerCase()
+  );
+}
+
+/**
+ * Visible Session name for a Project. System default names matched by
+ * `isPlaceholderProjectName` (empty, `new project`, `Project <id>`) show the
+ * localized "New session" label; names the user chose are shown as stored.
+ * A `nameSource` (the Session meta's `metadata.nameSource`) marks a name that
+ * was chosen rather than defaulted, even one that reads like a default.
+ * The stored name is not changed.
+ */
+export function getSessionDisplayName(
+  name: string | null | undefined,
+  projectId: string,
+  t: TFunction,
+  nameSource?: unknown
+): string {
+  const storedName = (name ?? '').trim();
+  if (nameSource && storedName) return storedName;
+  return isPlaceholderProjectName(name, projectId)
+    ? t('layout.new-project')
+    : storedName;
+}
+
+type SessionNameMeta = {
+  id: string;
+  name?: string | null;
+  metadata?: { historyDisplayName?: unknown; nameSource?: unknown } | null;
+};
+
+/**
+ * The restored history title that stands in for a Session's system default
+ * name, as the Session list shows it. Null when the user named the Session or
+ * there is no history title.
+ */
+export function sessionHistoryDisplayName(
+  meta: SessionNameMeta
+): string | null {
+  const historyDisplayName =
+    typeof meta.metadata?.historyDisplayName === 'string'
+      ? meta.metadata.historyDisplayName.trim()
+      : '';
+  return historyDisplayName &&
+    !meta.metadata?.nameSource &&
+    isPlaceholderProjectName(meta.name, meta.id)
+    ? historyDisplayName
+    : null;
+}
+
+/** Visible Session name for a Session meta, matching the Session list. */
+export function getSessionMetaDisplayName(
+  meta: SessionNameMeta,
+  t: TFunction
+): string {
+  return (
+    sessionHistoryDisplayName(meta) ??
+    getSessionDisplayName(meta.name, meta.id, t, meta.metadata?.nameSource)
+  );
+}
+
+/**
+ * Static check (no i18n) for default/placeholder Space names. Mirror of
+ * `isPlaceholderProjectName` for spaces — used in store-level pruning logic.
+ */
+export function isPlaceholderSpaceNameStatic(name?: string | null) {
+  const normalized = normalizedText(name);
+  return (
+    !normalized ||
+    normalized === 'untitled space' ||
+    normalized === '未命名 space' ||
+    normalized === 'new space' ||
+    normalized === 'new project'
+  );
+}
+
+/** A space is "legacy" if either the metadata flag or sourceType says so. */
+export function isLegacySpace(space: Space): boolean {
+  return space.metadata?.legacy === true || space.sourceType === 'legacy';
+}
+
+/**
+ * New Projects may only be created in non-legacy Spaces. Legacy Spaces are
+ * read-only containers for Projects that predate the Space layer migration —
+ * we deliberately stop growing them so there's only one Project-creation path
+ * (blank / folder) to maintain, not a parallel legacy flow.
+ */
+export function canCreateProjectInSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return !isLegacySpace(space);
+}
+
+/** Remote control requires a regular Space target; legacy migration buckets are unsupported. */
+export function canUseRemoteControlInSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return !isLegacySpace(space);
+}
+
+/** Folder-backed and scratch Spaces with a local workspace root behave locally. */
+export function isLocalWorkspaceSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return space.sourceType === 'folder' || Boolean(space.rootPath);
+}
+
+export function isPlaceholderSpaceName(
+  name: string | undefined | null,
+  t: TFunction
+) {
+  const trimmed = name?.trim();
+  if (!trimmed) return true;
+
+  return (
+    trimmed === t('layout.spaces-untitled') ||
+    trimmed === t('layout.spaces-new-space') ||
+    trimmed === t('layout.new-project') ||
+    trimmed === 'Untitled Space' ||
+    trimmed === 'New Space' ||
+    trimmed === 'New Project'
+  );
+}
+
+/** Label for space-switch dropdown triggers and other compact space titles. */
+export function getActiveSpaceTriggerLabel(
+  name: string | undefined | null,
+  t: TFunction,
+  options?: {
+    emptyLabelKey?: 'layout.spaces-select-space' | 'layout.spaces-untitled';
+  }
+) {
+  const trimmed = name?.trim();
+  if (!trimmed) {
+    return t(options?.emptyLabelKey ?? 'layout.spaces-untitled');
+  }
+  if (isPlaceholderSpaceName(trimmed, t)) {
+    return t('layout.spaces-untitled');
+  }
+  return trimmed;
+}
+
+/** Default name persisted when creating a blank space from the space switcher. */
+export function getDefaultNewSpaceName(t: TFunction) {
+  return t('layout.spaces-untitled');
+}
+
+/** Blank placeholder space with no folder bound — Files stays disabled until bound. */
+export function isUnboundUntitledSpace(
+  space: Space | null | undefined,
+  t: TFunction
+) {
+  if (!space) return false;
+  if (space.rootPath) return false;
+  if (space.sourceType === 'folder') return false;
+  return isPlaceholderSpaceName(space.name, t);
+}
+
+export interface FilesTabBindingLabel {
+  label: string;
+  tooltip?: string;
+}
+
+/** Files tab trailing chip: Unbound, Local, or Remote for the active space folder binding. */
+export function getFilesTabBindingLabel(
+  space: Space | null | undefined,
+  t: TFunction
+): FilesTabBindingLabel | null {
+  if (!space) return null;
+  if (isUnboundUntitledSpace(space, t)) {
+    return {
+      label: t('layout.files-tab-unbound'),
+      tooltip: t('layout.files-tab-unbound-tooltip'),
+    };
+  }
+  if (isLocalWorkspaceSpace(space)) {
+    return { label: t('layout.files-tab-local') };
+  }
+  return { label: t('layout.files-tab-remote') };
+}
+
+/** Space list tag: Legacy, Local folder, or remote artifact storage. */
+export function getSpaceKindLabel(space: Space, t: TFunction) {
+  if (space.metadata?.legacy === true || space.sourceType === 'legacy') {
+    return t('layout.spaces-hub-legacy-tag');
+  }
+  if (isLocalWorkspaceSpace(space)) {
+    return t('layout.spaces-hub-local-tag', { defaultValue: 'Local' });
+  }
+  return t('layout.spaces-hub-remote-tag', { defaultValue: 'Remote' });
+}
+
+export function getSpaceStatusLabel(
+  status: Space['status'],
+  t: TFunction
+): string {
+  switch (status) {
+    case 'disconnected':
+      return t('layout.home-space-status-disconnected');
+    case 'archived':
+      return t('layout.home-space-status-archived');
+    case 'active':
+    default:
+      return t('layout.home-space-status-active');
+  }
+}

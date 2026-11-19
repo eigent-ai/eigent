@@ -16,7 +16,7 @@
 Skill Toolkit with multi-tier hierarchy:
 
 Agent access control is managed via skills-config.json.
-User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
 """
 
 import json
@@ -24,7 +24,10 @@ import logging
 from pathlib import Path
 from typing import TypedDict
 
+import yaml
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
+
+from app.service.skill_config_service import canonical_skill_config_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +55,9 @@ def _get_user_config_path(user_id: str | None = None) -> Path:
         Path to user's config file
     """
     if user_id:
-        # User-specific config: ~/.eigent/<user_id>/skills-config.json
-        return Path.home() / ".eigent" / str(user_id) / SKILL_CONFIG_FILENAME
+        # User-specific config: ~/.eigent/user_<id>/skills-config.json
+        user_key = canonical_skill_config_user_id(user_id)
+        return Path.home() / ".eigent" / user_key / SKILL_CONFIG_FILENAME
     else:
         # Legacy global config: ~/.eigent/skills-config.json
         return Path.home() / ".eigent" / SKILL_CONFIG_FILENAME
@@ -114,6 +118,35 @@ def _get_merged_skill_config(
     return config
 
 
+def _normalize_agent_name(agent_name: str | None) -> str | None:
+    """Canonicalize agent names for skill scope matching.
+
+    Backend Single Agent uses Agents.single_agent == "single_agent". Accept
+    legacy aliases so Skills UI bindings stay effective.
+    """
+    if agent_name is None:
+        return None
+    cleaned = str(agent_name).strip()
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if lowered == "single_agent" or lowered == "agents.single_agent":
+        return "single_agent"
+    return cleaned
+
+
+def _agent_in_list(agent_name: str | None, agents: list) -> bool:
+    normalized = _normalize_agent_name(agent_name)
+    if not normalized:
+        return False
+    selected = {
+        _normalize_agent_name(str(item))
+        for item in agents
+        if _normalize_agent_name(str(item))
+    }
+    return normalized in selected
+
+
 def _is_skill_enabled(
     skill_name: str, config: dict[str, SkillEntryConfig]
 ) -> bool:
@@ -164,7 +197,7 @@ def _is_agent_allowed(
             )
             return False
 
-        return agent_name in selected_agents
+        return _agent_in_list(agent_name, selected_agents)
 
     allowed_agents = skill_config.get("agents", [])
 
@@ -179,7 +212,7 @@ def _is_agent_allowed(
         )
         return False
 
-    return agent_name in allowed_agents
+    return _agent_in_list(agent_name, allowed_agents)
 
 
 def _build_allowed_skills(
@@ -223,7 +256,7 @@ class SkillToolkit(BaseSkillToolkit):
     3. System scope: /etc/camel/skills
 
     Agent access control is managed via skills-config.json (agents field).
-    User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+    User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
     """
 
     @classmethod
@@ -237,6 +270,7 @@ class SkillToolkit(BaseSkillToolkit):
         working_directory: str | None = None,
         user_id: str | None = None,
         timeout: float | None = None,
+        pinned_skill_sources: dict[str, str] | None = None,
     ) -> None:
         """Initialize SkillToolkit with Eigent-specific context.
 
@@ -250,13 +284,26 @@ class SkillToolkit(BaseSkillToolkit):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
         self.user_id = user_id
+        self._pinned_skill_sources = (
+            dict(pinned_skill_sources)
+            if pinned_skill_sources is not None
+            else None
+        )
         resolved_wd = (
             Path(working_directory).resolve()
             if working_directory
             else Path.cwd().resolve()
         )
-        config = _get_merged_skill_config(resolved_wd, self.user_id)
-        allowed_skills = _build_allowed_skills(config, self.agent_name)
+        config = (
+            _get_merged_skill_config(resolved_wd, self.user_id)
+            if self._pinned_skill_sources is None
+            else {}
+        )
+        allowed_skills = (
+            _build_allowed_skills(config, self.agent_name)
+            if self._pinned_skill_sources is None
+            else None
+        )
         logger.info(
             f"Initialized SkillToolkit for agent '{agent_name}' "
             f"in task '{api_task_id}' (user_id={user_id or 'legacy'})"
@@ -266,6 +313,65 @@ class SkillToolkit(BaseSkillToolkit):
             allowed_skills=allowed_skills,
             timeout=timeout,
         )
+
+    def _scan_skills(self) -> dict[str, dict[str, str]]:
+        if self._pinned_skill_sources is None:
+            return super()._scan_skills()
+        skills: dict[str, dict[str, str]] = {}
+        for path_text, contents in self._pinned_skill_sources.items():
+            frontmatter, _ = self._split_frontmatter(contents)
+            if frontmatter is None:
+                continue
+            try:
+                metadata = yaml.safe_load(frontmatter) or {}
+            except yaml.YAMLError:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            name = metadata.get("name")
+            description = metadata.get("description")
+            if not isinstance(name, str) or not isinstance(description, str):
+                continue
+            normalized_name = name.strip()
+            if not normalized_name or normalized_name in skills:
+                continue
+            skills[normalized_name] = {
+                "name": normalized_name,
+                "description": description.strip(),
+                "path": path_text,
+                "scope": "bundle",
+            }
+        return skills
+
+    def _list_skill_entries(
+        self, skill_dir: Path, include_skill_md: bool = False
+    ) -> list[str]:
+        if self._pinned_skill_sources is not None:
+            return ["SKILL.md"] if include_skill_md else []
+        return super()._list_skill_entries(skill_dir, include_skill_md)
+
+    def _load_single_skill(self, name: str) -> str:
+        if self._pinned_skill_sources is None:
+            return super()._load_single_skill(name)
+        skill = self._get_skills().get(name)
+        if skill is None:
+            available = ", ".join(sorted(self._get_skills())) or "none"
+            return f'Error: Skill "{name}" not found. Available: {available}'
+        contents = self._pinned_skill_sources.get(skill["path"])
+        if contents is None:
+            return f'Error: Skill "{name}" is unavailable in this Attempt'
+        frontmatter, body = self._split_frontmatter(contents)
+        if frontmatter is None:
+            return f'Error: Skill "{name}" is invalid'
+        return "\n".join(
+            [
+                f"## Skill: {name}",
+                "",
+                f"**Pinned Bundle source**: {skill['path']}",
+                "",
+                body.strip(),
+            ]
+        ).strip()
 
     def _skill_roots(self) -> list[tuple[str, Path]]:
         """Return skill roots with Eigent + CAMEL paths.

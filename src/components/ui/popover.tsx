@@ -15,49 +15,18 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import * as React from 'react';
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
+import {
+  formFieldSelectSizeClasses,
+  formFieldSelectTriggerState,
+} from './formFieldSurface';
+import { DS_FOCUS_RING } from './semanticProps';
 
 export type PopoverSize = 'default' | 'sm';
 export type PopoverState = 'error' | 'success';
-
-const sizeClasses: Record<PopoverSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
-};
-
-function resolveStateClasses(
-  state: PopoverState | undefined,
-  disabled: boolean
-) {
-  if (disabled) {
-    return {
-      wrapper: 'opacity-50 cursor-not-allowed',
-      trigger: 'border-transparent',
-      note: 'text-text-label',
-    };
-  }
-  if (state === 'error') {
-    return {
-      wrapper: '',
-      trigger: 'border-input-border-cuation bg-input-bg-default',
-      note: 'text-text-cuation',
-    };
-  }
-  if (state === 'success') {
-    return {
-      wrapper: '',
-      trigger: 'border-input-border-success bg-input-bg-confirm',
-      note: 'text-text-success',
-    };
-  }
-  return {
-    wrapper: '',
-    trigger: 'border-transparent',
-    note: 'text-text-label',
-  };
-}
 
 type PopoverProps = React.ComponentPropsWithoutRef<
   typeof PopoverPrimitive.Root
@@ -108,7 +77,7 @@ const PopoverTrigger = React.forwardRef<
     },
     ref
   ) => {
-    const stateCls = resolveStateClasses(state, Boolean(disabled));
+    const stateCls = formFieldSelectTriggerState(state, Boolean(disabled));
 
     // When asChild is used, we need to ensure only a single child is passed
     // The custom wrapper UI (title, note, chevron) is incompatible with asChild
@@ -128,12 +97,15 @@ const PopoverTrigger = React.forwardRef<
     return (
       <div className={cn('w-full', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-semibold text-ds-ink-default-default">
             <span>{title}</span>
-            {required && <span className="text-text-body">*</span>}
+            {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert size={16} className="text-icon-primary" />
+                <DsIcon
+                  icon={CircleAlert}
+                  className="text-ds-ink-default-default"
+                />
               </TooltipSimple>
             )}
           </div>
@@ -142,36 +114,35 @@ const PopoverTrigger = React.forwardRef<
           ref={ref}
           disabled={disabled}
           className={cn(
-            // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-text-body outline-none transition-all',
-            sizeClasses[size],
+            'relative flex w-full items-center justify-between gap-2 rounded-ds-field border border-x border-y border-solid px-ds-12 text-ds-ink-default-default transition-[background-color,border-color,box-shadow,opacity]',
+            DS_FOCUS_RING,
+            formFieldSelectSizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
-            // Default state (when no error/success)
-            !state && 'bg-input-bg-default',
-            // Interactive states (only when no error/success state)
+            !state && 'bg-ds-neutral-default-default',
             state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
-                'focus-visible:ring-1 focus-visible:ring-input-border-focus focus-visible:ring-offset-0 data-[state=open]:bg-input-bg-input data-[state=open]:ring-1 data-[state=open]:ring-input-border-focus data-[state=open]:ring-offset-0',
+                'hover:bg-ds-neutral-default-hover hover:ring-1 hover:ring-ds-hairline-strong-default hover:ring-offset-0',
+                'data-[state=open]:bg-ds-neutral-strong-default data-[state=open]:ring-1 data-[state=open]:ring-ds-ring-focus data-[state=open]:ring-offset-0',
               ],
-            // Validation states (override defaults)
             stateCls.trigger,
-            // Placeholder styling
-            'data-[placeholder]:text-input-label-default/50',
+            'data-[placeholder]:text-ds-ink-muted-default/50',
             className
           )}
           {...props}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {leadingIcon && (
-              <span className="flex-shrink-0 text-icon-primary">
+              <span className="shrink-0 text-ds-ink-default-default">
                 {leadingIcon}
               </span>
             )}
             <span className="truncate">{children}</span>
           </div>
           {showChevron && (
-            <ChevronDown className="h-4 w-4 flex-shrink-0 text-icon-primary" />
+            <DsIcon
+              icon={ChevronDown}
+              className="shrink-0 text-ds-ink-default-default"
+            />
           )}
         </PopoverPrimitive.Trigger>
         {note ? (
@@ -267,9 +238,8 @@ const PopoverContent = React.forwardRef<
           onOpenAutoFocus={handleOpenAutoFocus}
           onInteractOutside={handleInteractOutside}
           className={cn(
-            'text-popover-foreground relative z-50 min-w-[8rem] overflow-hidden rounded-lg border border-solid border-transparent bg-input-bg-default shadow-md',
-            'origin-[--radix-popover-content-transform-origin] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-            'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
+            'relative z-50 min-w-[8rem] overflow-hidden rounded-ds-popover border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default shadow-ds-elevation-popover',
+            'origin-(--radix-popover-content-transform-origin) data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
             'w-[var(--radix-popover-trigger-width)]',
             className
           )}
@@ -291,16 +261,16 @@ const PopoverItem = React.forwardRef<HTMLDivElement, PopoverItemProps>(
     <div
       ref={ref}
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover',
+        'relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover',
         disabled && 'pointer-events-none opacity-50',
-        selected && 'bg-menutabs-fill-hover',
+        selected && 'bg-ds-neutral-default-hover',
         className
       )}
       {...props}
     >
       {selected && (
         <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-          <Check className="h-4 w-4" />
+          <DsIcon icon={Check} />
         </span>
       )}
       {children}
@@ -317,7 +287,7 @@ const PopoverViewport = React.forwardRef<HTMLDivElement, PopoverViewportProps>(
   ({ className, maxHeight = 200, style, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('overflow-y-auto overflow-x-hidden p-1', className)}
+      className={cn('overflow-x-hidden overflow-y-auto p-1', className)}
       style={{
         maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight,
         ...style,

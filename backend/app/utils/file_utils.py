@@ -18,11 +18,14 @@ import logging
 import os
 import platform
 import shutil
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from app.component.environment import env
 from app.exception.exception import PathEscapesBaseError
 from app.model.chat import Chat
+from app.run_context import get_current_run_context
 
 logger = logging.getLogger("file_utils")
 
@@ -31,7 +34,7 @@ MAX_PATH_LENGTH_WIN = 260
 MAX_PATH_LENGTH_UNIX = 4096
 # Default directory names to skip when listing (list_files)
 DEFAULT_SKIP_DIRS = frozenset(
-    {".git", "node_modules", "__pycache__", "venv", ".venv"}
+    {".git", "node_modules", "__pycache__", "venv", ".venv", "camel_logs"}
 )
 # Default file extensions to skip when listing (list_files)
 DEFAULT_SKIP_EXTENSIONS: tuple[str, ...] = (".pyc", ".tmp", ".temp")
@@ -58,7 +61,7 @@ def _should_skip(
     skip_extensions: tuple[str, ...] = (),
 ) -> bool:
     """Return True if a file or directory name should be excluded from listing."""
-    if name.startswith(skip_prefix):
+    if skip_prefix and name.startswith(skip_prefix):
         return True
     return any(name.endswith(ext) for ext in skip_extensions)
 
@@ -195,6 +198,14 @@ def list_files(
     skip_dirs: set[str] | None = None,
     skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
+    modified_after: float | None = None,
+    modified_before: float | None = None,
+    max_scanned_entries: int | None = None,
+    max_scan_seconds: float | None = None,
+    stats: dict[str, float | int] | None = None,
+    include_paths: Callable[[tuple[str, ...]], set[str]] | None = None,
+    use_default_skips: bool = True,
+    priority_extensions: tuple[str, ...] = (),
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
@@ -206,6 +217,16 @@ def list_files(
         skip_dirs (set[str] | None): Directory names to skip (default: DEFAULT_SKIP_DIRS).
         skip_extensions (tuple[str, ...]): File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
         skip_prefix (str): Skip dirs/files whose name starts with this prefix.
+        modified_after (float | None): If set, only include files whose mtime
+            is at or after this Unix timestamp. Filtering happens before the
+            result limit so recent artifacts are not hidden by older files.
+        modified_before (float | None): If set, only include files whose mtime
+            is at or before this Unix timestamp. This lets historical Run
+            artifact queries exclude files written by later Runs that share a
+            direct-write workspace.
+        max_scanned_entries (int | None): Optional hard cap on filesystem
+            entries visited, including entries filtered out by mtime.
+        max_scan_seconds (float | None): Optional wall-clock scan budget.
 
     Returns:
         List of real absolute file paths under dir_path (subject to filters and max_entries).
@@ -228,36 +249,146 @@ def list_files(
     except OSError:
         return []
     base_real = os.path.realpath(resolve_base)
-    skip_dirs = set(DEFAULT_SKIP_DIRS) if skip_dirs is None else skip_dirs
+    skip_dirs = set(DEFAULT_SKIP_DIRS if use_default_skips else ()).union(
+        skip_dirs or set()
+    )
     result: list[str] = []
+    priority_count = 0
+    scan_started = time.perf_counter()
+    realpath_elapsed = 0.0
+    symlink_count = 0
+    scanned_entries = 0
+    scan_limited = False
+
+    def record_stats() -> None:
+        if stats is None:
+            return
+        stats["scan_elapsed_ms"] = (time.perf_counter() - scan_started) * 1000
+        stats["realpath_elapsed_ms"] = realpath_elapsed * 1000
+        stats["symlink_count"] = symlink_count
+        stats["scanned_entries"] = scanned_entries
+        stats["scan_limited"] = int(scan_limited)
+
+    def budget_exhausted() -> bool:
+        nonlocal scan_limited
+        if (
+            max_scanned_entries is not None
+            and scanned_entries >= max_scanned_entries
+        ):
+            scan_limited = True
+            return True
+        if (
+            max_scan_seconds is not None
+            and time.perf_counter() - scan_started >= max_scan_seconds
+        ):
+            scan_limited = True
+            return True
+        return False
+
     try:
         for root, dirs, files in os.walk(resolved_dir, followlinks=False):
+            scanned_entries += 1 + len(dirs)
+            if budget_exhausted():
+                record_stats()
+                return result
             dirs[:] = [
                 d
                 for d in dirs
                 if d not in skip_dirs and not _should_skip(d, skip_prefix)
             ]
-            for name in files:
+            if include_paths is not None:
+                directory_paths = tuple(
+                    os.path.join(root, d) + os.sep for d in dirs
+                )
+                allowed_dirs = include_paths(directory_paths)
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if os.path.join(root, d) + os.sep in allowed_dirs
+                ]
+            allowed_files = None
+            for index, name in enumerate(files):
+                scanned_entries += 1
+                if budget_exhausted():
+                    record_stats()
+                    return result
+                if include_paths is not None and index % 500 == 0:
+                    # Consume each verified batch before classifying the next;
+                    # a later timeout must not discard completed candidates.
+                    allowed_files = include_paths(
+                        tuple(
+                            os.path.join(root, entry)
+                            for entry in files[index : index + 500]
+                        )
+                    )
                 if _should_skip(name, skip_prefix, skip_extensions):
+                    continue
+                if (
+                    allowed_files is not None
+                    and os.path.join(root, name) not in allowed_files
+                ):
                     continue
                 try:
                     file_path = os.path.join(root, name)
-                    real_path = os.path.realpath(file_path)
-                    if not _is_under_base(real_path, base_real):
-                        logger.debug(
-                            "list_files: skipping %r (escapes base)", file_path
+                    if (
+                        modified_after is not None
+                        or modified_before is not None
+                    ):
+                        file_mtime = os.stat(
+                            file_path, follow_symlinks=False
+                        ).st_mtime
+                        if (
+                            modified_after is not None
+                            and file_mtime < modified_after
+                        ):
+                            continue
+                        if (
+                            modified_before is not None
+                            and file_mtime > modified_before
+                        ):
+                            continue
+                    if os.path.islink(file_path):
+                        symlink_count += 1
+                        realpath_started = time.perf_counter()
+                        real_path = os.path.realpath(file_path)
+                        realpath_elapsed += (
+                            time.perf_counter() - realpath_started
                         )
-                        continue
-                    result.append(real_path)
-                    if len(result) >= max_entries:
+                        if not _is_under_base(real_path, base_real):
+                            logger.debug(
+                                "list_files: skipping %r (escapes base)",
+                                file_path,
+                            )
+                            continue
+                        candidate = real_path
+                    else:
+                        candidate = os.path.normpath(file_path)
+                    if (
+                        priority_extensions
+                        and Path(candidate).suffix.lower()
+                        in priority_extensions
+                    ):
+                        # Every bounded prefix must retain deliverables,
+                        # including callers that remove a look-ahead entry.
+                        result.insert(priority_count, candidate)
+                        priority_count += 1
+                    else:
+                        result.append(candidate)
+                    if priority_extensions and len(result) > max_entries:
+                        result.pop()
+                        priority_count = min(priority_count, len(result))
+                        scan_limited = True
+                    if not priority_extensions and len(result) >= max_entries:
                         logger.debug(
                             "list_files hit max_entries=%d", max_entries
                         )
+                        record_stats()
                         return result
                 except OSError:
                     continue
     except OSError as e:
         logger.warning("list_files failed for %r: %s", dir_path, e)
+    record_stats()
     return result
 
 
@@ -280,6 +411,12 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
         and task_lock.new_folder_path
     ):
         raw = Path(task_lock.new_folder_path)
+    elif task_lock and getattr(task_lock, "working_directory", None):
+        raw = Path(task_lock.working_directory)
+    elif (
+        context := get_current_run_context()
+    ) is not None and context.project_id == options.project_id:
+        raw = context.working_directory
     else:
         raw = Path(env("file_save_path", options.file_save_path()))
 

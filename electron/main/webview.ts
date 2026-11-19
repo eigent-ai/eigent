@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, WebContentsView, type WebContents } from 'electron';
 
 interface WebViewInfo {
   id: string;
@@ -21,6 +21,15 @@ interface WebViewInfo {
   currentUrl: string;
   isActive: boolean;
   isShow: boolean;
+  browserToolkitAdvertised: boolean;
+  disposeContextMenu?: () => void;
+}
+
+export interface WebViewManagerOptions {
+  installContextMenu?: (
+    contents: WebContents,
+    ownerWindow: BrowserWindow
+  ) => () => void;
 }
 
 interface Size {
@@ -30,27 +39,116 @@ interface Size {
   height: number;
 }
 
+export const EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX =
+  'about:blank#eigent-browser-toolkit=';
+
+export function embeddedBrowserTargetUrl(id: string): string {
+  return `${EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX}${encodeURIComponent(id)}`;
+}
+
 export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>();
   private win: BrowserWindow | null = null;
+  private readonly presenterCloseWatched = new WeakSet<BrowserWindow>();
   private size: Size = { x: 0, y: 0, width: 0, height: 0 };
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
+  private readonly installContextMenu?: WebViewManagerOptions['installContextMenu'];
 
-  constructor(window: BrowserWindow) {
+  private getHiddenBounds(id: string, width = 100, height = 100) {
+    const numericId = Number(id);
+    const idOffset = Number.isFinite(numericId) ? (numericId % 20) * 20 : 0;
+    const safeWidth = Math.max(width, 100);
+    const safeHeight = Math.max(height, 100);
+
+    return {
+      x: -10000 - safeWidth - idOffset,
+      y: -10000 - safeHeight - idOffset,
+      width: safeWidth,
+      height: safeHeight,
+    };
+  }
+
+  constructor(window: BrowserWindow, options: WebViewManagerOptions = {}) {
     this.win = window;
+    this.installContextMenu = options.installContextMenu;
   }
 
   // Remove automatic IPC handler registration from constructor
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
-    const webContents = this.webViews.get(webviewId);
-    if (!webContents) return null;
+    const webViewInfo = this.webViews.get(webviewId);
+    if (!webViewInfo) return null;
 
-    const image = await webContents.view.webContents.capturePage();
-    const jpegBuffer = image.toJPEG(10);
+    const targetContents = webViewInfo.view.webContents;
+    if (!targetContents || targetContents.isDestroyed()) {
+      return null;
+    }
+
+    const debuggerApi = targetContents.debugger;
+    let attachedHere = false;
+
+    try {
+      if (!debuggerApi.isAttached()) {
+        debuggerApi.attach('1.3');
+        attachedHere = true;
+      }
+
+      const result = (await debuggerApi.sendCommand('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 60,
+        fromSurface: true,
+      })) as { data?: string };
+
+      if (result?.data) {
+        return 'data:image/jpeg;base64,' + result.data;
+      }
+    } catch (error) {
+      console.warn(
+        `CDP screenshot failed for webview ${webviewId}, falling back to capturePage:`,
+        error
+      );
+    } finally {
+      if (attachedHere && debuggerApi.isAttached()) {
+        try {
+          debuggerApi.detach();
+        } catch (detachError) {
+          console.warn(
+            `Failed to detach debugger for webview ${webviewId}:`,
+            detachError
+          );
+        }
+      }
+    }
+
+    const image = await targetContents.capturePage();
+    const jpegBuffer = image.toJPEG(60);
     return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+  }
+
+  /**
+   * Moves every view into `window`, which then receives the view events.
+   * Views keep their pages; only their host window changes.
+   */
+  public presentIn(window: BrowserWindow) {
+    if (window === this.win || window.isDestroyed()) return;
+    const previous = this.win;
+    this.webViews.forEach((webview) => {
+      if (previous && !previous.isDestroyed())
+        previous.contentView.removeChildView(webview.view);
+      window.contentView.addChildView(webview.view);
+    });
+    this.win = window;
+    // A closing presenter hands the views back before its content goes away.
+    // One listener per window, however often the views move back and forth.
+    if (this.presenterCloseWatched.has(window)) return;
+    this.presenterCloseWatched.add(window);
+    window.once('close', () => {
+      if (this.win !== window || !previous || previous.isDestroyed()) return;
+      this.hideAllWebview();
+      this.presentIn(previous);
+    });
   }
 
   public setSize(size: Size) {
@@ -70,11 +168,36 @@ export class WebViewManager {
     return activeWebviews.map((webview) => webview.id);
   }
 
-  public async createWebview(
-    id: string = '1',
-    url: string = 'about:blank?use=0'
-  ) {
+  /**
+   * Return exact Eigent-owned targets that are still unused. Brain owns the
+   * atomic Run/session allocation and keys reservations by the unique target
+   * URL rather than by Electron's shared CDP port.
+   */
+  public listAvailableBrowserToolkitTargets() {
+    return Array.from(this.webViews.values())
+      .map((webview) => {
+        const contents = webview.view.webContents;
+        if (
+          contents.isDestroyed() ||
+          !contents.getURL().startsWith(EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX)
+        ) {
+          return null;
+        }
+        webview.browserToolkitAdvertised = true;
+        return {
+          url: contents.getURL(),
+          webContentsId: contents.id,
+        };
+      })
+      .filter(
+        (target): target is { url: string; webContentsId: number } =>
+          target !== null
+      );
+  }
+
+  public async createWebview(id: string = '1', url?: string) {
     try {
+      const initialUrl = url ?? embeddedBrowserTargetUrl(id);
       // If webview with this id already exists, return error
       if (this.webViews.has(id)) {
         return {
@@ -204,24 +327,22 @@ export class WebViewManager {
 
       // Set to muted state when created
       view.webContents.audioMuted = true;
-      let newId = Number(id);
-      view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      view.setBounds(this.getHiddenBounds(id));
       view.setBorderRadius(16);
 
-      await view.webContents.loadURL(url);
+      await view.webContents.loadURL(initialUrl);
 
       const webViewInfo: WebViewInfo = {
         id,
         view,
-        initialUrl: url,
-        currentUrl: url,
+        initialUrl,
+        currentUrl: initialUrl,
         isActive: false,
         isShow: false,
+        browserToolkitAdvertised: false,
+        disposeContextMenu: this.win
+          ? this.installContextMenu?.(view.webContents, this.win)
+          : undefined,
       };
       // view.webContents.on("did-navigate", (event, url) => {
       //   const win = BrowserWindow.fromWebContents(event.sender);
@@ -229,10 +350,11 @@ export class WebViewManager {
       // });
 
       view.webContents.on('did-navigate-in-page', (event, url) => {
+        webViewInfo.currentUrl = url;
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
-          url !== 'about:blank?use=0' &&
+          !url.startsWith(EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX) &&
           url !== 'about:blank'
         ) {
           console.log('did-navigate-in-page', id, url);
@@ -250,19 +372,14 @@ export class WebViewManager {
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
-          navigationUrl !== 'about:blank?use=0' &&
+          !navigationUrl.startsWith(EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX) &&
           navigationUrl !== 'about:blank'
         ) {
           console.log('did-navigate', id, navigationUrl);
           this.win?.webContents.send('url-updated', navigationUrl);
           return;
         }
-        webViewInfo.view.setBounds({
-          x: -1919,
-          y: -1079,
-          width: 1920,
-          height: 1080,
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, 1920, 1080));
         const activeSize = this.getActiveWebview().length;
         const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
@@ -287,7 +404,7 @@ export class WebViewManager {
           // Create only 2 new webviews to reduce memory usage
           for (let i = 0; i < 2; i++) {
             const nextId = (startId + i).toString();
-            this.createWebview(nextId, 'about:blank?use=0');
+            this.createWebview(nextId);
           }
         }
 
@@ -333,13 +450,7 @@ export class WebViewManager {
           height: Math.max(height, 100),
         });
       } else {
-        let newId = Number(id);
-        webViewInfo.view.setBounds({
-          x: -9999 + newId * 100,
-          y: -9999 + newId * 100,
-          width: Math.max(width, 100),
-          height: Math.max(height, 100),
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, width, height));
       }
 
       return { success: true };
@@ -354,13 +465,7 @@ export class WebViewManager {
     if (!webViewInfo) {
       return { success: false, error: `Webview with id ${id} not found` };
     }
-    let newId = Number(id);
-    webViewInfo.view.setBounds({
-      x: -9999 + newId * 100,
-      y: -9999 + newId * 100,
-      width: 100,
-      height: 100,
-    });
+    webViewInfo.view.setBounds(this.getHiddenBounds(id));
     webViewInfo.isShow = false;
 
     if (
@@ -374,13 +479,7 @@ export class WebViewManager {
   }
   public hideAllWebview() {
     this.webViews.forEach((webview) => {
-      let newId = Number(webview.id);
-      webview.view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      webview.view.setBounds(this.getHiddenBounds(webview.id));
       webview.isShow = false;
 
       if (webview.view.webContents && !webview.view.webContents.isDestroyed()) {
@@ -395,7 +494,7 @@ export class WebViewManager {
     // If webview doesn't exist, create it
     if (!webViewInfo) {
       console.log(`Webview ${id} not found, creating new one`);
-      const createResult = await this.createWebview(id, 'about:blank?use=0');
+      const createResult = await this.createWebview(id);
       if (!createResult.success) {
         return { success: false, error: `Failed to create webview ${id}` };
       }
@@ -438,6 +537,7 @@ export class WebViewManager {
         return { success: false, error: `Webview with id ${id} not found` };
       }
 
+      webViewInfo.disposeContextMenu?.();
       if (!webViewInfo.view.webContents.isDestroyed()) {
         webViewInfo.view.webContents.removeAllListeners();
         // DO NOT clear storage data here!
@@ -480,7 +580,8 @@ export class WebViewManager {
         ([_id, info]) =>
           !info.isActive &&
           !info.isShow &&
-          info.currentUrl === 'about:blank?use=0'
+          !info.browserToolkitAdvertised &&
+          info.currentUrl.startsWith(EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX)
       )
       .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
 

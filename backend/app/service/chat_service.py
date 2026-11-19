@@ -13,16 +13,22 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
-import datetime
 import logging
 import platform
+from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from camel.models import ModelProcessingError
 from camel.tasks import Task
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
+from camel.utils.stream_utils import (
+    consume_response_content,
+    consume_response_content_async,
+    is_streaming_response,
+)
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -37,13 +43,41 @@ from app.agent.factory import (
     question_confirm_agent,
     task_summary_agent,
 )
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+    remote_sub_agent_enabled,
+)
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.prompt import (
+    append_connected_app_mcp_notice,
+    build_remote_sub_agent_planning_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.agent.utils import agent_current_time
+from app.hands.interface import IHands
+from app.memory import (
+    build_durable_context_projection_for_task_lock,
+    finalize_task_lock_run_memory,
+)
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.model.subscription_runtime import is_subscription_auth
+from app.run_journal.context_projection import (
+    ResumeContextError,
+    build_project_execution_context_projection,
+    is_explicit_resume_attempt,
+    persist_context_projection_diagnostic,
+)
+from app.run_journal.runtime import get_default_run_journal
+from app.run_runtime.admission import (
+    abort_pending_warm_admission,
+    activate_improve_admission,
+    skip_targets_current_turn,
+)
+from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
     ActionDecomposeProgressData,
@@ -54,7 +88,15 @@ from app.service.task import (
     Agents,
     TaskLock,
     delete_task_lock,
+    notice_event_payload,
     set_current_task_id,
+    write_file_event_payload,
+)
+from app.utils.agent_memory import (
+    build_memory_context,
+    estimate_memory_size,
+    record_agent_memory_snapshot,
+    record_workforce_memory_snapshot,
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory, list_files
@@ -63,6 +105,132 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
+
+SUMMARY_TASK_NAME_MAX_LENGTH = 80
+SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+async def _activate_improve_admission(
+    task_lock: TaskLock,
+    item: ActionImproveData,
+    *,
+    project_id: str,
+) -> bool:
+    return await activate_improve_admission(
+        task_lock,
+        item,
+        project_id=project_id,
+        logger=logger,
+    )
+
+
+def _truncate_summary_part(value: str, max_length: int) -> str:
+    text = " ".join((value or "").replace("|", " ").split())
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3].rstrip() + "..."
+
+
+def normalize_summary_task(
+    summary_task_content: str,
+    fallback_content: str = "",
+) -> str:
+    raw = " ".join((summary_task_content or "").split())
+    if "|" in raw:
+        raw_name, raw_summary = raw.split("|", 1)
+    else:
+        raw_name = "Task"
+        raw_summary = raw
+
+    name = _truncate_summary_part(
+        raw_name or "Task",
+        SUMMARY_TASK_NAME_MAX_LENGTH,
+    )
+    summary = _truncate_summary_part(
+        raw_summary or fallback_content or name,
+        SUMMARY_TASK_SUMMARY_MAX_LENGTH,
+    )
+    return f"{name or 'Task'}|{summary or name or 'Task'}"
+
+
+async def _summarize_single_agent_task(
+    options: Chat,
+    question: str,
+    task_id: str,
+) -> str:
+    """Generate Single Agent project metadata with Workforce semantics."""
+
+    task = Task(
+        content=question + options.summary_prompt,
+        id=task_id,
+    )
+    try:
+        summary_agent = task_summary_agent(options)
+        return await asyncio.wait_for(
+            summary_task(summary_agent, task),
+            timeout=10,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Single Agent summary_task timeout",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Single Agent task summary failed",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    fallback_name = _truncate_summary_part(
+        question,
+        SUMMARY_TASK_NAME_MAX_LENGTH,
+    )
+    return normalize_summary_task(
+        f"{fallback_name or 'Task'}|{question}",
+        question,
+    )
+
+
+def _extract_stream_chunk_content(chunk: Any) -> str:
+    """Return user-visible text from a streaming chunk.
+
+    Some CAMEL streaming chunks carry planning text in ``reasoning_content``.
+    Falling back to ``str(chunk)`` leaks internal ``BaseMessage(...)``
+    representations to the UI, so only explicit text fields are displayable.
+    """
+    if chunk is None:
+        return ""
+    if isinstance(chunk, str):
+        return chunk
+
+    def message_text(message: Any) -> str:
+        for attr in ("content", "reasoning_content"):
+            value = getattr(message, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    msg = getattr(chunk, "msg", None)
+    content = message_text(msg)
+    if content:
+        return content
+
+    msgs = getattr(chunk, "msgs", None)
+    if msgs:
+        contents = [
+            item_content
+            for item in msgs
+            if (item_content := message_text(item))
+        ]
+        if contents:
+            return "".join(contents)
+
+    return ""
 
 
 def format_task_context(
@@ -194,6 +362,7 @@ def check_conversation_history_length(
     total_length = 0
     for entry in task_lock.conversation_history:
         total_length += len(entry.get("content", ""))
+    total_length += estimate_memory_size(task_lock)
 
     is_exceeded = total_length > max_length
 
@@ -204,6 +373,48 @@ def check_conversation_history_length(
         )
 
     return is_exceeded, total_length
+
+
+def _trim_in_process_history(task_lock: TaskLock, keep_recent: int = 4) -> int:
+    """Compact in-process conversation + agent snapshot history.
+
+    Memory feature already persists the full transcript to
+    ``~/.eigent/memory/<...>/conversation.jsonl`` at every Run end; the
+    in-process ``conversation_history`` and ``agent_memory_history`` lists
+    exist only to feed the next workforce turn's prompt. When they grow past
+    the 200K-char guard we drop the older entries here and append a marker
+    to ``memory_summary`` so subsequent prompts still know that earlier
+    context exists (and where to recover it from).
+
+    Returns the number of entries dropped across both lists. Returns 0 when
+    nothing needed trimming, which lets callers distinguish "compaction
+    bought us space" from "single turn alone is already over budget".
+    """
+
+    convo = getattr(task_lock, "conversation_history", None) or []
+    snaps = getattr(task_lock, "agent_memory_history", None) or []
+    dropped = 0
+    if len(convo) > keep_recent:
+        dropped += len(convo) - keep_recent
+        task_lock.conversation_history = convo[-keep_recent:]
+    if len(snaps) > keep_recent:
+        dropped += len(snaps) - keep_recent
+        task_lock.agent_memory_history = snaps[-keep_recent:]
+    if dropped == 0:
+        return 0
+    marker = (
+        f"\n[memory] Compacted {dropped} older in-process turn(s); the full "
+        f"transcript is preserved in ~/.eigent/memory under this Project."
+    )
+    summary = getattr(task_lock, "memory_summary", "") or ""
+    if marker.strip() not in summary:
+        task_lock.memory_summary = (summary + marker).strip()
+    logger.info(
+        f"Compacted {dropped} in-process history entries; "
+        f"conversation_history kept={len(task_lock.conversation_history)} "
+        f"agent_memory_history kept={len(task_lock.agent_memory_history)}"
+    )
+    return dropped
 
 
 def build_conversation_context(
@@ -268,20 +479,164 @@ def build_conversation_context(
 
         context += "\n"
 
+    memory_context = build_memory_context(task_lock)
+    if memory_context:
+        context += memory_context
+
     return context
+
+
+def _build_question_context(
+    task_lock: TaskLock,
+    project_context: str | None,
+    *,
+    header: str = "=== Previous Conversation ===",
+    recovery_context: str | None = None,
+) -> str:
+    """Return the best available context for routing and direct answers.
+
+    Explicit Resume uses the validated canonical projection shared by all
+    initial Workforce calls. For ordinary questions, preserve legacy routing.
+
+    A Project TaskLock is process-local, so its conversation history is empty
+    after an app/backend restart even though the Renderer can rebuild prior
+    Runs. Follow-up routing must therefore fall back to the persisted Project
+    projection sent with the request instead of classifying an anaphoric
+    prompt (for example, "optimize its lighting") in isolation.
+    """
+
+    if recovery_context is None:
+        recovery_context = _build_workforce_resume_context(task_lock)
+    if recovery_context is not None:
+        return recovery_context
+
+    in_process = build_conversation_context(task_lock, header=header)
+    if getattr(task_lock, "conversation_history", None):
+        return in_process
+
+    durable = (project_context or "").strip()
+    if not durable:
+        return in_process
+    return (
+        f"{header}\n"
+        f"{durable}\n"
+        "=== End Previous Conversation ===\n\n"
+        f"{in_process}"
+    )
+
+
+async def _answer_simple_question(
+    agent: ListenChatAgent,
+    *,
+    question: str,
+    context: str,
+    reset_conversation: bool = False,
+) -> str:
+    """Generate one direct answer and fully consume streaming responses."""
+
+    if reset_conversation:
+        agent.reset()
+    prompt = (
+        f"{context}"
+        f"User Query: {question}\n\n"
+        "Provide a direct, helpful answer to this simple question."
+    )
+    response = await _run_agent_step(agent, prompt)
+    content = _extract_agent_response_content(response)
+    if not content:
+        raise RuntimeError("simple answer model returned an empty response")
+    return content
 
 
 def build_context_for_workforce(
     task_lock: TaskLock,
-    options: Chat,
+    options: Chat | None = None,
     task_content: str | None = None,
 ) -> str:
     """Build context information for workforce.
-    Instructs coordinator to actively load skills using list_skills/load_skill tools.
+
+    Prepends durable Project memory (from LocalMemoryStore) when available so
+    Workforce recovers cross-restart context the same way Single Agent does
+    via _build_single_agent_context. Durable and in-process history are
+    alternative projections of the same facts; concatenating both duplicates
+    prior turns and gives two components ownership of conversation state.
     """
-    return build_conversation_context(
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            execution_projection = build_project_execution_context_projection(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+                current_attempt_id=getattr(run_context, "attempt_id", None),
+            )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
+        except ResumeContextError:
+            raise
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
+    memory_projection = build_durable_context_projection_for_task_lock(
+        task_lock,
+        mode="workforce_coordinator",
+        current_user_prompt=task_content or "",
+        include_conversation=not bool(canonical_execution),
+    )
+    durable = memory_projection.text if memory_projection is not None else None
+    in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
+    return record_projection(in_process)
+
+
+def _build_workforce_resume_context(task_lock: TaskLock) -> str | None:
+    """Validate recovery before any inference; fresh routing stays unchanged.
+
+    The caller holds this projection for one admitted action and passes the
+    same text to routing, direct answering, and coordinator decomposition.
+    Never cache it on the reusable TaskLock across Attempts or Runs.
+    """
+    context = getattr(task_lock, "run_context", None)
+    if not is_explicit_resume_attempt(
+        get_default_run_journal(),
+        attempt_id=getattr(context, "attempt_id", None),
+        run_id=getattr(context, "run_id", None),
+    ):
+        return None
+    return build_context_for_workforce(task_lock)
 
 
 @sync_step
@@ -307,8 +662,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Initialize task_lock attributes
     if not hasattr(task_lock, "conversation_history"):
         task_lock.conversation_history = []
-    if not hasattr(task_lock, "last_task_result"):
-        task_lock.last_task_result = ""
+    if not hasattr(task_lock, "agent_memory_history"):
+        task_lock.agent_memory_history = []
+    if not hasattr(task_lock, "memory_summary"):
+        task_lock.memory_summary = ""
     if not hasattr(task_lock, "question_agent"):
         task_lock.question_agent = None
     if not hasattr(task_lock, "summary_generated"):
@@ -328,12 +685,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Other variables
     camel_task = None
     workforce = None
+    workforce_options = options
     mcp = None
     last_completed_task_result = ""  # Track the last completed task result
     summary_task_content = ""  # Track task summary
     loop_iteration = 0
     event_loop = asyncio.get_running_loop()
     sub_tasks: list[Task] = []
+
+    # Phase 4: hands from ChannelSessionMiddleware (desktop=full, web=sandbox, etc.)
+    hands = getattr(request.state, "hands", None)
 
     logger.info("=" * 80)
     logger.info(
@@ -346,8 +707,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         extra={
             "task_id": options.task_id,
             "model_platform": options.model_platform,
+            "session_mode": options.session_mode,
         },
     )
+
+    if options.session_mode == "single-agent":
+        async for chunk in single_agent_solve(
+            options,
+            request,
+            task_lock,
+            hands=hands,
+            summarize_task=partial(_summarize_single_agent_task, options),
+        ):
+            yield chunk
+        return
 
     while True:
         loop_iteration += 1
@@ -359,42 +732,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             },
         )
 
-        if await request.is_disconnected():
-            logger.warning("=" * 80)
-            logger.warning(
-                "[LIFECYCLE] CLIENT DISCONNECTED "
-                f"for project {options.project_id}"
-            )
-            logger.warning("=" * 80)
-            if workforce is not None:
-                logger.info(
-                    "[LIFECYCLE] Stopping workforce "
-                    "due to client disconnect, "
-                    "workforce._running="
-                    f"{workforce._running}"
-                )
-                if workforce._running:
-                    workforce.stop()
-                workforce.stop_gracefully()
-                logger.info(
-                    "[LIFECYCLE] Workforce stopped after client disconnect"
-                )
-            else:
-                logger.info("[LIFECYCLE] Workforce is None, no need to stop")
-            task_lock.status = Status.done
-            try:
-                await delete_task_lock(task_lock.id)
-                logger.info(
-                    "[LIFECYCLE] Task lock deleted after client disconnect"
-                )
-            except Exception as e:
-                logger.error(f"Error deleting task lock on disconnect: {e}")
-            logger.info(
-                "[LIFECYCLE] Breaking out of "
-                "step_solve loop due to "
-                "client disconnect"
-            )
-            break
         try:
             item = await task_lock.get_queue()
         except Exception as e:
@@ -409,6 +746,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             )
             # Continue waiting instead of breaking on queue error
             continue
+
+        if isinstance(item, ActionImproveData):
+            if not await _activate_improve_admission(
+                task_lock,
+                item,
+                project_id=options.project_id,
+            ):
+                continue
 
         try:
             if item.action == Action.improve or start_event_loop:
@@ -445,18 +790,25 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 # tracer = VizTracer()
                 # tracer.start()
-                if start_event_loop is True:
+                # Resolve once before routing (or the attachments shortcut).
+                # Resume uses the controller's queued recovery instruction;
+                # its original objective is already in canonical context.
+                recovery_context = _build_workforce_resume_context(task_lock)
+                if start_event_loop is True and recovery_context is None:
                     question = options.question
                     attaches_to_use = options.attaches
+                    project_context = options.project_context
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
                         f"'{question[:100]}...'"
                     )
-                    start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data.question
+                    project_context = (
+                        item.data.project_context or options.project_context
+                    )
                     attaches_to_use = (
                         item.data.attaches
                         if item.data.attaches
@@ -469,30 +821,53 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"'{question[:100]}...'"
                     )
 
+                # Warm streams keep the initial Chat; factories need the
+                # admitted task identity to use its immutable clock snapshot.
+                workforce_options = options.model_copy(
+                    update={
+                        "task_id": getattr(item, "new_task_id", None)
+                        or options.task_id
+                    }
+                )
+                start_event_loop = False
+
                 is_exceeded, total_length = check_conversation_history_length(
                     task_lock
                 )
                 if is_exceeded:
+                    # The durable transcript on disk already has everything;
+                    # drop older in-process turns and try again before we
+                    # refuse the user's prompt.
+                    dropped = _trim_in_process_history(task_lock)
+                    if dropped:
+                        is_exceeded, total_length = (
+                            check_conversation_history_length(task_lock)
+                        )
+                if is_exceeded:
                     logger.error(
-                        "Conversation history too long",
+                        "Conversation history too long even after compaction",
                         extra={
                             "project_id": options.project_id,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
                     )
                     ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
+                        "This single turn is larger than the per-Run budget."
+                        " Try breaking the prompt into smaller steps."
                     )
                     yield sse_json(
                         "context_too_long",
                         {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
+                    )
+                    finalize_task_lock_run_memory(
+                        task_lock,
+                        state="failed",
+                        error="conversation_history_too_long",
                     )
                     continue
 
@@ -507,7 +882,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                 else:
                     is_complex_task = await question_confirm(
-                        question_agent, question, task_lock
+                        question_agent,
+                        question,
+                        task_lock,
+                        project_context=project_context,
+                        recovery_context=recovery_context,
                     )
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
@@ -521,47 +900,53 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", providing direct answer "
                         "without workforce"
                     )
-                    conv_ctx = build_conversation_context(
-                        task_lock, header="=== Previous Conversation ==="
-                    )
-                    simple_answer_prompt = (
-                        f"{conv_ctx}"
-                        f"User Query: {question}\n\n"
-                        "Provide a direct, helpful "
-                        "answer to this simple "
-                        "question."
+                    conv_ctx = _build_question_context(
+                        task_lock,
+                        project_context,
+                        recovery_context=recovery_context,
                     )
 
                     try:
-                        simple_resp = question_agent.step(simple_answer_prompt)
-                        if simple_resp and simple_resp.msgs:
-                            answer_content = simple_resp.msgs[0].content
-                        else:
-                            answer_content = (
-                                "I understand your "
-                                "question, but I'm "
-                                "having trouble "
-                                "generating a response "
-                                "right now."
-                            )
+                        answer_content = await _answer_simple_question(
+                            question_agent,
+                            question=question,
+                            context=conv_ctx,
+                            reset_conversation=recovery_context is not None,
+                        )
 
+                        record_agent_memory_snapshot(
+                            task_lock,
+                            question_agent,
+                            scope="question_agent",
+                            task_id=options.task_id,
+                            task_content=question,
+                            task_result=answer_content,
+                        )
                         task_lock.add_conversation("assistant", answer_content)
+                        task_lock.status = Status.done
+                        finalize_task_lock_run_memory(
+                            task_lock,
+                            state="done",
+                            final_result=answer_content,
+                        )
 
                         yield sse_json(
                             "wait_confirm",
                             {"content": answer_content, "question": question},
                         )
                     except Exception as e:
-                        logger.error(f"Error generating simple answer: {e}")
+                        logger.exception("Error generating simple answer")
                         yield sse_json(
-                            "wait_confirm",
+                            "error",
                             {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
+                                "message": "I encountered an error while "
+                                "processing your question.",
+                                "type": "simple_answer_failed",
                             },
                         )
+                        raise RuntimeError(
+                            "simple answer generation failed"
+                        ) from e
 
                     # Clean up empty folder if it was created for this task
                     if (
@@ -617,8 +1002,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     yield sse_json("confirmed", {"question": question})
 
-                    context_for_coordinator = build_context_for_workforce(
-                        task_lock, options
+                    context_for_coordinator = (
+                        recovery_context
+                        if recovery_context is not None
+                        else build_context_for_workforce(task_lock, options)
                     )
 
                     # Check if workforce exists - reuse
@@ -633,11 +1020,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
-                        (workforce, mcp) = await construct_workforce(options)
+                        (workforce, mcp) = await construct_workforce(
+                            workforce_options, hands=hands
+                        )
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
-                                await new_agent_model(new_agent, options),
+                                await new_agent_model(
+                                    new_agent, workforce_options, hands=hands
+                                ),
                             )
                     task_lock.status = Status.confirmed
 
@@ -678,10 +1069,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     def on_stream_text(chunk):
                         try:
                             accumulated_content = (
-                                chunk.msg.content
-                                if hasattr(chunk, "msg") and chunk.msg
-                                else str(chunk)
+                                _extract_stream_chunk_content(chunk)
                             )
+                            if not accumulated_content:
+                                return
                             last_content = stream_state["last_content"]
 
                             # Calculate delta: new content
@@ -755,37 +1146,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     },
                                 )
                                 task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
+                                content_preview = getattr(
+                                    camel_task, "content", ""
                                 )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
+                                summary_task_content = normalize_summary_task(
+                                    f"Task|{content_preview}",
+                                    content_preview,
                                 )
                             except Exception:
                                 task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
+                                content_preview = getattr(
+                                    camel_task, "content", ""
                                 )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
+                                summary_task_content = normalize_summary_task(
+                                    f"Task|{content_preview}",
+                                    content_preview,
                                 )
 
                             state_holder["summary_task"] = summary_task_content
@@ -915,6 +1290,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
+                if not skip_targets_current_turn(task_lock, item):
+                    logger.info(
+                        "Ignoring stop for a task that is no longer current"
+                    )
+                    continue
+                if await abort_pending_warm_admission(task_lock):
+                    yield sse_json(
+                        "end",
+                        "<summary>Task stopped</summary>Task stopped by user",
+                    )
+                    continue
                 logger.info("=" * 80)
                 logger.info(
                     "🛑 [LIFECYCLE] SKIP_TASK action "
@@ -989,8 +1375,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 end_message = (
                     "<summary>Task stopped</summary>Task stopped by user"
                 )
-                task_lock.last_task_result = end_message
-
                 # Add to conversation history (like normal end does)
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -1000,6 +1384,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         )[-1].strip()
                 else:
                     task_content: str = f"Task {options.task_id}"
+
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id
+                        if camel_task
+                        else options.task_id,
+                        task_content=task_content,
+                        task_result=end_message,
+                    )
 
                 task_lock.add_conversation(
                     "task_result",
@@ -1011,6 +1406,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ),
                     },
                 )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="cancelled",
+                    final_result=end_message,
+                    summary=getattr(task_lock, "summary_task_content", ""),
+                )
+
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
 
                 # Clear camel_task as well
                 # (workforce is cleared, so
@@ -1038,25 +1445,33 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock
                 )
                 if is_exceeded:
+                    dropped = _trim_in_process_history(task_lock)
+                    if dropped:
+                        is_exceeded, total_length = (
+                            check_conversation_history_length(task_lock)
+                        )
+                if is_exceeded:
                     logger.error(
-                        "Cannot start task: "
-                        "conversation history too "
-                        f"long ({total_length} chars)"
-                        " for project "
-                        f"{options.project_id}"
+                        "Cannot start task: conversation history too long"
+                        f" even after compaction ({total_length} chars)"
+                        f" for project {options.project_id}"
                     )
                     ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
+                        "This single turn is larger than the per-Run budget."
+                        " Try breaking the prompt into smaller steps."
                     )
                     yield sse_json(
                         "context_too_long",
                         {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
+                    )
+                    finalize_task_lock_run_memory(
+                        task_lock,
+                        state="failed",
+                        error="conversation_history_too_long",
                     )
                     continue
 
@@ -1131,6 +1546,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "=== CURRENT TASK ==="
                     )[-1].strip()
 
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id,
+                        task_content=old_task_content_clean,
+                        task_result=old_task_result,
+                    )
+
                 task_lock.add_conversation(
                     "task_result",
                     {
@@ -1194,7 +1618,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "for new task"
                         )
                         is_multi_turn_complex = await question_confirm(
-                            question_agent, new_task_content, task_lock
+                            question_agent,
+                            new_task_content,
+                            task_lock,
+                            project_context=(
+                                item.data.get("project_context")
+                                if isinstance(item.data, dict)
+                                else None
+                            ),
                         )
                         logger.info(
                             "[LIFECYCLE] Multi-turn: "
@@ -1210,38 +1641,38 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 " direct answer without "
                                 "workforce"
                             )
-                            conv_ctx = build_conversation_context(
+                            conv_ctx = _build_question_context(
                                 task_lock,
-                                header="=== Previous Conversation ===",
-                            )
-                            simple_answer_prompt = (
-                                f"{conv_ctx}"
-                                "User Query: "
-                                f"{new_task_content}"
-                                "\n\nProvide a direct, "
-                                "helpful answer to this "
-                                "simple question."
+                                (
+                                    item.data.get("project_context")
+                                    if isinstance(item.data, dict)
+                                    else None
+                                ),
                             )
 
                             try:
-                                simple_resp = question_agent.step(
-                                    simple_answer_prompt
+                                answer_content = await _answer_simple_question(
+                                    question_agent,
+                                    question=new_task_content,
+                                    context=conv_ctx,
                                 )
-                                if simple_resp and simple_resp.msgs:
-                                    answer_content = simple_resp.msgs[
-                                        0
-                                    ].content
-                                else:
-                                    answer_content = (
-                                        "I understand your "
-                                        "question, but I'm "
-                                        "having trouble "
-                                        "generating a response"
-                                        " right now."
-                                    )
 
+                                record_agent_memory_snapshot(
+                                    task_lock,
+                                    question_agent,
+                                    scope="question_agent",
+                                    task_id=options.task_id,
+                                    task_content=new_task_content,
+                                    task_result=answer_content,
+                                )
                                 task_lock.add_conversation(
                                     "assistant", answer_content
+                                )
+                                task_lock.status = Status.done
+                                finalize_task_lock_run_memory(
+                                    task_lock,
+                                    state="done",
+                                    final_result=answer_content,
                                 )
 
                                 # Send response to user
@@ -1255,19 +1686,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     },
                                 )
                             except Exception as e:
-                                logger.error(
-                                    "Error generating simple "
-                                    f"answer in multi-turn: {e}"
+                                logger.exception(
+                                    "Error generating simple answer in "
+                                    "multi-turn"
                                 )
                                 yield sse_json(
-                                    "wait_confirm",
+                                    "error",
                                     {
-                                        "content": "I encountered an error "
-                                        "while processing your "
-                                        "question.",
-                                        "question": new_task_content,
+                                        "message": "I encountered an error "
+                                        "while processing your question.",
+                                        "type": "simple_answer_failed",
                                     },
                                 )
+                                raise RuntimeError(
+                                    "simple answer generation failed"
+                                ) from e
 
                             logger.info(
                                 "[LIFECYCLE] Multi-turn: "
@@ -1329,12 +1762,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         def on_stream_text(chunk):
                             try:
-                                has_msg = hasattr(chunk, "msg") and chunk.msg
                                 accumulated_content = (
-                                    chunk.msg.content
-                                    if has_msg
-                                    else str(chunk)
+                                    _extract_stream_chunk_content(chunk)
                                 )
+                                if not accumulated_content:
+                                    return
                                 last_content = stream_state["last_content"]
 
                                 if accumulated_content.startswith(
@@ -1412,13 +1844,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
                             # Fallback to descriptive but not generic summary
                             task_content_for_summary = new_task_content
-                            tc = task_content_for_summary
-                            if len(tc) > 100:
-                                new_summary_content = (
-                                    f"Follow-up Task|{tc[:97]}..."
-                                )
-                            else:
-                                new_summary_content = f"Follow-up Task|{tc}"
+                            new_summary_content = normalize_summary_task(
+                                f"Follow-up Task|{task_content_for_summary}",
+                                task_content_for_summary,
+                            )
                         except Exception as e:
                             logger.error(
                                 "Error generating multi-turn "
@@ -1426,13 +1855,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
                             # Fallback to descriptive but not generic summary
                             task_content_for_summary = new_task_content
-                            tc = task_content_for_summary
-                            if len(tc) > 100:
-                                new_summary_content = (
-                                    f"Follow-up Task|{tc[:97]}..."
-                                )
-                            else:
-                                new_summary_content = f"Follow-up Task|{tc}"
+                            new_summary_content = normalize_summary_task(
+                                f"Follow-up Task|{task_content_for_summary}",
+                                task_content_for_summary,
+                            )
 
                         # Emit final subtasks once when
                         # decomposition is complete
@@ -1477,6 +1903,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
                 yield sse_json("deactivate_agent", dict(item.data))
+            elif item.action == Action.request_usage:
+                yield sse_json("request_usage", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
             elif item.action == Action.activate_toolkit:
@@ -1484,23 +1912,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.deactivate_toolkit:
                 yield sse_json("deactivate_toolkit", item.data)
             elif item.action == Action.write_file:
-                yield sse_json(
-                    "write_file",
-                    {
-                        "file_path": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("write_file", write_file_event_payload(item))
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
-                yield sse_json(
-                    "notice",
-                    {
-                        "notice": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("notice", notice_event_payload(item))
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)
             elif item.action == Action.install_mcp:
@@ -1563,7 +1979,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                     workforce.add_single_agent_worker(
                         format_agent_description(item),
-                        await new_agent_model(item, options),
+                        await new_agent_model(
+                            item, workforce_options, hands=hands
+                        ),
                     )
                     workforce.resume()
             elif item.action == Action.timeout:
@@ -1655,8 +2073,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 task_lock.status = Status.done
 
-                task_lock.last_task_result = final_result
-
                 # Handle task content - use fallback if camel_task is None
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -1667,6 +2083,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     task_content: str = f"Task {options.task_id}"
 
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id
+                        if camel_task
+                        else options.task_id,
+                        task_content=task_content,
+                        task_result=final_result,
+                    )
+
                 task_lock.add_conversation(
                     "task_result",
                     {
@@ -1676,6 +2103,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             options, task_lock
                         ),
                     },
+                )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="done",
+                    final_result=final_result,
+                    summary=getattr(task_lock, "summary_task_content", ""),
                 )
 
                 yield sse_json("end", final_result)
@@ -1753,6 +2186,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     Action.budget_not_enough, {"message": "budget not enouth"}
                 )
             elif item.action == Action.stop:
+                if await abort_pending_warm_admission(task_lock):
+                    await delete_task_lock(task_lock.id)
+                    break
                 logger.info("=" * 80)
                 logger.info(
                     "[LIFECYCLE] STOP action received"
@@ -1791,6 +2227,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         " at stop action for project"
                         f" {options.project_id}"
                     )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="cancelled",
+                    final_result="<summary>Task stopped</summary>Task stopped by user",
+                )
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
                 logger.info("[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
                 logger.info(
@@ -1821,12 +2267,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     exc_info=True,
                 )
                 yield sse_json("error", {"message": str(e)})
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="failed",
+                    error=str(e),
+                )
                 if (
                     "workforce" in locals()
                     and workforce is not None
                     and workforce._running
                 ):
                     workforce.stop()
+        except ResumeContextError as e:
+            logger.error(
+                f"Resume context rejected for task {options.task_id}: {e}",
+                exc_info=True,
+            )
+            yield sse_json("error", {"message": str(e), "reason": e.reason})
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="failed",
+                error=str(e),
+            )
         except Exception as e:
             logger.error(
                 "Unhandled exception for task "
@@ -1835,6 +2297,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 exc_info=True,
             )
             yield sse_json("error", {"message": str(e)})
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="failed",
+                error=str(e),
+            )
             # Continue processing other items instead of breaking
 
 
@@ -1928,16 +2395,32 @@ def add_sub_tasks(
 
 
 async def question_confirm(
-    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
+    agent: ListenChatAgent,
+    prompt: str,
+    task_lock: TaskLock | None = None,
+    *,
+    project_context: str | None = None,
+    recovery_context: str | None = None,
 ) -> bool:
     """Simple question confirmation - returns True
     for complex tasks, False for simple questions."""
 
     context_prompt = ""
     if task_lock:
-        context_prompt = build_conversation_context(
-            task_lock, header="=== Previous Conversation ==="
+        if recovery_context is None:
+            recovery_context = _build_workforce_resume_context(task_lock)
+        context_prompt = _build_question_context(
+            task_lock,
+            project_context,
+            recovery_context=recovery_context,
         )
+
+    if recovery_context is not None:
+        # A warm routing agent may retain the prior Attempt. The next direct
+        # answer also resets before receiving this projection, exactly once.
+        reset = getattr(agent, "reset", None)
+        if callable(reset):
+            reset()
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
 
@@ -1953,23 +2436,22 @@ with knowledge or conversation history, no action needed
 - Examples: greetings ("hello", "hi"), \
 fact queries ("what is X?"), clarifications, status checks
 
+A follow-up that asks you to inspect, review, optimize, fix, or modify an \
+existing Project artifact is a complex task, even when it is phrased as a \
+question. If the intent is ambiguous but may require reading files or using \
+tools, answer "yes".
+
 Answer only "yes" or "no". Do not provide any explanation.
 
 Is this a complex task? (yes/no):"""
 
     try:
-        resp = agent.step(full_prompt)
+        resp = await _run_agent_step(agent, full_prompt)
 
-        if not resp or not resp.msgs or len(resp.msgs) == 0:
-            logger.warning(
-                "No response from agent, defaulting to complex task"
-            )
-            return True
-
-        content = resp.msgs[0].content
+        content = _extract_agent_response_content(resp)
         if not content:
             logger.warning(
-                "Empty content from agent, defaulting to complex task"
+                "No response from agent, defaulting to complex task"
             )
             return True
 
@@ -1995,17 +2477,20 @@ async def summary_task(agent: ListenChatAgent, task: Task) -> str:
 {task.to_string()}
 ---
 Your instructions are:
-1.  Come up with a short and descriptive name for this task.
-2.  Create a concise summary of the task's main points and objectives.
+1.  Come up with a short and descriptive name for this task, max {SUMMARY_TASK_NAME_MAX_LENGTH} characters.
+2.  Create a concise summary of the task's main points and objectives, max {SUMMARY_TASK_SUMMARY_MAX_LENGTH} characters.
 3.  Return the task name and the summary, separated by a vertical bar (|).
 
 Example format: "Task Name|This is the summary of the task."
-Do not include any other text or formatting.
+Do not include any other text or formatting. Keep the output on one line.
 """
     logger.debug("Generating task summary", extra={"task_id": task.id})
     try:
-        res = agent.step(prompt)
-        summary = res.msgs[0].content
+        res = await _run_agent_step(agent, prompt)
+        summary = normalize_summary_task(
+            _extract_agent_response_content(res) or "",
+            getattr(task, "content", ""),
+        )
         logger.info("Task summary generated", extra={"summary": summary})
         return summary
     except Exception as e:
@@ -2056,8 +2541,8 @@ Instructions:
 Summary:
 """
 
-    res = agent.step(prompt)
-    summary = res.msgs[0].content
+    res = await _run_agent_step(agent, prompt)
+    summary = _extract_agent_response_content(res) or ""
 
     logger.info(
         "Generated subtasks summary for "
@@ -2066,6 +2551,147 @@ Summary:
     )
 
     return summary
+
+
+def _extract_agent_response_content(resp) -> str | None:
+    if resp is None:
+        return None
+
+    msg = getattr(resp, "msg", None)
+    if msg is not None:
+        content = getattr(msg, "content", None)
+        if content:
+            return content
+
+    msgs = getattr(resp, "msgs", None)
+    if msgs:
+        first = msgs[0]
+        content = getattr(first, "content", None)
+        if content:
+            return content
+
+    return None
+
+
+def _response_with_content(resp, content: str):
+    if not content:
+        return resp
+
+    msg = getattr(resp, "msg", None)
+    if msg is not None:
+        try:
+            msg.content = content
+            return resp
+        except Exception:
+            pass
+
+    msgs = getattr(resp, "msgs", None)
+    if msgs:
+        try:
+            msgs[0].content = content
+            return resp
+        except Exception:
+            pass
+
+    msg = SimpleNamespace(content=content)
+    return SimpleNamespace(
+        msg=msg,
+        msgs=[msg],
+        info=getattr(resp, "info", {}),
+    )
+
+
+async def _materialize_agent_step_result(result):
+    if asyncio.iscoroutine(result):
+        result = await result
+
+    if not is_streaming_response(result):
+        return result
+
+    from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
+
+    if isinstance(result, AsyncStreamingChatAgentResponse):
+        response, content = await consume_response_content_async(result)
+    else:
+        response, content = await asyncio.to_thread(
+            consume_response_content,
+            result,
+        )
+
+    return _response_with_content(response, content)
+
+
+async def _run_agent_step(agent: ListenChatAgent, prompt: str):
+    """Run one model step with backward-compatible priority.
+
+    Some call sites and tests still stub synchronous ``step`` while newer paths
+    provide ``astep``. Prefer ``step`` when available to preserve existing
+    behavior, but run it off the event loop because real model calls are
+    blocking. Fall back to ``astep``.
+    """
+    step_fn = getattr(agent, "step", None)
+    if callable(step_fn):
+        result = await asyncio.to_thread(step_fn, prompt)
+        return await _materialize_agent_step_result(result)
+
+    astep_fn = getattr(agent, "astep", None)
+    if callable(astep_fn):
+        return await _materialize_agent_step_result(astep_fn(prompt))
+
+    raise AttributeError("Agent has neither step nor astep")
+
+
+def _render_subtask_report(task: Task, *, is_failure: bool) -> str:
+    """Build a per-subtask report.
+
+    Used in two places:
+    - Partial-failure aggregation when Workforce stops on a failed subtask --
+      ``task.result`` is often empty there and the UI would otherwise render
+      nothing. ``is_failure=True`` adds the warning banner.
+    - Successful single-subtask fallback when Workforce leaves ``task.result``
+      empty even though the lone subtask succeeded. ``is_failure=False``
+      keeps the banner off so the user does not see a misleading
+      "partially failed" header on a healthy run.
+    """
+
+    def _state_name(state: object) -> str:
+        if state is None:
+            return "UNKNOWN"
+        return str(getattr(state, "name", state) or "UNKNOWN")
+
+    def _is_failed(state: object) -> bool:
+        return "fail" in _state_name(state).lower()
+
+    subtasks = list(task.subtasks or [])
+    lines: list[str] = []
+    if is_failure:
+        lines.append(
+            "⚠️ Task partially failed — showing the subtasks that did finish:"
+        )
+        lines.append("")
+    for idx, subtask in enumerate(subtasks, 1):
+        state = getattr(subtask, "state", None)
+        state_label = _state_name(state)
+        emoji = "❌" if _is_failed(state) else "✅"
+        content = str(getattr(subtask, "content", "") or "").strip()
+        sub_result = str(getattr(subtask, "result", "") or "").strip()
+        lines.append(f"{emoji} **Subtask {idx} ({state_label})**")
+        if content:
+            preview = content if len(content) <= 200 else content[:200] + "…"
+            lines.append(f"_Task:_ {preview}")
+        if sub_result:
+            lines.append("")
+            lines.append(sub_result)
+        else:
+            lines.append("_No output captured._")
+        lines.append("")
+    parent_result = str(task.result or "").strip()
+    if parent_result:
+        lines.append("---")
+        lines.append("**Overall task result**")
+        lines.append("")
+        lines.append(parent_result)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 async def get_task_result_with_optional_summary(
@@ -2082,6 +2708,24 @@ async def get_task_result_with_optional_summary(
         The task result (summarized if multiple subtasks, raw otherwise)
     """
     result = str(task.result or "")
+
+    def _is_failed_state(state) -> bool:
+        if state is None:
+            return False
+        state_name = getattr(state, "name", str(state))
+        return "fail" in str(state_name).lower()
+
+    has_failed_subtask = any(
+        _is_failed_state(getattr(subtask, "state", None))
+        for subtask in (task.subtasks or [])
+    )
+
+    if has_failed_subtask:
+        logger.info(
+            "Task %s has failed subtasks, concatenating per-subtask results",
+            task.id,
+        )
+        return _render_subtask_report(task, is_failure=True)
 
     if task.subtasks and len(task.subtasks) > 1:
         logger.info(
@@ -2104,18 +2748,32 @@ async def get_task_result_with_optional_summary(
             parts = result.split("Result ---", 1)
             if len(parts) > 1:
                 result = parts[1].strip()
+        if not result.strip():
+            # Workforce sometimes leaves task.result empty even when the lone
+            # subtask succeeded -- the user then sees a "Done 1" task card with
+            # no body text and memory skips the assistant turn. Fall back to
+            # the per-subtask render so the UI always gets something.
+            logger.info(
+                "Task %s has empty task.result; falling back to subtask render",
+                task.id,
+            )
+            result = _render_subtask_report(task, is_failure=False)
 
     return result
 
 
 async def construct_workforce(
     options: Chat,
+    hands: IHands | None = None,
 ) -> tuple[Workforce, ListenChatAgent]:
     """Construct a workforce with all required agents.
 
     This function creates all agents in PARALLEL to minimize startup time.
     Sync functions are run in thread pool, async functions
     are awaited concurrently.
+
+    When hands is passed, base agents add tools based on Brain capabilities:
+    hands.can_execute_terminal(), hands.can_use_browser(), etc. determine whether terminal/browser hands are enabled.
     """
     logger.debug(
         "construct_workforce started",
@@ -2128,6 +2786,11 @@ async def construct_workforce(
     set_main_event_loop(asyncio.get_running_loop())
 
     working_directory = get_working_directory(options)
+    remote_sub_agent_planning_notice = (
+        build_remote_sub_agent_planning_notice()
+        if remote_sub_agent_enabled(options, working_directory)
+        else ""
+    )
 
     # ========================================================================
     # Define agent creation functions
@@ -2152,9 +2815,10 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+{remote_sub_agent_planning_notice}
             """,
                 Agents.task_agent: f"""
 You are a helpful task planner.
@@ -2165,18 +2829,46 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+{remote_sub_agent_planning_notice}
         """,
             }.items()
         ]
 
     def _create_new_worker_agent() -> ListenChatAgent:
         """Create new worker agent (sync, runs in thread pool)."""
-        return agent_model(
+        message_integration = ToolkitMessageIntegration(
+            message_handler=HumanToolkit(
+                options.project_id, Agents.new_worker_agent
+            ).send_message_to_user
+        )
+        note_toolkit = NoteTakingToolkit(
+            options.project_id,
+            agent_name=Agents.new_worker_agent,
+            working_directory=working_directory,
+        )
+        note_toolkit = message_integration.register_toolkits(note_toolkit)
+        skill_toolkit = SkillToolkit(
+            options.project_id,
             Agents.new_worker_agent,
-            f"""
+            working_directory=working_directory,
+            user_id=options.skill_config_user_id(),
+        )
+        tools = [
+            *HumanToolkit.get_can_use_tools(
+                options.project_id, Agents.new_worker_agent
+            ),
+            *note_toolkit.get_tools(),
+            *skill_toolkit.get_tools(),
+        ]
+        tool_names = [
+            HumanToolkit.toolkit_name(),
+            NoteTakingToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
+        ]
+        system_message = f"""
         You are a helpful assistant.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2185,34 +2877,26 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
-        """,
+        """
+        system_message = attach_remote_sub_agent_if_enabled(
+            options=options,
+            agent_name=Agents.new_worker_agent,
+            working_directory=working_directory,
+            tools=tools,
+            tool_names=tool_names,
+            system_message=system_message,
+            local_tool_description="local note, terminal, or skill tools",
+            message_integration=message_integration,
+        )
+        return agent_model(
+            Agents.new_worker_agent,
+            system_message,
             options,
-            [
-                *HumanToolkit.get_can_use_tools(
-                    options.project_id, Agents.new_worker_agent
-                ),
-                *(
-                    ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(
-                            options.project_id, Agents.new_worker_agent
-                        ).send_message_to_user
-                    ).register_toolkits(
-                        NoteTakingToolkit(
-                            options.project_id,
-                            working_directory=working_directory,
-                        )
-                    )
-                ).get_tools(),
-                *SkillToolkit(
-                    options.project_id,
-                    Agents.new_worker_agent,
-                    working_directory=working_directory,
-                    user_id=options.skill_config_user_id(),
-                ).get_tools(),
-            ],
+            tools,
+            tool_names=tool_names,
         )
 
     # ========================================================================
@@ -2226,10 +2910,12 @@ the current date.
         results = await asyncio.gather(
             asyncio.to_thread(_create_coordinator_and_task_agents),
             asyncio.to_thread(_create_new_worker_agent),
-            asyncio.to_thread(browser_agent, options),
-            developer_agent(options),
-            document_agent(options),
-            asyncio.to_thread(multi_modal_agent, options),
+            asyncio.to_thread(partial(browser_agent, options, hands=hands)),
+            developer_agent(options, hands=hands),
+            document_agent(options, hands=hands),
+            asyncio.to_thread(
+                partial(multi_modal_agent, options, hands=hands)
+            ),
             mcp_agent(options),
         )
     except Exception as e:
@@ -2237,13 +2923,6 @@ the current date.
             f"Failed to create agents in parallel: {e}", exc_info=True
         )
         raise
-    finally:
-        # Always clear event loop reference after
-        # parallel agent creation completes.
-        # This prevents stale references and
-        # potential cross-request interference
-        set_main_event_loop(None)
-
     # Unpack results
     (
         coord_task_agents,
@@ -2270,6 +2949,10 @@ the current date.
     workforce_metrics = WorkforceMetricsCallback(
         project_id=options.project_id, task_id=options.task_id
     )
+    use_native_structured_output = (
+        model_platform_enum == ModelPlatformType.OPENAI
+        and not is_subscription_auth(options)
+    )
 
     workforce = Workforce(
         options.project_id,
@@ -2279,9 +2962,7 @@ the current date.
         coordinator_agent=coordinator_agent,
         task_agent=task_agent,
         new_worker_agent=new_worker_agent,
-        use_structured_output_handler=False
-        if model_platform_enum == ModelPlatformType.OPENAI
-        else True,
+        use_structured_output_handler=not use_native_structured_output,
     )
 
     # Register workforce metrics callback
@@ -2289,8 +2970,7 @@ the current date.
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
-        "desktop tasks, and deploy web applications to solve complex "
-        "technical challenges.",
+        "desktop tasks, and solve complex technical challenges.",
         developer,
     )
     workforce.add_single_agent_worker(
@@ -2347,7 +3027,11 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
-async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
+async def new_agent_model(
+    data: NewAgent | ActionNewAgent,
+    options: Chat,
+    hands: IHands | None = None,
+):
     logger.info(
         "Creating new agent",
         extra={
@@ -2357,25 +3041,41 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
         },
     )
     logger.debug(
-        "New agent data", extra={"agent_data": data.model_dump_json()}
+        "New agent data",
+        extra={
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": (
+                getattr(data, "custom_model_config", None) is not None
+            ),
+        },
     )
     working_directory = get_working_directory(options)
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
-    for item in data.tools:
+    requested_tools = [
+        item for item in data.tools if item != "remote_sub_agent_toolkit"
+    ]
+    tools = [
+        *await get_toolkits(
+            requested_tools, data.name, options.project_id, hands=hands
+        )
+    ]
+    for item in requested_tools:
         tool_names.append(titleize(item))
-    # Always include terminal_toolkit with proper working directory
-    terminal_toolkit = TerminalToolkit(
-        options.project_id,
-        agent_name=data.name,
-        working_directory=working_directory,
-        safe_mode=True,
-        clone_current_env=True,
-    )
-    tools.extend(terminal_toolkit.get_tools())
-    tool_names.append(titleize("terminal_toolkit"))
+    # Add terminal_toolkit when terminal hand is available
+    if hands is None or hands.can_execute_terminal():
+        terminal_toolkit = TerminalToolkit(
+            options.project_id,
+            agent_name=data.name,
+            working_directory=working_directory,
+            safe_mode=True,
+            clone_current_env=True,
+        )
+        tools.extend(terminal_toolkit.get_tools())
+        tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
-        tools = [*tools, *await get_mcp_tools(data.mcp_tools)]
+        tools = [*tools, *await get_mcp_tools(data.mcp_tools, hands=hands)]
         for item in data.mcp_tools["mcpServers"].keys():
             tool_names.append(titleize(item))
     for item in tools:
@@ -2392,10 +3092,28 @@ must occur here, but you can access files from any \
 place in the file system. For all file system \
 operations, you MUST use absolute paths to ensure \
 precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
+The current date is {agent_current_time(options)}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+    enhanced_description = append_connected_app_mcp_notice(
+        enhanced_description
+    )
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, data.name
+        ).send_message_to_user
+    )
+    enhanced_description = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=data.name,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=enhanced_description,
+        local_tool_description="local custom-agent tools or terminal actions",
+        message_integration=message_integration,
+    )
 
     # Pass per-agent custom model config if available
     custom_model_config = getattr(data, "custom_model_config", None)

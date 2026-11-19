@@ -17,7 +17,9 @@ import json
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import websockets
 import websockets.exceptions
@@ -36,13 +38,86 @@ from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 logger = logging.getLogger("hybrid_browser_toolkit")
 
-# Global navigation lock to prevent concurrent visit_page conflicts (ERR_ABORTED)
-# This is needed because multiple sessions may share the same browser via CDP
-_global_navigation_lock = asyncio.Lock()
+# Navigation locks prevent concurrent visit_page conflicts (ERR_ABORTED) for
+# sessions sharing the same browser/CDP endpoint.
+_navigation_locks: dict[str, asyncio.Lock] = {}
+_navigation_locks_guard = asyncio.Lock()
+_browser_bringup_locks: dict[str, asyncio.Lock] = {}
+_browser_bringup_locks_guard = asyncio.Lock()
+_node_runtime_hook_lock = asyncio.Lock()
 
-# Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
-_global_tab_registry: dict[str, str] = {}
+# Global registry: (CDP endpoint, tab_id) -> session_id. Namespacing prevents
+# unrelated browser instances from consuming each other's tab budget.
+_global_tab_registry: dict[tuple[str, str], str] = {}
 _global_tab_registry_lock = asyncio.Lock()
+
+_DEFAULT_MAX_SESSION_TABS = 4
+_DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT = 8
+
+
+def _timeout_value_to_seconds(value: Any, *, fallback_seconds: float) -> float:
+    if value is None:
+        return fallback_seconds
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        return fallback_seconds
+    if timeout <= 0:
+        return fallback_seconds
+    # CAMEL browser timeout config is in milliseconds; local overrides may be
+    # provided in seconds. Values above 300 are treated as milliseconds.
+    if timeout > 300:
+        timeout = timeout / 1000.0
+    return timeout
+
+
+def _env_timeout_seconds(name: str, fallback_seconds: float) -> float:
+    return _timeout_value_to_seconds(
+        env(name, ""), fallback_seconds=fallback_seconds
+    )
+
+
+def _env_positive_int(name: str, fallback: int) -> int:
+    raw_value = env(name, "").strip()
+    if not raw_value:
+        return fallback
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %s", name, raw_value, fallback)
+        return fallback
+    if value < 1:
+        logger.warning("Invalid %s=%r; using %s", name, raw_value, fallback)
+        return fallback
+    return value
+
+
+def _endpoint_lock_key(cdp_url: str | None) -> str:
+    if cdp_url:
+        parsed = urlparse(cdp_url)
+        if parsed.netloc:
+            return parsed.netloc
+        if parsed.path:
+            return parsed.path
+    return f"localhost:{env('browser_port', '9222')}"
+
+
+async def _get_navigation_lock(key: str) -> asyncio.Lock:
+    async with _navigation_locks_guard:
+        lock = _navigation_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _navigation_locks[key] = lock
+        return lock
+
+
+async def _get_browser_bringup_lock(key: str) -> asyncio.Lock:
+    async with _browser_bringup_locks_guard:
+        lock = _browser_bringup_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _browser_bringup_locks[key] = lock
+        return lock
 
 
 class SheetCell(TypedDict):
@@ -57,14 +132,198 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         super().__init__(config)
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
         # Track tabs opened by this session for isolation
-        self._session_tab_ids: set = set()
+        self._session_tab_ids: set[str] = set()
+        # Oldest-to-newest access order. This lets us recycle an Eigent-owned
+        # background page without ever closing a user's unrelated Chrome tab.
+        self._session_tab_order: list[str] = []
         self._wrapper_session_id: str = str(uuid.uuid4())
+
+    def _fail_all_pending(self, exc: Exception) -> None:
+        for future in self._pending_responses.values():
+            if not future.done():
+                future.set_exception(exc)
+        self._pending_responses.clear()
+
+    def _command_timeout_seconds(self, command: str) -> float:
+        override = env("BROWSER_COMMAND_TIMEOUT_SECONDS", "").strip()
+        if override:
+            return _timeout_value_to_seconds(
+                override, fallback_seconds=self._request_timeout
+            )
+
+        command_name = command.lower()
+        if any(
+            token in command_name
+            for token in ("visit", "navigate", "open", "reload", "wait")
+        ):
+            return _timeout_value_to_seconds(
+                self.config.get("navigationTimeout"),
+                fallback_seconds=self._request_timeout,
+            )
+        return _timeout_value_to_seconds(
+            self.config.get("defaultTimeout"),
+            fallback_seconds=self._request_timeout,
+        )
+
+    def _navigation_lock_key(self) -> str:
+        cdp_url = str(self.config.get("cdpUrl") or "").strip()
+        return _endpoint_lock_key(cdp_url)
+
+    def _navigation_lock_wait_seconds(self) -> float:
+        command_timeout = self._command_timeout_seconds("visit_page")
+        return _env_timeout_seconds(
+            "BROWSER_NAVIGATION_LOCK_TIMEOUT_SECONDS",
+            fallback_seconds=command_timeout + 5.0,
+        )
+
+    def _max_session_tabs(self) -> int:
+        return _env_positive_int(
+            "EIGENT_BROWSER_MAX_TABS_PER_SESSION",
+            _DEFAULT_MAX_SESSION_TABS,
+        )
+
+    def _max_managed_tabs_per_endpoint(self) -> int:
+        return _env_positive_int(
+            "EIGENT_BROWSER_MAX_MANAGED_TABS",
+            _DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT,
+        )
+
+    def _tab_registry_key(self, tab_id: str) -> tuple[str, str]:
+        return (self._navigation_lock_key(), tab_id)
+
+    def _touch_session_tab(self, tab_id: str) -> None:
+        try:
+            self._session_tab_order.remove(tab_id)
+        except ValueError:
+            pass
+        self._session_tab_order.append(tab_id)
+
+    def _forget_session_tab(self, tab_id: str) -> None:
+        self._session_tab_ids.discard(tab_id)
+        try:
+            self._session_tab_order.remove(tab_id)
+        except ValueError:
+            pass
+
+    async def _track_and_limit_tabs(
+        self,
+        all_tabs: list[dict[str, Any]],
+        *,
+        reserve_slots: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Track the active tab and keep Eigent-managed tabs bounded.
+
+        ``reserve_slots=1`` is used before ``visit_page`` because CAMEL opens
+        each URL in a new tab. Only tabs owned by this wrapper are eligible for
+        recycling; pre-existing user tabs are deliberately left untouched.
+        """
+        endpoint = self._navigation_lock_key()
+        session_id = self._wrapper_session_id
+        live_tab_ids = {
+            str(tab["tab_id"])
+            for tab in all_tabs
+            if tab.get("tab_id") is not None
+        }
+        current_tab = next(
+            (tab for tab in all_tabs if tab.get("is_current")), None
+        )
+        current_tab_id = (
+            str(current_tab["tab_id"])
+            if current_tab and current_tab.get("tab_id") is not None
+            else None
+        )
+
+        async with _global_tab_registry_lock:
+            # A tab may have been closed by the user or by Chrome while this
+            # wrapper was idle. Remove stale ownership before counting limits.
+            for key in list(_global_tab_registry):
+                if key[0] == endpoint and key[1] not in live_tab_ids:
+                    del _global_tab_registry[key]
+            for tab_id in list(self._session_tab_ids):
+                if tab_id not in live_tab_ids:
+                    self._forget_session_tab(tab_id)
+
+            if current_tab_id is not None:
+                key = self._tab_registry_key(current_tab_id)
+                owner = _global_tab_registry.get(key)
+                if owner is None:
+                    _global_tab_registry[key] = session_id
+                    self._session_tab_ids.add(current_tab_id)
+                    self._touch_session_tab(current_tab_id)
+                    logger.info(
+                        "[Session Tab Tracking] Auto-tracked current tab: %s, "
+                        "session %s now has tabs: %s",
+                        current_tab_id,
+                        session_id,
+                        self._session_tab_ids,
+                    )
+                elif owner == session_id:
+                    self._session_tab_ids.add(current_tab_id)
+                    self._touch_session_tab(current_tab_id)
+
+            managed_count = sum(
+                1 for key in _global_tab_registry if key[0] == endpoint
+            )
+
+        session_limit = self._max_session_tabs()
+        endpoint_limit = self._max_managed_tabs_per_endpoint()
+        recycle_count = max(
+            len(self._session_tab_ids) + reserve_slots - session_limit,
+            managed_count + reserve_slots - endpoint_limit,
+            0,
+        )
+        if recycle_count == 0:
+            return all_tabs
+
+        victim_ids = [
+            tab_id
+            for tab_id in self._session_tab_order
+            if tab_id in live_tab_ids and tab_id != current_tab_id
+        ]
+        if len(victim_ids) < recycle_count:
+            raise RuntimeError(
+                "Browser tab limit reached and this session has no inactive "
+                "Eigent-managed tab that can be safely recycled "
+                f"(session_limit={session_limit}, "
+                f"endpoint_limit={endpoint_limit})."
+            )
+
+        recycled_ids = victim_ids[:recycle_count]
+        for victim_id in recycled_ids:
+            logger.warning(
+                "[Browser Tab Limit] Recycling least-recently-used tab %s "
+                "before opening another page (session=%s, session_limit=%s, "
+                "endpoint_limit=%s)",
+                victim_id,
+                session_id,
+                session_limit,
+                endpoint_limit,
+            )
+            await self.close_tab(victim_id)
+        return [
+            tab
+            for tab in all_tabs
+            if str(tab.get("tab_id")) not in recycled_ids
+        ]
+
+    async def _close_current_websocket(self) -> None:
+        websocket = self.websocket
+        self.websocket = None
+        if websocket is None:
+            return
+        try:
+            await asyncio.wait_for(websocket.close(), timeout=1.0)
+        except Exception as exc:
+            logger.debug(f"Error closing browser websocket: {exc}")
 
     def _ensure_local_no_proxy(self) -> None:
         local_hosts = ["localhost", "127.0.0.1", "::1"]
         for key in ("NO_PROXY", "no_proxy"):
-            current = os.environ.get(key, "")
+            current = env(key, "")
             if not current:
+                # Process-level proxy bypass for local CDP/WebSocket traffic.
+                # This is intentionally static host configuration, not
+                # per-run mutable state like API keys or artifact paths.
                 os.environ[key] = ",".join(local_hosts)
                 continue
             parts = [
@@ -82,6 +341,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         """Background task to receive messages from WebSocket with enhanced logging."""
         logger.debug("WebSocket receive loop started")
         disconnect_reason = None
+        pending_error: Exception | None = None
 
         try:
             while self.websocket:
@@ -115,11 +375,17 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
+                    )
                     logger.info(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except websockets.exceptions.ConnectionClosed as e:
                     disconnect_reason = (
                         f"WebSocket closed: code={e.code}, reason={e.reason}"
+                    )
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
                     )
                     logger.warning(
                         f"WebSocket disconnect: {disconnect_reason}"
@@ -128,6 +394,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 except websockets.exceptions.WebSocketException as e:
                     disconnect_reason = (
                         f"WebSocket error: {type(e).__name__}: {e}"
+                    )
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
                     )
                     logger.error(f"WebSocket disconnect: {disconnect_reason}")
                     break
@@ -138,30 +407,48 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     disconnect_reason = (
                         f"Unexpected error: {type(e).__name__}: {e}"
                     )
+                    pending_error = e
                     logger.error(
                         f"WebSocket disconnect: {disconnect_reason}",
                         exc_info=True,
                     )
-                    # Notify all pending futures of the error
-                    for future in self._pending_responses.values():
-                        if not future.done():
-                            future.set_exception(e)
-                    self._pending_responses.clear()
                     break
         finally:
             logger.info(
                 f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}"
             )
+            self._fail_all_pending(
+                pending_error
+                or ConnectionError("browser ws receive loop ended")
+            )
             # Mark the websocket as None to indicate disconnection
             self.websocket = None
 
     async def start(self):
-        # Simply use the parent implementation which uses system npm/node
+        """Start CAMEL, adding the target guard only for Electron sessions."""
         self._ensure_local_no_proxy()
         logger.info(
             "Starting WebSocket server using parent implementation (system npm/node)"
         )
-        await super().start()
+        owned_target_url = str(self.config.get("ownedTargetUrl") or "")
+        if not owned_target_url:
+            return await super().start()
+
+        hook_path = Path(__file__).with_name("electron_target_guard.cjs")
+        require_option = f"--require={hook_path}"
+        async with _node_runtime_hook_lock:
+            previous = os.environ.get("NODE_OPTIONS")
+            options = previous.split() if previous else []
+            if require_option not in options:
+                options.append(require_option)
+            os.environ["NODE_OPTIONS"] = " ".join(options)
+            try:
+                return await super().start()
+            finally:
+                if previous is None:
+                    os.environ.pop("NODE_OPTIONS", None)
+                else:
+                    os.environ["NODE_OPTIONS"] = previous
 
     async def _send_command(
         self, command: str, params: dict[str, Any]
@@ -183,18 +470,39 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
             logger.debug(f"Sending command '{command}' with params: {params}")
 
-            # Call parent's _send_command
-            result = await super()._send_command(command, params)
+            timeout = self._command_timeout_seconds(command)
+
+            # Call parent's _send_command with an outer timeout so cancelled
+            # waits cannot leave pending futures stranded in this subclass.
+            result = await asyncio.wait_for(
+                super()._send_command(command, params), timeout=timeout
+            )
 
             logger.debug(f"Command '{command}' completed successfully")
             return result
 
+        except TimeoutError as e:
+            message = (
+                f"browser command '{command}' timed out after "
+                f"{self._command_timeout_seconds(command)}s"
+            )
+            logger.error(message)
+            self._fail_all_pending(TimeoutError(message))
+            await self._close_current_websocket()
+            raise RuntimeError(message) from e
         except RuntimeError as e:
             logger.error(f"Failed to send command '{command}': {e}")
             # Check if it's a connection issue
-            if "WebSocket" in str(e) or "connection" in str(e).lower():
+            lower_error = str(e).lower()
+            if (
+                "websocket" in lower_error
+                or "connection" in lower_error
+                or "timeout" in lower_error
+                or "timed out" in lower_error
+            ):
                 # Mark connection as dead
-                self.websocket = None
+                self._fail_all_pending(e)
+                await self._close_current_websocket()
             raise
         except Exception as e:
             logger.error(
@@ -210,21 +518,34 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         blank page). This lock serializes navigation operations at the WebSocket
         wrapper level.
         """
-        global _global_navigation_lock
+        lock_key = self._navigation_lock_key()
+        lock = await _get_navigation_lock(lock_key)
+        lock_wait = self._navigation_lock_wait_seconds()
+        acquired = False
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=lock_wait)
+            acquired = True
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "navigation lock busy; browser may be stuck "
+                f"(key={lock_key}, waited={lock_wait}s)"
+            ) from exc
 
-        async with _global_navigation_lock:
-            logger.debug(
-                f"[visit_page] Acquired navigation lock, navigating to {url}"
-            )
-            try:
-                result = await super().visit_page(url)
-                logger.debug(
-                    "[visit_page] Navigation completed, releasing lock"
-                )
-                return result
-            except Exception as e:
-                logger.error(f"[visit_page] Navigation failed: {e}")
-                raise
+        logger.debug(
+            f"[visit_page] Acquired navigation lock ({lock_key}), navigating to {url}"
+        )
+        try:
+            all_tabs = await super().get_tab_info()
+            await self._track_and_limit_tabs(all_tabs, reserve_slots=1)
+            result = await super().visit_page(url)
+            logger.debug("[visit_page] Navigation completed, releasing lock")
+            return result
+        except Exception as e:
+            logger.error(f"[visit_page] Navigation failed: {e}")
+            raise
+        finally:
+            if acquired:
+                lock.release()
 
     async def get_tab_info(self) -> list[dict[str, Any]]:
         """Override get_tab_info to track and filter tabs for session isolation.
@@ -236,23 +557,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         global _global_tab_registry, _global_tab_registry_lock
 
         all_tabs = await super().get_tab_info()
+        all_tabs = await self._track_and_limit_tabs(all_tabs)
         session_id = self._wrapper_session_id  # Stable UUID for this wrapper
-
-        # Auto-track: add current tab to this session's tracked tabs (with global lock)
-        current_tab = next((t for t in all_tabs if t.get("is_current")), None)
-        if current_tab and current_tab.get("tab_id"):
-            tab_id = current_tab["tab_id"]
-            async with _global_tab_registry_lock:
-                # Only track if not already owned by another session
-                if tab_id not in _global_tab_registry:
-                    _global_tab_registry[tab_id] = session_id
-                    self._session_tab_ids.add(tab_id)
-                    logger.info(
-                        f"[Session Tab Tracking] Auto-tracked current tab: {tab_id}, session {session_id} now has tabs: {self._session_tab_ids}"
-                    )
-                elif _global_tab_registry[tab_id] == session_id:
-                    # Already owned by this session, ensure local tracking
-                    self._session_tab_ids.add(tab_id)
 
         # Filter: only return tabs belonging to this session
         filtered_tabs = [
@@ -274,10 +580,11 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
         # Remove from tracking if it was ours
         if tab_id in self._session_tab_ids:
-            self._session_tab_ids.discard(tab_id)
+            self._forget_session_tab(tab_id)
             async with _global_tab_registry_lock:
-                if tab_id in _global_tab_registry:
-                    del _global_tab_registry[tab_id]
+                key = self._tab_registry_key(tab_id)
+                if _global_tab_registry.get(key) == self._wrapper_session_id:
+                    del _global_tab_registry[key]
             logger.info(
                 f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}"
             )
@@ -298,10 +605,12 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         async with _global_tab_registry_lock:
             cleaned_count = len(self._session_tab_ids)
             for tab_id in list(self._session_tab_ids):
-                if tab_id in _global_tab_registry:
-                    del _global_tab_registry[tab_id]
+                key = self._tab_registry_key(tab_id)
+                if _global_tab_registry.get(key) == self._wrapper_session_id:
+                    del _global_tab_registry[key]
             # Clear inside lock to prevent race with concurrent get_tab_info
             self._session_tab_ids.clear()
+            self._session_tab_order.clear()
             logger.info(
                 f"[Session Tab Tracking] Cleaned up {cleaned_count} tabs for session {self._wrapper_session_id}"
             )
@@ -459,6 +768,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         connect_over_cdp: bool = True,  # Deprecated: auto-set to True when cdp_url is provided, kept for compatibility
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
+        owned_target_url: str | None = None,
         full_visual_mode: bool = False,
     ) -> None:
         logger.info(
@@ -511,9 +821,54 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
+        self._owned_target_url = owned_target_url
+        self._allow_owned_target_clone = False
+        if owned_target_url:
+            self._ws_config["ownedTargetUrl"] = owned_target_url
+        if self._default_timeout is not None:
+            self._ws_config["defaultTimeout"] = self._default_timeout
+        command_timeout_override = env(
+            "BROWSER_COMMAND_TIMEOUT_SECONDS", ""
+        ).strip()
+        if command_timeout_override:
+            self._ws_config["requestTimeout"] = _timeout_value_to_seconds(
+                command_timeout_override,
+                fallback_seconds=60.0,
+            )
         logger.info(
             f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}"
         )
+
+    def _ws_cdp_url(self) -> str:
+        return str(
+            self._ws_config.get("cdpUrl")
+            or self._ws_config.get("cdp_url")
+            or f"http://localhost:{env('browser_port', '9222')}"
+        )
+
+    def _should_prime_shared_cdp_tab(self) -> bool:
+        enabled = (
+            env("EIGENT_INTERIM_SHARED_BROWSER_TAB_ISOLATION", "true")
+            .strip()
+            .lower()
+        )
+        if enabled in {"0", "false", "no", "off"}:
+            return False
+        return bool(
+            self._ws_config.get("cdpUrl") or self._ws_config.get("cdp_url")
+        ) and not bool(self._ws_config.get("cdpKeepCurrentPage"))
+
+    async def _prime_shared_cdp_tab(self, session_id: str) -> None:
+        if self._ws_wrapper is None:
+            return
+        # === INTERIM(shared-browser tab isolation) remove after camel upstream fix; see docs/REMOTE_CONTROL_SHARED_BROWSER_TAB_ISOLATION_2026-06-15.md ===
+        sentinel_url = f"about:blank#eigent-{session_id}"
+        logger.info(
+            "[INTERIM shared-browser tab isolation] Priming session tab",
+            extra={"session_id": session_id, "sentinel_url": sentinel_url},
+        )
+        await self._ws_wrapper.visit_page(sentinel_url)
+        self._ws_wrapper._eigent_interim_shared_browser_primed = True
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
@@ -527,35 +882,74 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
         # Log when connecting to browser
-        cdp_url = self._ws_config.get(
-            "cdp_url", f"http://localhost:{env('browser_port', '9222')}"
-        )
+        cdp_url = self._ws_cdp_url()
         logger.info(
             f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}"
         )
 
-        # Get or create connection from pool
-        self._ws_wrapper = await websocket_connection_pool.get_connection(
-            session_id, self._ws_config
-        )
-        logger.info(
-            f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
-        )
-
-        # Additional health check
-        if self._ws_wrapper.websocket is None:
-            logger.warning(
-                f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+        should_prime = self._should_prime_shared_cdp_tab()
+        bringup_lock: asyncio.Lock | None = None
+        bringup_acquired = False
+        if should_prime:
+            bringup_lock = await _get_browser_bringup_lock(
+                _endpoint_lock_key(cdp_url)
             )
-            await websocket_connection_pool.close_connection(session_id)
+            bringup_wait = _env_timeout_seconds(
+                "BROWSER_BRINGUP_LOCK_TIMEOUT_SECONDS",
+                fallback_seconds=45.0,
+            )
+            try:
+                await asyncio.wait_for(
+                    bringup_lock.acquire(), timeout=bringup_wait
+                )
+                bringup_acquired = True
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "browser bring-up lock busy; shared browser may be stuck "
+                    f"(endpoint={cdp_url}, waited={bringup_wait}s)"
+                ) from exc
+
+        try:
+            # Get or create connection from pool
             self._ws_wrapper = await websocket_connection_pool.get_connection(
                 session_id, self._ws_config
             )
+            logger.info(
+                f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
+            )
+
+            # Additional health check
+            if self._ws_wrapper.websocket is None:
+                logger.warning(
+                    f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+                )
+                await websocket_connection_pool.close_connection(session_id)
+                self._ws_wrapper = (
+                    await websocket_connection_pool.get_connection(
+                        session_id, self._ws_config
+                    )
+                )
+
+            if should_prime and not getattr(
+                self._ws_wrapper,
+                "_eigent_interim_shared_browser_primed",
+                False,
+            ):
+                await self._prime_shared_cdp_tab(session_id)
+        finally:
+            if bringup_acquired and bringup_lock is not None:
+                bringup_lock.release()
 
     def clone_for_new_session(
         self, new_session_id: str | None = None
     ) -> "HybridBrowserToolkit":
         import uuid
+
+        if self._owned_target_url and not self._allow_owned_target_clone:
+            raise RuntimeError(
+                "An Electron embedded Browser Toolkit target cannot be "
+                "cloned until the CDP pool assigns a different target."
+            )
 
         if new_session_id is None:
             new_session_id = str(uuid.uuid4())[:8]
@@ -568,6 +962,12 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
+        # When cdp_keep_current_page=True, default_start_url must be None (CAMEL constraint)
+        cdp_keep = (
+            self.config_loader.get_browser_config().cdp_keep_current_page
+        )
+        clone_start_url = None if cdp_keep else self._default_start_url
+
         return HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
@@ -578,9 +978,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             browser_log_to_file=self._browser_log_to_file,
             log_dir=self.config_loader.get_toolkit_config().log_dir,
             session_id=new_session_id,
-            default_start_url=None
-            if self.config_loader.get_browser_config().cdp_keep_current_page
-            else self._default_start_url,
+            default_start_url=clone_start_url,
             default_timeout=self._default_timeout,
             short_timeout=self._short_timeout,
             navigation_timeout=self._navigation_timeout,
@@ -592,6 +990,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
             cdp_url=self.config_loader.get_browser_config().cdp_url,
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
+            owned_target_url=self._owned_target_url,
             full_visual_mode=self._full_visual_mode,
         )
 

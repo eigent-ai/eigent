@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import threading
 import weakref
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from camel.tasks import Task
 from app.exception.exception import ProgramException
 from app.model.chat import Status, SupplementChat, TaskContent, UpdateData
 from app.service.task import (
+    TASK_LOCK_CLEANUP_SENTINEL,
     Action,
     ActionAskData,
     ActionCreateAgentData,
@@ -45,6 +47,34 @@ from app.service.task import (
     task_index,
     task_locks,
 )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_keeps_resource_owner_and_retry_is_idempotent():
+    task_id = "test-toolkit-cleanup"
+    lock = create_task_lock(task_id)
+    calls = []
+    loop_thread = threading.get_ident()
+
+    class Resource:
+        def cleanup(self):
+            assert threading.get_ident() != loop_thread
+            calls.append("cleanup")
+            if len(calls) == 1:
+                raise RuntimeError("process group still alive")
+
+    resource = Resource()
+    lock.register_toolkit(resource)
+    try:
+        with pytest.raises(RuntimeError, match="did not finish"):
+            await delete_task_lock(task_id)
+        assert task_locks[task_id] is lock
+        assert lock.registered_toolkits == [resource]
+        await delete_task_lock(task_id)
+        assert task_id not in task_locks
+        assert calls == ["cleanup", "cleanup"]
+    finally:
+        task_locks.pop(task_id, None)
 
 
 @pytest.mark.unit
@@ -200,7 +230,21 @@ class TestTaskLock:
         assert task_lock.human_input is human_input
         assert isinstance(task_lock.created_at, datetime)
         assert isinstance(task_lock.last_accessed, datetime)
+        assert task_lock.execution_progress_revision == 0
         assert len(task_lock.background_tasks) == 0
+        assert task_lock.local_history_degraded is False
+        assert task_lock.local_history_last_error is None
+
+    def test_mark_local_history_degraded_is_sticky_and_updates_last_error(
+        self,
+    ):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+
+        task_lock.mark_local_history_degraded("disk full")
+        task_lock.mark_local_history_degraded("busy timeout")
+
+        assert task_lock.local_history_degraded is True
+        assert task_lock.local_history_last_error == "busy timeout"
 
     @pytest.mark.asyncio
     async def test_task_lock_put_queue(self):
@@ -215,6 +259,7 @@ class TestTaskLock:
 
         # Should update last_accessed time
         assert task_lock.last_accessed > initial_time
+        assert task_lock.execution_progress_revision == 1
 
         # Should be able to get the data from queue
         retrieved_data = await task_lock.get_queue()
@@ -231,11 +276,15 @@ class TestTaskLock:
         await queue.put(data)
 
         initial_time = task_lock.last_accessed
+        initial_progress_revision = task_lock.execution_progress_revision
         await asyncio.sleep(0.001)  # Small delay to ensure time difference
         retrieved_data = await task_lock.get_queue()
 
         # Should update last_accessed time
         assert task_lock.last_accessed > initial_time
+        assert (
+            task_lock.execution_progress_revision == initial_progress_revision
+        )
         assert retrieved_data == data
 
     @pytest.mark.asyncio
@@ -248,10 +297,48 @@ class TestTaskLock:
         task_lock.add_human_input_listen(agent_name)
         assert agent_name in task_lock.human_input
 
-        # Put and get human input
+        # A reply is accepted only while the agent is actively waiting.
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
         await task_lock.put_human_input(agent_name, "user response")
-        response = await task_lock.get_human_input(agent_name)
+        response = await waiting_reply
         assert response == "user response"
+
+        # Duplicate/stale replies must not remain queued for a future ask.
+        with pytest.raises(KeyError):
+            await task_lock.put_human_input(agent_name, "stale response")
+
+    @pytest.mark.asyncio
+    async def test_task_lock_delivers_only_one_reply_per_wait(self):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+        agent_name = "test_agent"
+        task_lock.add_human_input_listen(agent_name)
+
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
+        await task_lock.put_human_input(agent_name, "first response")
+
+        with pytest.raises(KeyError):
+            await task_lock.put_human_input(agent_name, "duplicate response")
+
+        assert await waiting_reply == "first response"
+
+    @pytest.mark.asyncio
+    async def test_task_lock_cleanup_unblocks_human_input_wait(self):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+        task_lock.add_human_input_listen("test_agent")
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input("test_agent")
+        )
+        await asyncio.sleep(0)
+
+        await task_lock.cleanup()
+
+        assert await waiting_reply == TASK_LOCK_CLEANUP_SENTINEL
 
     @pytest.mark.asyncio
     async def test_task_lock_background_task_management(self):
@@ -577,8 +664,12 @@ class TestTaskServiceIntegration:
         assert retrieved_data.data.question == "Improve this"
 
         # Test human input operations
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
         await task_lock.put_human_input(agent_name, "User response")
-        user_response = await task_lock.get_human_input(agent_name)
+        user_response = await waiting_reply
         assert user_response == "User response"
 
         # Test background task management
