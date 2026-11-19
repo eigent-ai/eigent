@@ -20,9 +20,9 @@ import type {
 } from 'electron-updater';
 import { createRequire } from 'node:module';
 import {
-  DEFAULT_CDN_RELEASE_BASE_URL,
   getGitHubReleaseChannel,
   getUpdatePlatformDirectory,
+  getUpdaterMirrorBaseUrl,
   GitHubReleaseCdnProvider,
 } from './githubReleaseCdnProvider';
 
@@ -74,8 +74,9 @@ export function update(win: Electron.BrowserWindow) {
     return;
   }
 
-  const cdnBaseUrl =
-    process.env.EIGENT_UPDATER_CDN_BASE_URL || DEFAULT_CDN_RELEASE_BASE_URL;
+  const cdnBaseUrl = getUpdaterMirrorBaseUrl(
+    process.env.EIGENT_UPDATER_CDN_BASE_URL
+  );
   const channel = getGitHubReleaseChannel(process.platform, process.arch);
   const feed = {
     provider: 'custom' as const,
