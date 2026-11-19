@@ -48,17 +48,6 @@ def _queue_action_from_worker(task_lock, action, description: str) -> None:
     )
 
 
-@router.post("/v1/tasks", name="dispatch task placeholder")
-def create_dispatch_task():
-    return Response(status_code=501, content="Not implemented yet")
-
-
-@router.get("/v1/tasks/{task_id}", name="dispatch task status placeholder")
-def get_dispatch_task(task_id: str):
-    _ = task_id
-    return Response(status_code=501, content="Not implemented yet")
-
-
 @router.post("/task/{id}/start", name="start task")
 def start(id: str):
     task_lock = get_task_lock(id)

@@ -24,6 +24,7 @@ from fastapi import Depends, FastAPI
 from app.auth import get_brain_auth_context
 from app.controller import (
     chat_controller,
+    dispatch_controller,
     execution_controller,
     file_controller,
     health_controller,
@@ -101,6 +102,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": run_controller.router,
             "tags": ["Runs"],
             "description": "Durable Run snapshots, event replay, and live streams",
+            "self_authenticated": True,
+        },
+        {
+            "router": dispatch_controller.router,
+            "tags": ["Dispatch"],
+            "description": "Start Tasks with no renderer; the Brain resolves model and Space",
             "self_authenticated": True,
         },
         {
