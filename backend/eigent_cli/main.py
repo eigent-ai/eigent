@@ -101,7 +101,8 @@ def cli(ctx: click.Context, url: str | None, as_json: bool) -> None:
 
     Works with the Eigent app when it runs with CLI access turned on
     (EIGENT_CLI_ACCESS=1), or with no app at all: "eigent run" starts
-    Eigent in the background when it is not running.
+    Eigent in the background when it is not running. "eigent remote"
+    steers the app on another machine through your Eigent account.
 
     \b
     Exit codes:
@@ -1030,5 +1031,9 @@ def run(argv: list[str] | None = None, obj: Context | None = None) -> int:
 def main(argv: list[str] | None = None) -> None:
     sys.exit(run(argv))
 
+
+# Registers ``login``, ``logout`` and ``remote`` on ``cli``. Imported last:
+# that module builds on the group and helpers defined above.
+from eigent_cli import remote as _remote  # noqa: E402, F401
 
 __all__ = ["Context", "cli", "main", "run"]

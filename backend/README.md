@@ -98,6 +98,43 @@ uv run python -m eigent_cli brain stop
   another one is already using `~/.eigent/run-journal.sqlite3`. Sessions
   started from the command line are not listed in the app.
 
+#### Steer your desktop from another machine
+
+`remote` follows and steers Tasks that run in the Eigent app on your desktop,
+from any machine, through your Eigent account. It uses the same remote links
+as the remote web page. The desktop must have the app open and be signed in
+to the same account.
+
+```bash
+uv run python -m eigent_cli login            # Shows a code; approve it where you are signed in
+uv run python -m eigent_cli remote connect   # Creates a link to your online desktop
+uv run python -m eigent_cli remote list      # Desktops and links
+uv run python -m eigent_cli remote sessions  # Sessions in the link's Space
+uv run python -m eigent_cli remote follow    # Latest Task; same exit codes as follow
+uv run python -m eigent_cli remote send "Add tests for the parser" --follow
+uv run python -m eigent_cli remote answer "use the docs folder"
+uv run python -m eigent_cli remote approve --scope once
+uv run python -m eigent_cli remote stop
+uv run python -m eigent_cli remote disconnect  # Turns the link off
+uv run python -m eigent_cli logout
+```
+
+- **Sign-in.** `login` prints a short code and waits until you approve it from
+  a place where you are already signed in. A machine that is signed in can
+  approve another one with `login --approve CODE`. Tokens are kept in
+  `~/.eigent/cli/account.json` and refreshed when they expire. `logout` only
+  forgets them on this machine.
+- **Links.** `remote connect` creates a link to a Space on a desktop that is
+  online, valid for 24 hours unless you pass `--hours`. `remote connect URL`
+  saves a link copied from the app instead. Link tokens are kept in
+  `~/.eigent/cli/remote-links.json`; anyone who can read that file and is
+  signed in as you can steer that Space.
+- **Server.** `--server` or `EIGENT_SERVER_URL` chooses the Eigent server, for
+  self-hosted setups. The server needs the command-line sign-in and remote
+  link routes.
+- **What is recorded.** Commands are sent with `source_channel: cli`. The
+  desktop records the resulting decisions as coming from Remote Control.
+
 RemoteHands config file example:
 
 ```bash
