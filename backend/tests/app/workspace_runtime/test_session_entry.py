@@ -340,6 +340,7 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
         patch("app.run_journal.store.MIGRATION_V40", ""),
         patch("app.run_journal.store._MIGRATION_V41", ""),
         patch("app.run_journal.store._MIGRATION_V43", ""),
+        patch("app.run_journal.store._MIGRATION_V44", ""),
         patch(
             "app.run_journal.store._MIGRATION_V42",
             PRE_V42_TERMINAL_COLUMNS,
@@ -367,7 +368,7 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
                 )
             }
     with SQLiteRunJournal(path) as current:
-        assert current.schema_version == SCHEMA_VERSION == 43
+        assert current.schema_version == SCHEMA_VERSION == 44
         assert before == {
             table: [
                 tuple(row)
@@ -389,6 +390,6 @@ def test_v39_upgrade_preserves_existing_rows_and_adds_only_local_routing(
         )
     with SQLiteRunJournal(path) as reopened:
         assert (
-            reopened.schema_version == 43
+            reopened.schema_version == 44
             and reopened.get_run("old").status == "completed"
         )

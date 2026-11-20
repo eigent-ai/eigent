@@ -464,6 +464,7 @@ def agent_model(
         model_backend = instrument_model_backend(
             model_backend,
             agent_id=agent_id,
+            agent_name=agent_name,
             provider=str(effective_config["model_platform"]),
             model_name=str(effective_config["model_type"]),
         )

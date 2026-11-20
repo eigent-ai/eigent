@@ -199,6 +199,7 @@ class ModelInvocationRecord:
     started_at: float
     first_token_at: float | None
     completed_at: float | None
+    agent_name: str | None = None
 
 
 @dataclass(frozen=True)
