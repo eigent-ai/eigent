@@ -25,6 +25,7 @@ import pytest
 from app.run_context.context import RunContext, run_context_scope
 from app.run_journal.model_capture import (
     _capture_is_required,
+    _usage,
     instrument_model_backend,
 )
 from app.run_journal.store import SQLiteRunJournal
@@ -1143,3 +1144,86 @@ def test_capture_records_agent_name_on_usage_events(tmp_path: Path) -> None:
     assert isinstance(completed["duration_ms"], int)
     assert "open the pricing page" not in str(dispatched)
     assert "open the pricing page" not in str(completed)
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        pytest.param(
+            {
+                "prompt_tokens": 1000,
+                "completion_tokens": 50,
+                "prompt_tokens_details": {"cached_tokens": 800},
+            },
+            (1000, 50, 800, None),
+            id="openai-chat-inclusive",
+        ),
+        pytest.param(
+            {
+                "input_tokens": 1000,
+                "output_tokens": 50,
+                "input_tokens_details": {"cached_tokens": 800},
+            },
+            (1000, 50, 800, None),
+            id="openai-responses-inclusive",
+        ),
+        pytest.param(
+            {
+                "input_tokens": 200,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 800,
+                "cache_creation_input_tokens": 100,
+            },
+            (1100, 50, 800, 100),
+            id="anthropic-native-excludes-cache",
+        ),
+        pytest.param(
+            # CAMEL's Anthropic backend copies input_tokens into
+            # prompt_tokens and keeps the separate cache fields.
+            {
+                "prompt_tokens": 200,
+                "completion_tokens": 50,
+                "total_tokens": 250,
+                "cache_read_input_tokens": 800,
+                "cache_creation_input_tokens": 0,
+            },
+            (1000, 50, 800, 0),
+            id="camel-anthropic-excludes-cache",
+        ),
+        pytest.param(
+            {
+                "prompt_tokens": 1100,
+                "completion_tokens": 50,
+                "prompt_tokens_details": {"cached_tokens": 800},
+                "cache_read_input_tokens": 800,
+                "cache_creation_input_tokens": 100,
+            },
+            (1100, 50, 800, 100),
+            id="gateway-inclusive-with-anthropic-fields",
+        ),
+        pytest.param(
+            {"input_tokens": 200, "output_tokens": 50},
+            (200, 50, None, None),
+            id="anthropic-without-cache-fields",
+        ),
+        pytest.param({}, (None, None, None, None), id="no-usage"),
+    ],
+)
+def test_usage_prompt_tokens_always_include_cached_input(
+    usage: dict[str, Any], expected: tuple[int | None, ...]
+) -> None:
+    result = _usage({"usage": usage})
+
+    assert (
+        result["prompt_tokens"],
+        result["completion_tokens"],
+        result["cache_read_tokens"],
+        result["cache_write_tokens"],
+    ) == expected
+    if result["prompt_tokens"] is not None:
+        uncached = (
+            result["prompt_tokens"]
+            - (result["cache_read_tokens"] or 0)
+            - (result["cache_write_tokens"] or 0)
+        )
+        assert uncached >= 0

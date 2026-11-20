@@ -107,31 +107,82 @@ def _request_document(
     }
 
 
+def _non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
 def _usage(response: dict[str, Any]) -> dict[str, int | None]:
+    """Normalise provider usage so ``prompt_tokens`` is total input.
+
+    ``prompt_tokens`` always includes cached input, so uncached input is
+    ``prompt_tokens - cache_read_tokens - cache_write_tokens`` whatever
+    the provider.
+
+    - OpenAI Chat Completions and Responses report total input
+      (``prompt_tokens`` or ``input_tokens``) with the cached part in
+      ``*_tokens_details.cached_tokens``.
+    - Anthropic reports ``input_tokens`` without cached input, and the
+      cached parts separately in ``cache_read_input_tokens`` and
+      ``cache_creation_input_tokens``. CAMEL's Anthropic backend copies
+      that uncached count into ``prompt_tokens``, so the presence of
+      ``prompt_tokens`` alone does not say which shape this is.
+    - OpenAI-compatible gateways in front of Anthropic can report both an
+      inclusive ``prompt_tokens`` with ``prompt_tokens_details`` and the
+      Anthropic cache fields. The OpenAI details object marks the count
+      as already inclusive.
+    """
+
     raw = response.get("usage")
     usage = raw if isinstance(raw, dict) else {}
-    prompt = usage.get("prompt_tokens", usage.get("input_tokens"))
+    reported_input = _non_negative_int(
+        usage.get("prompt_tokens", usage.get("input_tokens"))
+    )
     completion = usage.get("completion_tokens", usage.get("output_tokens"))
-    cache_read = usage.get("cache_read_input_tokens")
-    cache_write = usage.get("cache_creation_input_tokens")
-    details = usage.get("prompt_tokens_details")
-    if isinstance(details, dict):
-        cache_read = cache_read or details.get("cached_tokens")
+    anthropic_read = _non_negative_int(usage.get("cache_read_input_tokens"))
+    anthropic_write = _non_negative_int(
+        usage.get("cache_creation_input_tokens")
+    )
+    openai_details = next(
+        (
+            details
+            for details in (
+                usage.get("prompt_tokens_details"),
+                usage.get("input_tokens_details"),
+            )
+            if isinstance(details, dict)
+        ),
+        None,
+    )
+    openai_cached = (
+        _non_negative_int(openai_details.get("cached_tokens"))
+        if openai_details is not None
+        else None
+    )
 
-    def non_negative_int(value: Any) -> int | None:
-        if isinstance(value, bool):
-            return None
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            return None
-        return parsed if parsed >= 0 else None
+    cache_read = (
+        anthropic_read
+        if anthropic_read or openai_cached is None
+        else openai_cached
+    )
+    cache_write = anthropic_write
+    excludes_cached_input = openai_details is None and (
+        anthropic_read is not None or anthropic_write is not None
+    )
+    prompt = reported_input
+    if excludes_cached_input and reported_input is not None:
+        prompt = reported_input + (cache_read or 0) + (cache_write or 0)
 
     return {
-        "prompt_tokens": non_negative_int(prompt),
-        "completion_tokens": non_negative_int(completion),
-        "cache_read_tokens": non_negative_int(cache_read),
-        "cache_write_tokens": non_negative_int(cache_write),
+        "prompt_tokens": prompt,
+        "completion_tokens": _non_negative_int(completion),
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
     }
 
 
