@@ -789,6 +789,7 @@ def _start_capture(
     messages: list[dict[str, Any]],
     call_args: tuple[Any, ...],
     call_kwargs: dict[str, Any],
+    agent_name: str | None = None,
 ) -> _CaptureSession | None:
     context = get_current_run_context()
     if context is None:
@@ -854,6 +855,7 @@ def _start_capture(
             attempt_id=context.attempt_id,
             step_id=step_id,
             agent_id=agent_id,
+            agent_name=agent_name,
             logical_call_id=logical_call_id,
             provider=provider,
             model=model_name,
@@ -889,6 +891,7 @@ def instrument_model_backend(
     provider: str,
     model_name: str,
     journal: SQLiteRunJournal | None = None,
+    agent_name: str | None = None,
 ) -> Any:
     """Install one idempotent capture adapter on a CAMEL model instance."""
 
@@ -914,6 +917,7 @@ def instrument_model_backend(
             agent_id=agent_id,
             provider=provider,
             model_name=model_name,
+            agent_name=agent_name,
             messages=messages,
             call_args=args,
             call_kwargs=kwargs,
@@ -962,6 +966,7 @@ def instrument_model_backend(
             agent_id=agent_id,
             provider=provider,
             model_name=model_name,
+            agent_name=agent_name,
             messages=messages,
             call_args=args,
             call_kwargs=kwargs,

@@ -1111,3 +1111,35 @@ def test_best_effort_terminal_persistence_gap_returns_provider_response(
     assert returned is response
     gaps = journal.list_attempt_evidence_gaps(attempt.attempt_id)
     assert len(gaps) == 1
+
+
+def test_capture_records_agent_name_on_usage_events(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    model = instrument_model_backend(
+        _FakeModel(_Response()),
+        agent_id="agent-1",
+        agent_name="browser_agent",
+        provider="openai",
+        model_name="gpt-test",
+        journal=journal,
+    )
+
+    with run_context_scope(_context(tmp_path)):
+        model.run([{"role": "user", "content": "open the pricing page"}])
+
+    (record,) = journal.list_model_invocations("run-1")
+    assert record.agent_name == "browser_agent"
+    events = {
+        event.event_type: event.payload
+        for event in journal.list_events("run-1")
+    }
+    dispatched = events["model.invocation.dispatched"]
+    completed = events["model.invocation.completed"]
+    assert dispatched["agent_name"] == "browser_agent"
+    assert completed["agent_name"] == "browser_agent"
+    assert completed["provider"] == "openai"
+    assert completed["model"] == "gpt-test"
+    assert completed["usage"]["prompt_tokens"] == 3
+    assert isinstance(completed["duration_ms"], int)
+    assert "open the pricing page" not in str(dispatched)
+    assert "open the pricing page" not in str(completed)

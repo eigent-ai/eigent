@@ -156,7 +156,7 @@ from app.workspace_runtime.schema import (
     MIGRATION_V40,
 )
 
-SCHEMA_VERSION = 43
+SCHEMA_VERSION = 44
 
 # Pending-only markers; never a terminal execution outcome.
 _WARM_ADMISSION_PREFIX = "warm_admission_preparing:"
@@ -2599,6 +2599,21 @@ VALUES (43, CAST(strftime('%s', 'now') AS REAL));
 PRAGMA user_version = 43;
 COMMIT;
 PRAGMA foreign_keys = ON;
+"""
+
+_MIGRATION_V44 = """
+BEGIN IMMEDIATE;
+
+-- The display name of the agent that made a model call. agent_id is a
+-- per-instance id, so usage reports need the name to group calls by agent.
+-- Rows written before this column existed keep NULL.
+ALTER TABLE model_invocations ADD COLUMN agent_name TEXT;
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (44, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 44;
+COMMIT;
 """
 
 
@@ -8349,6 +8364,7 @@ class SQLiteRunJournal:
         thinking_effort: str | None,
         request: dict[str, Any],
         redaction_version: str = "model-invocation-v1",
+        agent_name: str | None = None,
         now: float | None = None,
     ) -> ModelInvocationRecord:
         """Persist the redacted CAMEL model-boundary request before dispatch.
@@ -8362,6 +8378,7 @@ class SQLiteRunJournal:
             raise ValueError("model invocation ids are required")
         if not agent_id.strip() or not provider.strip() or not model.strip():
             raise ValueError("model invocation identity is incomplete")
+        agent_name = (agent_name or "").strip() or None
         if step_id is not None:
             step_id = step_id.strip()
             if not step_id:
@@ -8430,14 +8447,15 @@ class SQLiteRunJournal:
                 """
                 INSERT INTO model_invocations(
                     invocation_id, run_id, attempt_id, step_id, agent_id,
-                    logical_call_id, retry_index, status, provider, model,
-                    transport, thinking_effort, request_json, response_json,
-                    request_digest, response_digest, prompt_tokens,
-                    completion_tokens, cache_read_tokens, cache_write_tokens,
-                    finish_reason, error_code, error_message,
-                    redaction_version, started_at, first_token_at, completed_at
+                    agent_name, logical_call_id, retry_index, status,
+                    provider, model, transport, thinking_effort,
+                    request_json, response_json, request_digest,
+                    response_digest, prompt_tokens, completion_tokens,
+                    cache_read_tokens, cache_write_tokens, finish_reason,
+                    error_code, error_message, redaction_version, started_at,
+                    first_token_at, completed_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?, ?, NULL,
+                    ?, ?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?, ?, NULL,
                     ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                     ?, ?, NULL, NULL
                 )
@@ -8448,6 +8466,7 @@ class SQLiteRunJournal:
                     attempt_id,
                     step_id,
                     agent_id,
+                    agent_name,
                     logical_call_id,
                     retry_index,
                     provider,
@@ -8465,6 +8484,7 @@ class SQLiteRunJournal:
                 "attempt_id": attempt_id,
                 "step_id": step_id,
                 "agent_id": agent_id,
+                "agent_name": agent_name,
                 "logical_call_id": logical_call_id,
                 "retry_index": retry_index,
                 "provider": provider,
@@ -8632,23 +8652,22 @@ class SQLiteRunJournal:
                     invocation_id,
                 ),
             )
-            event_payload: dict[str, Any] = {
-                "invocation_id": invocation_id,
-                "attempt_id": row["attempt_id"],
-                "step_id": row["step_id"],
-                "agent_id": row["agent_id"],
-                "status": status,
-                "request_digest": row["request_digest"],
-                "response_digest": response_digest,
-                "finish_reason": finish_reason,
-                "usage": {
+            event_payload = self._model_invocation_terminal_payload(
+                row,
+                status=status,
+                response_digest=response_digest,
+                finish_reason=finish_reason,
+                usage={
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "cache_read_tokens": cache_read_tokens,
                     "cache_write_tokens": cache_write_tokens,
                 },
-                "error_code": error_code,
-            }
+                error_code=error_code,
+                duration_ms=self._model_invocation_duration_ms(
+                    row["started_at"], timestamp
+                ),
+            )
             self._insert_model_invocation_event(
                 connection,
                 invocation_id=invocation_id,
@@ -8770,23 +8789,14 @@ class SQLiteRunJournal:
             )
             if updated.rowcount != 1:
                 continue
-            payload = {
-                "invocation_id": invocation_id,
-                "attempt_id": invocation["attempt_id"],
-                "step_id": invocation["step_id"],
-                "agent_id": invocation["agent_id"],
-                "status": "outcome_unknown",
-                "request_digest": invocation["request_digest"],
-                "response_digest": None,
-                "finish_reason": None,
-                "usage": {
-                    "prompt_tokens": None,
-                    "completion_tokens": None,
-                    "cache_read_tokens": None,
-                    "cache_write_tokens": None,
-                },
-                "error_code": error_code,
-            }
+            payload = self._model_invocation_terminal_payload(
+                invocation,
+                status="outcome_unknown",
+                error_code=error_code,
+                duration_ms=self._model_invocation_duration_ms(
+                    invocation["started_at"], timestamp
+                ),
+            )
             self._insert_model_invocation_event(
                 connection,
                 invocation_id=invocation_id,
@@ -17641,23 +17651,15 @@ class SQLiteRunJournal:
                         )
                         if updated.rowcount != 1:
                             continue
-                        payload = {
-                            "invocation_id": invocation["invocation_id"],
-                            "attempt_id": invocation["attempt_id"],
-                            "step_id": invocation["step_id"],
-                            "agent_id": invocation["agent_id"],
-                            "status": "outcome_unknown",
-                            "request_digest": invocation["request_digest"],
-                            "response_digest": None,
-                            "finish_reason": None,
-                            "usage": {
-                                "prompt_tokens": None,
-                                "completion_tokens": None,
-                                "cache_read_tokens": None,
-                                "cache_write_tokens": None,
-                            },
-                            "error_code": "brain_restart_after_dispatch",
-                        }
+                        # The call ended at some unknown point before the
+                        # restart, so restart time minus start time is not
+                        # its duration.
+                        payload = self._model_invocation_terminal_payload(
+                            invocation,
+                            status="outcome_unknown",
+                            error_code="brain_restart_after_dispatch",
+                            duration_ms=None,
+                        )
                         self._insert_model_invocation_event(
                             connection,
                             invocation_id=invocation["invocation_id"],
@@ -21269,6 +21271,58 @@ class SQLiteRunJournal:
         )
 
     @staticmethod
+    def _model_invocation_duration_ms(
+        started_at: float | None, completed_at: float | None
+    ) -> int | None:
+        if started_at is None or completed_at is None:
+            return None
+        elapsed = float(completed_at) - float(started_at)
+        if elapsed < 0:
+            return None
+        return int(round(elapsed * 1000))
+
+    @staticmethod
+    def _model_invocation_terminal_payload(
+        invocation: sqlite3.Row,
+        *,
+        status: str,
+        error_code: str | None,
+        duration_ms: int | None,
+        response_digest: str | None = None,
+        finish_reason: str | None = None,
+        usage: dict[str, int | None] | None = None,
+    ) -> dict[str, Any]:
+        """Build the Run event payload for a closed model call.
+
+        The payload is synced to Cloud as-is, so it carries identifiers,
+        digests and counts only. Request and response documents stay in
+        the local ``model_invocations`` row.
+        """
+
+        return {
+            "invocation_id": invocation["invocation_id"],
+            "attempt_id": invocation["attempt_id"],
+            "step_id": invocation["step_id"],
+            "agent_id": invocation["agent_id"],
+            "agent_name": invocation["agent_name"],
+            "provider": invocation["provider"],
+            "model": invocation["model"],
+            "status": status,
+            "request_digest": invocation["request_digest"],
+            "response_digest": response_digest,
+            "finish_reason": finish_reason,
+            "usage": usage
+            or {
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "cache_read_tokens": None,
+                "cache_write_tokens": None,
+            },
+            "duration_ms": duration_ms,
+            "error_code": error_code,
+        }
+
+    @staticmethod
     def _insert_model_invocation_event(
         connection: sqlite3.Connection,
         *,
@@ -21607,6 +21661,21 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(migration)
         if version < 43:
             self._connection.executescript(_MIGRATION_V43)
+        if version < 44:
+            model_invocation_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(model_invocations)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V44
+            if "agent_name" in model_invocation_columns:
+                migration = migration.replace(
+                    "ALTER TABLE model_invocations "
+                    "ADD COLUMN agent_name TEXT;\n",
+                    "",
+                )
+            self._connection.executescript(migration)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -22915,6 +22984,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             attempt_id=row["attempt_id"],
             step_id=row["step_id"],
             agent_id=row["agent_id"],
+            agent_name=row["agent_name"],
             logical_call_id=row["logical_call_id"],
             retry_index=int(row["retry_index"]),
             status=row["status"],

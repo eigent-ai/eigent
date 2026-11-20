@@ -119,7 +119,7 @@ def test_v43_keeps_every_intent_and_allows_abandoning_one(tmp_path):
             )
 
     with SQLiteRunJournal(path) as upgraded:
-        assert upgraded.schema_version == SCHEMA_VERSION == 43
+        assert upgraded.schema_version == SCHEMA_VERSION == 44
         connection = upgraded._connection
         assert [
             tuple(row)
@@ -146,7 +146,7 @@ def test_v43_keeps_every_intent_and_allows_abandoning_one(tmp_path):
         assert change_set.state == "discarded"
 
     with SQLiteRunJournal(path) as reopened:
-        assert reopened.schema_version == 43
+        assert reopened.schema_version == 44
         assert {
             item.status for item in reopened.list_git_mutation_intents()
         } == {"abandoned"}
