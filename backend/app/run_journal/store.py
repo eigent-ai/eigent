@@ -8789,13 +8789,13 @@ class SQLiteRunJournal:
             )
             if updated.rowcount != 1:
                 continue
+            # The sweep runs when the Run ends, not when the call ended, so
+            # sweep time minus start time is not the call's duration.
             payload = self._model_invocation_terminal_payload(
                 invocation,
                 status="outcome_unknown",
                 error_code=error_code,
-                duration_ms=self._model_invocation_duration_ms(
-                    invocation["started_at"], timestamp
-                ),
+                duration_ms=None,
             )
             self._insert_model_invocation_event(
                 connection,

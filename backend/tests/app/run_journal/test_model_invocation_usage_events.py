@@ -192,7 +192,7 @@ def test_failed_call_event_has_the_same_key_set(tmp_path: Path) -> None:
     _assert_no_content(failed)
 
 
-def test_run_end_sweep_event_carries_attribution_and_duration(
+def test_run_end_sweep_event_carries_attribution_without_duration(
     tmp_path: Path,
 ) -> None:
     journal = _journal(tmp_path)
@@ -217,7 +217,11 @@ def test_run_end_sweep_event_carries_attribution_and_duration(
     assert unknown["agent_name"] == "developer_agent"
     assert unknown["provider"] == "openai"
     assert unknown["model"] == "gpt-test"
-    assert unknown["duration_ms"] == 10_000
+    # The sweep runs when the Run ends, not when the call ended.
+    assert unknown["duration_ms"] is None
+    record = journal.get_model_invocation("inv-1")
+    assert record is not None
+    assert record.completed_at == 20.0
     _assert_no_content(unknown)
 
 
