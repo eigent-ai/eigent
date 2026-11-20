@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const MCP_CONFIG_DIR = path.join(os.homedir(), '.eigent');
 const MCP_CONFIG_PATH = path.join(MCP_CONFIG_DIR, 'mcp.json');

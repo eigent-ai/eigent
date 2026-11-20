@@ -27,11 +27,11 @@ import {
 } from 'electron';
 import log from 'electron-log';
 import FormData from 'form-data';
-import fsp from 'fs/promises';
 import mime from 'mime';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs, { existsSync } from 'node:fs';
+import fsp from 'node:fs/promises';
 import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
