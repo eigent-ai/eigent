@@ -21,6 +21,10 @@ from camel.models import ModelFactory, ModelProcessingError
 
 from app.model.anthropic_tools import configure_anthropic_tool_compatibility
 from app.model.effort import resolve_model_effort_config
+from app.model.max_tokens import (
+    InvalidMaxTokensError,
+    ensure_anthropic_max_tokens,
+)
 from app.model.model_platform import (
     BEDROCK_CONVERSE_REGION,
     configure_meta_model_api_backend,
@@ -285,9 +289,10 @@ def create_agent(
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
     if str(platform).lower() == "anthropic":
-        model_config_dict = dict(model_config_dict or {})
-        if model_config_dict.get("max_tokens") is None:
-            model_config_dict["max_tokens"] = 4096
+        # Raises InvalidMaxTokensError on an unusable value, so the caller
+        # reports a precise configuration error instead of the pydantic failure
+        # the Anthropic constructor would raise for a string max_tokens.
+        model_config_dict = ensure_anthropic_max_tokens(model_config_dict)
     if str(platform).lower() == "aws-bedrock-converse":
         kwargs.setdefault("region_name", BEDROCK_CONVERSE_REGION)
     model_config_dict, kwargs, runtime_platform = _validation_effort_config(
@@ -399,9 +404,7 @@ def validate_model_with_details(
             extra={"platform": model_platform, "model_type": model_type},
         )
         if str(model_platform).lower() == "anthropic":
-            model_config_dict = dict(model_config_dict or {})
-            if model_config_dict.get("max_tokens") is None:
-                model_config_dict["max_tokens"] = 4096
+            model_config_dict = ensure_anthropic_max_tokens(model_config_dict)
         if str(model_platform).lower() == "aws-bedrock-converse":
             kwargs.setdefault("region_name", BEDROCK_CONVERSE_REGION)
         model_config_dict, kwargs, runtime_platform = (
@@ -436,6 +439,24 @@ def validate_model_with_details(
             "Model creation stage passed",
             extra={"platform": model_platform, "model_type": model_type},
         )
+
+    except InvalidMaxTokensError as e:
+        # A configuration mistake on our side, not a provider or credential
+        # problem: report it as such so the UI can point at the offending field
+        # instead of suggesting the user check their API key.
+        result.error_type = ValidationErrorType.INVALID_CONFIGURATION
+        result.error_message = str(e)
+        result.error_details = {
+            "field": "max_tokens",
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+        result.failed_stage = ValidationStage.MODEL_CREATION
+        logger.warning(
+            "Model creation stage rejected an invalid max_tokens value",
+            extra={"error": str(e)},
+        )
+        return result
 
     except Exception as e:
         error_type = categorize_error(e, ValidationStage.MODEL_CREATION)
