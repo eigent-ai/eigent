@@ -203,16 +203,23 @@ describe('Installation Store', () => {
         await result.current.performInstallation();
       });
 
-      // Wait for the mocked installation to complete
+      // After performInstallation, state should be waiting-backend
       await vi.waitFor(
         () => {
-          expect(result.current.state).toBe('completed');
+          expect(result.current.state).toBe('waiting-backend');
         },
         { timeout: 1000 }
       );
 
       expect(electronAPI.checkAndInstallDepsOnUpdate).toHaveBeenCalled();
-      expect(mockSetInitState).toHaveBeenCalledWith('done');
+
+      // Transition to completed requires explicit setSuccess (triggered by onBackendReady)
+      act(() => {
+        result.current.setSuccess();
+      });
+
+      expect(result.current.state).toBe('completed');
+      expect(result.current.progress).toBe(100);
     });
 
     it('should handle installation failure', async () => {
@@ -244,9 +251,10 @@ describe('Installation Store', () => {
         await result.current.performInstallation();
       });
 
+      // After performInstallation, state should be waiting-backend
       await vi.waitFor(
         () => {
-          expect(result.current.state).toBe('completed');
+          expect(result.current.state).toBe('waiting-backend');
         },
         { timeout: 1000 }
       );
@@ -440,15 +448,24 @@ describe('Installation Store', () => {
         await result.current.performInstallation();
       });
 
+      // After performInstallation, state should be waiting-backend
       await vi.waitFor(
         () => {
-          expect(result.current.state).toBe('completed');
+          expect(result.current.state).toBe('waiting-backend');
         },
         { timeout: 1000 }
       );
 
-      // Should have progressed through: idle -> installing -> completed
+      // Should have progressed through: idle -> installing -> waiting-backend
       expect(states).toContain('installing');
+      expect(states).toContain('waiting-backend');
+
+      // Simulate onBackendReady triggering setSuccess
+      act(() => {
+        result.current.setSuccess();
+      });
+
+      expect(result.current.state).toBe('completed');
       expect(states).toContain('completed');
     });
   });

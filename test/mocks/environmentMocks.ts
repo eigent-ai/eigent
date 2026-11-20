@@ -512,6 +512,10 @@ export function createProcessUtilsMock() {
     cleanupOldVenvs: vi.fn(),
     isBinaryExists: vi.fn(),
     getUvEnv: vi.fn(),
+    getTerminalVenvPath: vi.fn().mockReturnValue('/mock/venv/path'),
+    getVenvPythonPath: vi.fn(),
+    getPrebuiltPythonDir: vi.fn(),
+    getPrebuiltTerminalVenvPath: vi.fn(),
     mockState: {} as MockEnvironmentState,
 
     setup: (mockState: MockEnvironmentState) => {
@@ -585,6 +589,18 @@ export function createProcessUtilsMock() {
       utilsMock.isBinaryExists.mockImplementation(async (name: string) => {
         return mockState.filesystem.binariesExist[name] || false;
       });
+
+      utilsMock.getTerminalVenvPath.mockImplementation((version: string) => {
+        return `${mockState.system.homedir}/.eigent/venvs/terminal-${version}`;
+      });
+
+      utilsMock.getVenvPythonPath.mockImplementation((venvPath: string) => {
+        return `${venvPath}/bin/python`;
+      });
+
+      utilsMock.getPrebuiltPythonDir.mockReturnValue(null);
+
+      utilsMock.getPrebuiltTerminalVenvPath.mockReturnValue(null);
     },
 
     reset: () => {

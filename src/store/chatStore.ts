@@ -3309,7 +3309,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
-        if (res) {
+        if (res && Array.isArray(res)) {
           snapshots = [
             ...new Map(
               res.map((item: any) => [item.camel_task_id, item])
@@ -5060,6 +5060,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          const isQueueEvent = agentMessages.step === AgentStep.REMOVE_TASK;
+
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
             UNSUCCESSFUL_RUN_STATUSES.has(currentTask.durableRunStatus!) &&
@@ -5124,11 +5126,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             !isTaskSwitchingEvent &&
             !isMultiTurnSimpleAnswer &&
             !isPostCompletionProjectionEvent &&
-            !isSuccessfulCompletionTail
+            !isSuccessfulCompletionTail &&
+            !isQueueEvent
           ) {
             // Ignore messages for finished tasks except:
             // 1. Task switching events (create new chatStore)
             // 2. Simple answer events (direct response without new chatStore)
+            // 3. Queue events (remove_task affects the project queue, not the task)
             console.log(
               `Ignoring SSE message for finished task ${lockedTaskId}, step: ${agentMessages.step}`
             );

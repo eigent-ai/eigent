@@ -234,7 +234,10 @@ describe('Case 3: Add to the workforce queue', () => {
         undefined,
         undefined,
         undefined,
-        userMessage
+        userMessage,
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });
@@ -709,7 +712,10 @@ describe('Case 3: Add to the workforce queue', () => {
         undefined,
         undefined,
         undefined,
-        userMessage
+        userMessage,
+        undefined,
+        undefined,
+        projectId
       );
       rerender();
     });

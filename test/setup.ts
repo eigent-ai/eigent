@@ -102,6 +102,7 @@ global.electronAPI = {
 global.ipcRenderer = {
   invoke: vi.fn(),
   on: vi.fn(),
+  off: vi.fn(),
   removeAllListeners: vi.fn(),
 };
 
