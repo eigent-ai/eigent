@@ -40,6 +40,7 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
+import { isStoppedRunStatus } from '@/lib/projector/runSummary';
 import { spaceEmoji } from '@/lib/spaceEmoji';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
@@ -48,6 +49,7 @@ import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSessionReplayStore } from '@/store/sessionReplayStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -58,12 +60,16 @@ import {
   Archive,
   EllipsisVertical,
   GalleryThumbnails,
+  History,
   Pencil,
   Pin,
+  Share2,
   Trash2,
   WandSparkles,
 } from 'lucide-react';
 import {
+  lazy,
+  Suspense,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -79,6 +85,13 @@ import {
 } from './sessionAutomationSource';
 import { SessionViewSettings } from './SessionViewSettings';
 import { SummaryToggle, type SummaryToggleProps } from './SummaryToggle';
+
+// Loaded when the Share dialog first opens.
+const ShareSessionDialog = lazy(() =>
+  import('@/components/Session/ShareSessionDialog').then((module) => ({
+    default: module.ShareSessionDialog,
+  }))
+);
 
 /** Match the composer control row when the resizable Session pane is narrow. */
 const COMPACT_WIDTH_THRESHOLD = 460;
@@ -175,6 +188,23 @@ export function HeaderBox({
   const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
   const togglePinned = useSessionControlsStore((s) => s.togglePinned);
   const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const startReplay = useSessionReplayStore((s) => s.startReplay);
+  const replaying = useSessionReplayStore((s) =>
+    projectId ? s.replayingProjectIds.includes(projectId) : false
+  );
+  const shareOpen = useSessionReplayStore(
+    (s) => Boolean(projectId) && s.shareProjectId === projectId
+  );
+  const openShare = useSessionReplayStore((s) => s.openShare);
+  const closeShare = useSessionReplayStore((s) => s.closeShare);
+  // Replay and sharing read stored Run events, so they need a finished Run.
+  const hasFinishedRun = Boolean(
+    projectId &&
+    projectEventRuntime?.projectId === projectId &&
+    Object.values(projectEventRuntime?.snapshot?.view.runs ?? {}).some((run) =>
+      isStoppedRunStatus(run.status)
+    )
+  );
   const requestChatDraft = useSessionPageTabStore(
     (state) => state.requestWorkspaceChatDraft
   );
@@ -364,6 +394,25 @@ export function HeaderBox({
                 })}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {eventNativeTimelineEnabled ? (
+                <>
+                  <DropdownMenuItem
+                    disabled={!hasFinishedRun || replaying}
+                    onSelect={() => startReplay(projectId)}
+                  >
+                    <DsIcon icon={History} recipe="main" />
+                    {t('chat.session-replay.menu-item')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!hasFinishedRun}
+                    onSelect={() => openShare(projectId)}
+                  >
+                    <DsIcon icon={Share2} recipe="main" />
+                    {t('chat.session-share.menu-item')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
               {eventNativeTimelineEnabled && showTimelineStyle ? (
                 <>
                   <SessionViewSettings
@@ -462,6 +511,18 @@ export function HeaderBox({
         </TooltipSimple>
         {trailingActions}
       </div>
+      {projectId && projectName && shareOpen ? (
+        <Suspense fallback={null}>
+          <ShareSessionDialog
+            projectId={projectId}
+            title={projectName}
+            open
+            onOpenChange={(open) => {
+              if (!open) closeShare();
+            }}
+          />
+        </Suspense>
+      ) : null}
       {automationDialogContext ? (
         <TriggerDialog
           selectedTrigger={null}

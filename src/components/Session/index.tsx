@@ -39,6 +39,7 @@ import {
   WorkspaceTab,
 } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useIsSessionReplaying } from '@/store/sessionReplayStore';
 import { useSessionStartStore } from '@/store/sessionStartStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -48,6 +49,8 @@ import {
 } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -65,6 +68,13 @@ import {
   usePreviewResize,
 } from './layout/usePreviewResize';
 import { SessionSidePanel } from './SidePanel';
+
+// Replay is opened on demand; keep it out of the Session pane's first load.
+const SessionReplay = lazy(() =>
+  import('./SessionReplay').then((module) => ({
+    default: module.SessionReplay,
+  }))
+);
 
 /**
  * Session layout: header and chat with optional Summary (left group) beside an
@@ -151,6 +161,7 @@ function SessionContent({
     (s) => s.sessionPreviewProjectId
   );
   const activeProjectId = sessionProjectId;
+  const replaying = useIsSessionReplaying(activeProjectId);
   // The New session page keeps the last active Project selected until its
   // first task creates a replacement, so its columns use a draft scope.
   const scopeId = isNewProject
@@ -611,6 +622,13 @@ function SessionContent({
                 onSessionModeChange={handleNewProjectSessionModeChange}
                 composerFooterLeading={newSessionComposer?.footerLeading}
               />
+            ) : replaying && activeProjectId ? (
+              <Suspense fallback={null}>
+                <SessionReplay
+                  projectId={activeProjectId}
+                  sessionMode={displaySessionMode ?? undefined}
+                />
+              </Suspense>
             ) : (
               <ChatBox />
             )}
