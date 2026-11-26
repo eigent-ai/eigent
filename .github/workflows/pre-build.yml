@@ -258,6 +258,12 @@ jobs:
   merge-release:
     needs: build
     runs-on: ubuntu-latest
+    # The S3 upload signs in to AWS through GitHub OIDC. The role to assume is
+    # read from this environment's AWS_UPLOAD_ROLE_ARN secret.
+    environment: pre-release
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - name: Create directories
         run: |
@@ -399,17 +405,22 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      # Configure AWS credentials (skipped when AWS secrets not configured)
+      # Configure AWS credentials with a short-lived OIDC role session (skipped
+      # when the environment has no AWS_UPLOAD_ROLE_ARN secret, e.g. in forks)
       - name: Configure AWS credentials
         id: aws-check
-        if: env.AWS_ACCESS_KEY_ID != ''
+        if: env.AWS_UPLOAD_ROLE_ARN != ''
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_UPLOAD_ROLE_ARN: ${{ secrets.AWS_UPLOAD_ROLE_ARN }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Note skipped S3 upload
+        if: steps.aws-check.outcome == 'skipped'
+        run: echo "::notice::S3 upload skipped. The AWS_UPLOAD_ROLE_ARN secret is not set for the 'pre-release' environment."
 
       # Upload to S3 - versioned directory (immutable; all files get long cache)
       - name: Upload to S3 (versioned)
