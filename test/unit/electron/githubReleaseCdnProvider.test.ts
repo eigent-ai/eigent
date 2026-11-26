@@ -19,6 +19,9 @@ import {
   normalizeCdnReleaseBaseUrl,
 } from '../../../electron/main/githubReleaseCdnProvider';
 
+// Fixture only: not the app version, so releases never need to edit this file.
+const FIXTURE_VERSION = '1.2.3';
+
 describe('githubReleaseCdnProvider', () => {
   it('maps supported platforms to the expected release directories', () => {
     expect(getUpdatePlatformDirectory('darwin', 'arm64')).toBe('mac-arm64');
@@ -44,18 +47,18 @@ describe('githubReleaseCdnProvider', () => {
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases/',
-        '1.0.8',
+        FIXTURE_VERSION,
         'mac-arm64'
       )
-    ).toBe('https://cdn.eigent.ai/releases/v1.0.8/mac-arm64/');
+    ).toBe(`https://cdn.eigent.ai/releases/v${FIXTURE_VERSION}/mac-arm64/`);
 
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases',
-        '1.0.8',
+        FIXTURE_VERSION,
         'win-x64'
       )
-    ).toBe('https://cdn.eigent.ai/releases/v1.0.8/win-x64/');
+    ).toBe(`https://cdn.eigent.ai/releases/v${FIXTURE_VERSION}/win-x64/`);
   });
 
   it('maps mac builds to the GitHub release channels used in CI', () => {

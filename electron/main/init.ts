@@ -349,6 +349,7 @@ export async function startBackend(
     ...proxyEnv,
     SERVER_URL: serverUrl,
     EIGENT_RUNTIME: 'electron',
+    EIGENT_APP_VERSION: currentVersion,
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
