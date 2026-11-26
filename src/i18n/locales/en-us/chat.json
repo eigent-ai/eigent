@@ -616,5 +616,8 @@
   "workspace-blocked-failed": "Couldn't resolve the blocked operation. Try again.",
   "notice-space-folder-home": "Eigent can’t work directly in your home folder.",
   "notice-space-folder-app-data": "Eigent can’t work in a folder that holds its own app data.",
-  "notice-space-folder-description": "Create a Space from a folder inside your home folder, such as Documents."
+  "notice-space-folder-description": "Create a Space from a folder inside your home folder, such as Documents.",
+  "worker-timeline-back": "Back to session",
+  "worker-timeline-subtitle": "Worker in this session",
+  "worker-timeline-reply-hint": "To reply, go back to the session."
 }

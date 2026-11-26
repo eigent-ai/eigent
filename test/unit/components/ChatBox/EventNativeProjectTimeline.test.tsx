@@ -719,6 +719,35 @@ describe('EventNativeProjectTimeline', () => {
     expect(screen.getByText('Message 1')).toBeInTheDocument();
   });
 
+  it('shows only one worker and the message that started its Run', () => {
+    const ask = { ...messageNode(0, 'user'), content: 'Launch the page' };
+    const alpha = {
+      ...messageNode(1),
+      purpose: 'narration' as const,
+      agentName: 'Alpha Agent',
+    };
+    const beta = {
+      ...messageNode(2),
+      purpose: 'narration' as const,
+      agentName: 'Beta Agent',
+    };
+    mocks.projection = projection([ask, alpha, beta]);
+
+    render(
+      <EventNativeProjectTimeline
+        detailLevel="trajectory"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+        workerKey="beta agent"
+      />
+    );
+
+    expect(screen.getAllByText('Launch the page').length).toBeGreaterThan(0);
+    expect(screen.getByText('Message 2')).toBeInTheDocument();
+    expect(screen.queryByText('Message 1')).not.toBeInTheDocument();
+  });
+
   it('restores the interactive card for the active unconfirmed workforce plan', () => {
     const user = messageNode(0, 'user');
     const plan: ChatPlanNode = {

@@ -612,5 +612,8 @@
   "workspace-blocked-failed": "无法处理被阻塞的操作，请重试。",
   "notice-space-folder-home": "Eigent 无法直接在您的主文件夹中工作。",
   "notice-space-folder-app-data": "Eigent 无法在存放其自身应用数据的文件夹中工作。",
-  "notice-space-folder-description": "请使用主文件夹内的某个文件夹（例如“文稿”）创建空间。"
+  "notice-space-folder-description": "请使用主文件夹内的某个文件夹（例如“文稿”）创建空间。",
+  "worker-timeline-back": "返回会话",
+  "worker-timeline-subtitle": "此会话中的工作者",
+  "worker-timeline-reply-hint": "如需回复，请返回会话。"
 }

@@ -612,5 +612,8 @@
   "workspace-blocked-failed": "ブロックされた操作を解決できませんでした。もう一度お試しください。",
   "notice-space-folder-home": "Eigent はホームフォルダで直接作業できません。",
   "notice-space-folder-app-data": "Eigent は自身のアプリデータを含むフォルダでは作業できません。",
-  "notice-space-folder-description": "ホームフォルダ内のフォルダ（「書類」など）からスペースを作成してください。"
+  "notice-space-folder-description": "ホームフォルダ内のフォルダ（「書類」など）からスペースを作成してください。",
+  "worker-timeline-back": "セッションに戻る",
+  "worker-timeline-subtitle": "このセッションのワーカー",
+  "worker-timeline-reply-hint": "返信するにはセッションに戻ってください。"
 }

@@ -1721,5 +1721,6 @@
   "show-fewer-sessions-in-space": "Afficher moins de sessions de {{name}}",
   "new-session-space": "Espace de cette session",
   "spaces-switch-failed": "Impossible de changer d’Espace",
-  "space-emoji-load-failed": "Impossible de charger les emojis. Vérifiez votre connexion."
+  "space-emoji-load-failed": "Impossible de charger les emojis. Vérifiez votre connexion.",
+  "session-workers": "Agents : {{count}}"
 }
