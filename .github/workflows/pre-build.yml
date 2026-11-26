@@ -259,7 +259,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # The S3 upload signs in to AWS through GitHub OIDC. The role to assume is
-    # read from this environment's AWS_UPLOAD_ROLE_ARN variable.
+    # read from this environment's AWS_UPLOAD_ROLE_ARN secret.
     environment: pre-release
     permissions:
       contents: write
@@ -406,18 +406,21 @@ jobs:
           echo "Extracted version: $VERSION"
 
       # Configure AWS credentials with a short-lived OIDC role session (skipped
-      # when the environment has no AWS_UPLOAD_ROLE_ARN variable, e.g. in forks)
+      # when the environment has no AWS_UPLOAD_ROLE_ARN secret, e.g. in forks)
       - name: Configure AWS credentials
         id: aws-check
-        if: vars.AWS_UPLOAD_ROLE_ARN != ''
+        if: env.AWS_UPLOAD_ROLE_ARN != ''
+        env:
+          AWS_UPLOAD_ROLE_ARN: ${{ secrets.AWS_UPLOAD_ROLE_ARN }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_UPLOAD_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          mask-aws-account-id: true
 
       - name: Note skipped S3 upload
         if: steps.aws-check.outcome == 'skipped'
-        run: echo "::notice::S3 upload skipped. AWS_UPLOAD_ROLE_ARN is not set for the 'pre-release' environment."
+        run: echo "::notice::S3 upload skipped. The AWS_UPLOAD_ROLE_ARN secret is not set for the 'pre-release' environment."
 
       # Upload to S3 - versioned directory (immutable; all files get long cache)
       - name: Upload to S3 (versioned)
