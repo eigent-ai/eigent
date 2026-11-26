@@ -62,6 +62,9 @@ from app.auth.local_control import capture_local_control_capability
 # Electron passes this once at process creation. Consume it before routers,
 # toolkits, or model-controlled subprocesses can inspect the Brain environment.
 capture_local_control_capability()
+from app.recording.runtime import capture_recording_bootstrap
+
+capture_recording_bootstrap()
 
 from app import api
 from app.component.environment import env
@@ -138,6 +141,18 @@ async def startup_event():
     global pid_task
     set_main_event_loop(asyncio.get_running_loop())
     pid_task = asyncio.create_task(write_pid_file())
+    from app.recording.runtime import get_recording_service
+
+    recording_service = get_recording_service()
+
+    async def recording_watchdog():
+        while True:
+            await asyncio.to_thread(recording_service.tick)
+            await asyncio.sleep(1)
+
+    globals()["recording_watchdog_task"] = asyncio.create_task(
+        recording_watchdog()
+    )
     app_logger.info("PID write task created")
 
     # Reconcile durable execution facts before accepting new Run admission.
@@ -308,6 +323,13 @@ async def cleanup_resources():
     if gc_task is not None:
         gc_task.cancel()
         await asyncio.gather(gc_task, return_exceptions=True)
+    watchdog = globals().get("recording_watchdog_task")
+    if watchdog is not None:
+        watchdog.cancel()
+        await asyncio.gather(watchdog, return_exceptions=True)
+    from app.recording.runtime import get_recording_service
+
+    get_recording_service().disconnect()
     app_logger.info("Starting graceful shutdown process")
 
     from app.run_runtime.runtime import mark_process_shutting_down

@@ -17,6 +17,7 @@ import {
   GlobalSearchHost,
 } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
+import { RecordingIndicator } from '@/components/Recording/RecordingIndicator';
 import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import UpdateButton from '@/components/TopBar/UpdateButton';
@@ -219,6 +220,7 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
             platform === 'darwin' && 'px-0'
           )}
         >
+          <RecordingIndicator />
           <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}

@@ -19,6 +19,7 @@ import {
   CONTENT_HEADER_CLASS,
   CONTENT_HEADER_TOP_BAR_ALIGNED_INSET_CLASS,
 } from '@/components/Layout/ContentHeader';
+import { SessionRecordingControl } from '@/components/Recording/SessionRecordingControl';
 import { SpaceGlyph } from '@/components/SpaceSidebar/SpaceGlyph';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
@@ -428,6 +429,9 @@ export function HeaderBox({
               <AnimatedTokenNumber value={totalTokens} />
             </span>
           </div>
+        ) : null}
+        {projectId ? (
+          <SessionRecordingControl sessionId={projectId} compact={compact} />
         ) : null}
         {summary ? <SummaryToggle {...summary} /> : null}
         <TooltipSimple

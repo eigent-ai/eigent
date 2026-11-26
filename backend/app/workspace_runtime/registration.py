@@ -253,6 +253,18 @@ class RegisteredConfiguration:
             retention=manager.state,
             **kwargs,
         )
+        from app.recording.policy import (
+            coordinate_source_capture,
+            managed_capture_exclusion,
+        )
+
+        coordinate_source_capture(provider, root)
+        provider.exclude_path = managed_capture_exclusion(
+            root,
+            tracked=(lambda path: provider.git.is_tracked(root, root / path))
+            if isinstance(provider, GitWorkspaceProvider)
+            else None,
+        )
         if (
             getattr(provider, "repository_identity", None)
             != binding["repository_identity"]

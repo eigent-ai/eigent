@@ -110,6 +110,16 @@ def take_control(id: str, data: TakeControl):
             extra={"task_id": id},
         )
         return Response(status_code=204)
+    if (
+        data.action == Action.pause
+        and getattr(task_lock, "run_context", None) is not None
+    ):
+        from app.recording.runtime import stop_for_paused_run
+
+        try:
+            stop_for_paused_run(task_lock.run_context.run_id)
+        except Exception:
+            logger.exception("Recording stop failed during Task pause")
     if data.action == Action.stop:
         _queue_action_from_worker(
             task_lock,

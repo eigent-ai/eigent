@@ -37,7 +37,15 @@ export interface AppShellElectronAPI {
   ) => () => void;
 }
 
+export interface RecordingHost {
+  authorize: (
+    runId: string
+  ) => Promise<{ grant_id: string; source: string } | null>;
+  revoke: () => Promise<void>;
+}
+
 export interface AppHost {
+  recording?: RecordingHost | null;
   electronAPI: any;
   ipcRenderer: any;
 }
