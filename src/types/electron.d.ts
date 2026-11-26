@@ -92,6 +92,16 @@ interface ElectronAPI {
   ) => () => void;
   getPlatform: () => string;
   getHomeDir: () => Promise<string>;
+  /** Microphone access for meeting recording (macOS and Windows report it). */
+  getMicrophoneAccess?: () => Promise<
+    import('@/shared/meetingMicrophone').MicrophoneAccessStatus
+  >;
+  /** Shows the system prompt on macOS the first time; otherwise the status. */
+  requestMicrophoneAccess?: () => Promise<
+    import('@/shared/meetingMicrophone').MicrophoneAccessStatus
+  >;
+  /** Opens the OS privacy pane for the microphone; false where there is none. */
+  openMicrophoneSettings?: () => Promise<boolean>;
   createWebView: (id: string, url: string) => Promise<any>;
   hideWebView: (id: string) => Promise<any>;
   changeViewSize: (id: string, size: any) => Promise<any>;

@@ -31,6 +31,11 @@ import {
   type BrainStreamRelayRequest,
 } from '../../src/shared/brainStreamRelay';
 import {
+  MEETING_MICROPHONE_REQUEST_CHANNEL,
+  MEETING_MICROPHONE_SETTINGS_CHANNEL,
+  MEETING_MICROPHONE_STATUS_CHANNEL,
+} from '../../src/shared/meetingMicrophone';
+import {
   NATIVE_MENU_LOCALE_CHANNEL,
   type NativeMenuLocale,
 } from '../../src/shared/nativeMenu';
@@ -178,6 +183,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send(NATIVE_MENU_LOCALE_CHANNEL, locale),
   getPlatform: () => process.platform,
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
+  getMicrophoneAccess: () =>
+    ipcRenderer.invoke(MEETING_MICROPHONE_STATUS_CHANNEL),
+  requestMicrophoneAccess: () =>
+    ipcRenderer.invoke(MEETING_MICROPHONE_REQUEST_CHANNEL),
+  openMicrophoneSettings: () =>
+    ipcRenderer.invoke(MEETING_MICROPHONE_SETTINGS_CHANNEL),
   createWebView: (id: string, url: string) =>
     ipcRenderer.invoke('create-webview', id, url),
   hideWebView: (id: string) => ipcRenderer.invoke('hide-webview', id),

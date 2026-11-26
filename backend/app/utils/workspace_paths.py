@@ -22,6 +22,16 @@ def get_workspace_root() -> Path:
     return Path(env("EIGENT_WORKSPACE", "~/.eigent/workspace")).expanduser()
 
 
+def meetings_root() -> Path:
+    """Folder for meeting recordings and ``meetings.sqlite``.
+
+    Meetings belong to the Mac, not to a Space or an account, and are never
+    synced. ``EIGENT_MEETINGS_ROOT`` overrides it for tests.
+    """
+
+    return Path(env("EIGENT_MEETINGS_ROOT", "~/.eigent/meetings")).expanduser()
+
+
 def get_eigent_root() -> Path:
     eigent = Path.home() / "eigent"
     if eigent.exists():

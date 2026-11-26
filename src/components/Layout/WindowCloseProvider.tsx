@@ -22,6 +22,10 @@ import {
   type CloseIntent,
 } from '@/shared/windowClose';
 import { hasAnyActiveLegacySSEConnection } from '@/store/chatStore';
+import {
+  isRecordingActive,
+  useMeetingRecordingStore,
+} from '@/store/meetingRecordingStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import {
   useCallback,
@@ -94,6 +98,17 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       pendingPromptRef.current = null;
       setPendingPrompt(null);
       respond({ intent: request.intent, action: 'acknowledge' });
+
+      // Closing the window ends a recording made in it: ask first.
+      if (isRecordingActive(useMeetingRecordingStore.getState().phase)) {
+        const prompt = {
+          intent: request.intent,
+          executionClass: 'meeting-recording',
+        } satisfies ClosePrompt;
+        pendingPromptRef.current = prompt;
+        setPendingPrompt(prompt);
+        return;
+      }
 
       const currentChatStore = chatStoreRef.current;
       const legacyActive =
@@ -178,7 +193,19 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       {children}
       <CloseNoticeDialog
         onOpenChange={handleOpenChange}
-        onConfirm={() => respondToCloseRequest('confirm')}
+        onConfirm={() => {
+          if (
+            pendingPromptRef.current?.executionClass === 'meeting-recording'
+          ) {
+            // Save what was recorded before the window goes away.
+            void useMeetingRecordingStore
+              .getState()
+              .stop()
+              .finally(() => respondToCloseRequest('confirm'));
+            return;
+          }
+          respondToCloseRequest('confirm');
+        }}
         open={pendingPrompt !== null}
         intent={pendingPrompt?.intent ?? 'close-window'}
         executionClass={pendingPrompt?.executionClass ?? 'unknown'}

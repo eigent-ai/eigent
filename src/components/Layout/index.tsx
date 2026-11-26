@@ -14,6 +14,7 @@
 
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import { AppRail, shouldShowAppRail } from '@/components/Layout/AppRail';
+import MeetingRecordingIndicator from '@/components/Meetings/MeetingRecordingIndicator';
 import TopBar from '@/components/TopBar';
 import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
@@ -192,6 +193,9 @@ const Layout = () => {
 
           {/* Main app content */}
           {shouldShowMainContent && <Outlet />}
+
+          {/* Visible on every page while a meeting is recorded. */}
+          {shouldShowMainContent && <MeetingRecordingIndicator />}
 
           {(backendError || (error && installationState === 'error')) && (
             <InstallationErrorDialog
