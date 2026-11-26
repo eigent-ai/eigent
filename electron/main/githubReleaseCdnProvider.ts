@@ -28,7 +28,9 @@ const { GitHubProvider } =
       options: GitHubProviderOptions,
       updater: AppUpdater,
       runtimeOptions: ProviderRuntimeOptions
-    ) => object;
+    ) => {
+      resolveFiles(updateInfo: UpdateInfo): Array<ResolvedUpdateFileInfo>;
+    };
   };
 
 const { resolveFiles } = require('electron-updater/out/providers/Provider') as {
@@ -39,13 +41,8 @@ const { resolveFiles } = require('electron-updater/out/providers/Provider') as {
   ) => Array<ResolvedUpdateFileInfo>;
 };
 
-export const DEFAULT_CDN_RELEASE_BASE_URL = 'https://cdn.eigent.ai/releases';
-
 export type UpdatePlatformDirectory =
-  | 'mac-arm64'
-  | 'mac-intel'
-  | 'win-x64'
-  | 'linux-x64';
+  'mac-arm64' | 'mac-intel' | 'win-x64' | 'linux-x64';
 
 type GitHubProviderOptions = {
   provider: 'github';
@@ -72,12 +69,29 @@ export type GitHubReleaseCdnOptions = {
   private?: boolean | null;
   tagNamePrefix?: string;
   vPrefixedTagName?: boolean;
-  cdnBaseUrl: string;
+  /**
+   * Optional mirror that serves the same files as the GitHub release under
+   * `<cdnBaseUrl>/v<version>/<platformDir>/`. When it is not set, update files
+   * are downloaded from the GitHub release that the update metadata came from,
+   * so the sha512 in that metadata always describes the downloaded file.
+   */
+  cdnBaseUrl?: string | null;
   platformDir: UpdatePlatformDirectory;
 };
 
 export function normalizeCdnReleaseBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+/**
+ * Reads the optional updater mirror from an environment value. Blank values
+ * mean "no mirror": downloads then come from the GitHub release itself.
+ */
+export function getUpdaterMirrorBaseUrl(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? normalizeCdnReleaseBaseUrl(trimmed) : null;
 }
 
 export function getUpdatePlatformDirectory(
@@ -122,7 +136,7 @@ export function buildVersionedReleaseBaseUrl(
 }
 
 export class GitHubReleaseCdnProvider extends GitHubProvider {
-  private readonly cdnBaseUrl: string;
+  private readonly cdnBaseUrl: string | null;
   private readonly platformDir: UpdatePlatformDirectory;
 
   constructor(
@@ -146,11 +160,15 @@ export class GitHubReleaseCdnProvider extends GitHubProvider {
 
     super(githubOptions, updater, runtimeOptions);
 
-    this.cdnBaseUrl = normalizeCdnReleaseBaseUrl(options.cdnBaseUrl);
+    this.cdnBaseUrl = getUpdaterMirrorBaseUrl(options.cdnBaseUrl);
     this.platformDir = options.platformDir;
   }
 
   resolveFiles(updateInfo: UpdateInfo): Array<ResolvedUpdateFileInfo> {
+    if (!this.cdnBaseUrl) {
+      return super.resolveFiles(updateInfo);
+    }
+
     const versionedBaseUrl = new URL(
       buildVersionedReleaseBaseUrl(
         this.cdnBaseUrl,
