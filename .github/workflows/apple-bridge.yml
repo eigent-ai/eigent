@@ -1,0 +1,58 @@
+name: Apple Bridge
+
+# SECURITY: Use pull_request (not pull_request_target) for workflows that
+# checkout and execute code from PRs. Fork PRs run with read-only permissions
+# and no access to repository secrets.
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'native/apple-bridge/**'
+      - '.github/workflows/apple-bridge.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'native/apple-bridge/**'
+      - '.github/workflows/apple-bridge.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-bridge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift:
+    name: Build and Test Apple Bridge
+    # Needs an SDK with Foundation Models. The unit tests use a fake model,
+    # so the runner does not need Apple Intelligence.
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcrun swift --version
+
+      - name: Build
+        working-directory: native/apple-bridge
+        run: swift build -c release
+
+      - name: Test
+        working-directory: native/apple-bridge
+        run: swift test
+
+      - name: Check the binary weak-links Foundation Models
+        working-directory: native/apple-bridge
+        run: |
+          binary="$(swift build -c release --show-bin-path)/eigent-apple-bridge"
+          otool -L "$binary" | tee /dev/stderr | grep -E 'FoundationModels.*\(.*weak' ||
+            (echo "FoundationModels must be weak-linked so the bridge starts on older macOS" && exit 1)

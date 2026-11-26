@@ -69,6 +69,11 @@ __pycache__/
 resources/prebuilt/bin/
 resources/prebuilt/venv/
 resources/prebuilt/cache/
+resources/prebuilt/apple-bridge/
+
+# Swift build output for the Apple Intelligence bridge
+native/apple-bridge/.build/
+native/apple-bridge/.swiftpm/
 
 *storybook.log
 storybook-static

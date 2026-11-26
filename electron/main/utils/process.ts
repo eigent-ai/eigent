@@ -18,6 +18,7 @@ import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { resolveAppleBridgePath } from './appleBridge';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -47,6 +48,18 @@ export function getBundledGitPath(): string | null {
     'git.exe'
   );
   return fs.existsSync(gitPath) ? gitPath : null;
+}
+
+/** Return the Apple Intelligence bridge on Apple silicon Macs, else null. */
+export function getBundledAppleBridgePath(): string | null {
+  return resolveAppleBridgePath({
+    platform: process.platform,
+    arch: process.arch,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    exists: (candidate) => fs.existsSync(candidate),
+  });
 }
 
 export function runInstallScript(scriptPath: string): Promise<boolean> {

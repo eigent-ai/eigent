@@ -560,5 +560,33 @@
     "removed": "Impostazioni rimosse",
     "saved": "Impostazioni salvate",
     "loading": "Caricamento"
+  },
+  "apple-intelligence": {
+    "description": "Usa il modello integrato in questo Mac. Nessun endpoint, chiave o download.",
+    "checking": "Verifica di Apple Intelligence…",
+    "ready": "Apple Intelligence è pronta su questo Mac.",
+    "badge-ready": "Pronta",
+    "badge-unavailable": "Non disponibile",
+    "not-apple-silicon": "Non disponibile su questo Mac. Apple Intelligence richiede un Mac con chip Apple.",
+    "bridge-missing": "Non disponibile in questa build.",
+    "bridge-unavailable": "L’helper di Apple Intelligence non risponde.",
+    "unsupported-os": "Richiede macOS 26 o versioni successive.",
+    "not-eligible": "Questo Mac non supporta Apple Intelligence.",
+    "apple-intelligence-off": "Attiva Apple Intelligence in Impostazioni di Sistema.",
+    "model-not-ready": "Il modello è ancora in download.",
+    "unavailable": "Apple Intelligence non è disponibile.",
+    "open-system-settings": "Apri Impostazioni di Sistema",
+    "try-again": "Riprova",
+    "on-device-model": "Modello sul dispositivo",
+    "on-this-mac": "Su questo Mac",
+    "text-only": "Solo testo",
+    "context": "Contesto {{size}}",
+    "privacy": "Prompt e risposte restano su questo Mac. La cronologia della sessione viene salvata e sincronizzata come con qualsiasi altro modello.",
+    "limits": "Questa versione risponde alle domande senza strumenti. Per le attività che richiedono strumenti, scegli un altro modello.",
+    "test": "Prova",
+    "test-passed": "Prova superata in {{seconds}} s.",
+    "test-failed": "La prova non è stata completata.",
+    "add": "Aggiungi modello",
+    "added": "Aggiunto"
   }
 }

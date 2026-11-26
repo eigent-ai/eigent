@@ -20,6 +20,9 @@ from pydantic import BeforeValidator
 PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "z.ai": "zhipuai",
     "ant-ling": "openai-compatible-model",
+    # The Apple Intelligence bridge speaks the OpenAI chat API. Its live URL
+    # and token are filled in when the model is built (app/apple_bridge).
+    "apple-intelligence": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
