@@ -85,6 +85,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Setup Python
         if: ${{ !matrix.self_hosted }}
@@ -106,7 +108,7 @@ jobs:
         run: npm install -g bun
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       # Verify Electron installation on macOS
       - name: Verify Electron Installation (macOS)

@@ -285,6 +285,8 @@ To run the application locally in developer mode:
 
 Whenever you add, update, or delete any dependencies in `pyproject.toml`, please run `uv lock` to synchronize the dependencies with the lock file.
 
+Whenever you add, update, or delete any dependencies in `package.json`, run `npm install` and commit the updated `package-lock.json` in the same pull request. CI installs with `npm ci`, which fails when the two files don't match.
+
 ## Giving Credit 🎉
 
 If your contribution has been included in a release, we'd love to give you credit on Twitter, but only if you're comfortable with it!
