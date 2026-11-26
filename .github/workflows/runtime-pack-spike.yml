@@ -1,0 +1,297 @@
+name: Runtime Pack Spike (macOS)
+
+# Manually triggered experiment: build only the bundled Python runtime
+# (resources/prebuilt), sign and notarize it on its own as an archive, then
+# check on clean macOS runners that it runs from a user folder.
+# Outputs are workflow artifacts only. Nothing is published or uploaded to S3.
+#
+# Start it either from Actions -> Run workflow (once this file is on the
+# default branch), or by adding the `run-runtime-pack-spike` label to a pull
+# request from a branch in this repository (runs with notarize_scope=both).
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: Submit the pack to Apple notarization
+        type: boolean
+        default: true
+      notarize_scope:
+        description: 'What to submit: full pack zip, a zip of only the Mach-O files, or both (to compare times)'
+        type: choice
+        options: [full, macho-only, both]
+        default: full
+      verify:
+        description: Run the verification jobs on GitHub-hosted macOS runners
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-pack-spike
+  cancel-in-progress: false
+
+jobs:
+  build-pack:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'run-runtime-pack-spike' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 240
+    outputs:
+      notarization_status: ${{ steps.notarize.outputs.status }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          clean: true
+
+      - name: Clean previous outputs (self-hosted)
+        run: rm -rf node_modules release out resources/prebuilt
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.9.26'
+
+      - name: Install bun
+        run: npm install -g bun
+
+      # Only needed for the stock Electron.app used as a signed spawn harness.
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build runtime (prebuild scripts only)
+        id: prebuild
+        run: |
+          start=$(date +%s)
+          npm run preinstall-deps
+          npm run fix-venv-paths
+          npm run fix-symlinks
+          npm run clean-symlinks
+          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+
+      - name: Stage runtime pack
+        id: stage
+        run: |
+          bash scripts/runtime-pack/stage-runtime-pack.sh resources/prebuilt out/runtime-pack | tee out-stage.log
+          echo "stats=$(tail -1 out-stage.log)" >> "$GITHUB_OUTPUT"
+          rm -f out-stage.log
+
+      - name: Import signing certificate
+        id: keychain
+        env:
+          CERT_P12: ${{ secrets.CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/runtime-pack-spike.keychain-db"
+          KC_PASS="$(openssl rand -hex 24)"
+          security list-keychains -d user | tr -d '"' | xargs > "$RUNNER_TEMP/keychains-before.txt"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Unlock with the keychain's own password (macOS 27 rejects any other).
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(cat "$RUNNER_TEMP/keychains-before.txt")
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$IDENTITY" ]; then
+            echo "No Developer ID Application identity found in CERT_P12" >&2
+            exit 1
+          fi
+          echo "keychain=$KEYCHAIN" >> "$GITHUB_OUTPUT"
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: Sign runtime pack
+        id: sign
+        env:
+          SIGN_JOBS: '4'
+        run: |
+          ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+          bash scripts/runtime-pack/sign-runtime-pack.sh out/runtime-pack \
+            "${{ steps.keychain.outputs.identity }}" entitlements.mac.plist \
+            "${{ steps.keychain.outputs.keychain }}"
+
+      # A stock Electron.app signed like the app (Developer ID, hardened runtime,
+      # same entitlements) so the verify jobs can spawn the pack from a signed,
+      # hardened Electron parent. Not notarized: it is never quarantined.
+      - name: Sign Electron spawn harness
+        run: |
+          mkdir -p out/harness
+          ditto node_modules/electron/dist/Electron.app out/harness/Electron.app
+          node -e "
+            const { signAsync } = require('@electron/osx-sign');
+            signAsync({
+              app: 'out/harness/Electron.app',
+              identity: process.argv[1],
+              keychain: process.argv[2],
+              platform: 'darwin',
+              optionsForFile: () => ({ hardenedRuntime: true, entitlements: 'entitlements.mac.plist' }),
+            }).then(() => console.log('harness signed'), (e) => { console.error(e); process.exit(1); });
+          " "${{ steps.keychain.outputs.identity }}" "${{ steps.keychain.outputs.keychain }}"
+          codesign --verify --deep --strict out/harness/Electron.app
+          ditto -c -k --keepParent out/harness/Electron.app out/electron-harness.zip
+
+      - name: Archive runtime pack
+        id: archive
+        run: |
+          cd out
+          start=$(date +%s)
+          ditto -c -k --keepParent runtime-pack runtime-pack.zip
+          shasum -a 256 runtime-pack.zip > runtime-pack.zip.sha256
+          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -f %z runtime-pack.zip)" >> "$GITHUB_OUTPUT"
+          # Mach-O-only archive: the ticket is keyed by each file's cdhash, so
+          # notarizing just the code might be enough and much faster.
+          node ../scripts/runtime-pack/pack-tools.mjs list-macho runtime-pack \
+            | perl -0 -pe 's#(^|\0)runtime-pack/#$1#g' > macho.list
+          mkdir -p macho-only/runtime-pack
+          rsync -a --from0 --files-from=macho.list runtime-pack/ macho-only/runtime-pack/
+          (cd macho-only && ditto -c -k --keepParent runtime-pack ../runtime-pack-macho-only.zip)
+          echo "macho_bytes=$(stat -f %z runtime-pack-macho-only.zip)" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize runtime pack
+        id: notarize
+        if: github.event_name != 'workflow_dispatch' || inputs.notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.notarize_scope || 'both' }}
+        run: |
+          cd out
+          mkdir -p notary
+          status=Accepted
+          submit() {
+            local label="$1" file="$2" start end id result
+            start=$(date +%s)
+            xcrun notarytool submit "$file" \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 3h --output-format json > "notary/$label-submit.json" || true
+            end=$(date +%s)
+            id="$(plutil -extract id raw -o - "notary/$label-submit.json" 2>/dev/null || true)"
+            result="$(plutil -extract status raw -o - "notary/$label-submit.json" 2>/dev/null || echo unknown)"
+            if [ -n "$id" ]; then
+              xcrun notarytool log "$id" \
+                --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+                "notary/$label-log.json" || true
+            fi
+            echo "$label: status=$result seconds=$(( end - start )) id=$id" | tee -a notary/summary.txt
+            echo "${label//-/_}_seconds=$(( end - start ))" >> "$GITHUB_OUTPUT"
+            echo "${label//-/_}_status=$result" >> "$GITHUB_OUTPUT"
+            [ "$result" = Accepted ] || status=Failed
+          }
+          if [ "$SCOPE" = full ] || [ "$SCOPE" = both ]; then submit full runtime-pack.zip; fi
+          if [ "$SCOPE" = macho-only ] || [ "$SCOPE" = both ]; then submit macho-only runtime-pack-macho-only.zip; fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          # Stapling is not possible for a zip or loose binaries; the ticket is
+          # looked up online by cdhash. Show what an online check sees now.
+          codesign -vvvv -R='notarized' --check-notarization runtime-pack/bin/uv 2>&1 | tee notary/check-uv.txt || true
+          [ "$status" = Accepted ]
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Runtime pack build"
+            echo
+            echo "| Step | Result |"
+            echo "|---|---|"
+            echo "| Prebuild (runtime only) | ${{ steps.prebuild.outputs.seconds }} s |"
+            echo "| Staged pack | \`${{ steps.stage.outputs.stats }}\` |"
+            echo "| Mach-O signed | ${{ steps.sign.outputs.macho_count }} (${{ steps.sign.outputs.macho_exec_count }} executables), ${{ steps.sign.outputs.sign_seconds }} s |"
+            echo "| Zip | ${{ steps.archive.outputs.bytes }} bytes (Mach-O only: ${{ steps.archive.outputs.macho_bytes }} bytes), ${{ steps.archive.outputs.seconds }} s |"
+            echo "| Notarize full | ${{ steps.notarize.outputs.full_status }} in ${{ steps.notarize.outputs.full_seconds }} s |"
+            echo "| Notarize Mach-O only | ${{ steps.notarize.outputs.macho_only_status }} in ${{ steps.notarize.outputs.macho_only_seconds }} s |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload runtime pack
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-pack-macos-arm64
+          path: |
+            out/runtime-pack.zip
+            out/runtime-pack.zip.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload harness and reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-pack-build-reports
+          path: |
+            out/electron-harness.zip
+            out/notary/
+          retention-days: 7
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/keychains-before.txt" ]; then
+            security list-keychains -d user -s $(cat "$RUNNER_TEMP/keychains-before.txt")
+          fi
+          security delete-keychain "$RUNNER_TEMP/runtime-pack-spike.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/keychains-before.txt"
+
+  verify:
+    needs: build-pack
+    if: (github.event_name != 'workflow_dispatch' || inputs.verify) && needs.build-pack.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+        quarantine: [none, archive]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Download runtime pack
+        uses: actions/download-artifact@v7
+        with:
+          name: runtime-pack-macos-arm64
+          path: pack
+
+      - name: Download harness
+        uses: actions/download-artifact@v7
+        with:
+          name: runtime-pack-build-reports
+          path: harness
+
+      - name: Gatekeeper status
+        run: |
+          spctl --status || true
+          # Hosted runners may ship with assessments off; turn them on so the
+          # quarantine checks mean something. The negative control confirms it.
+          sudo spctl --global-enable 2>/dev/null || sudo spctl --master-enable 2>/dev/null || true
+          spctl --status || true
+
+      - name: Verify runtime pack
+        run: |
+          ditto -x -k harness/electron-harness.zip harness/
+          bash scripts/runtime-pack/verify-runtime-pack.sh \
+            --archive pack/runtime-pack.zip \
+            --quarantine ${{ matrix.quarantine }} \
+            --electron harness/Electron.app \
+            --report "report-${{ matrix.os }}-${{ matrix.quarantine }}"
+
+      - name: Add report to summary
+        if: always()
+        run: cat "report-${{ matrix.os }}-${{ matrix.quarantine }}/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: verify-${{ matrix.os }}-${{ matrix.quarantine }}
+          path: report-${{ matrix.os }}-${{ matrix.quarantine }}/
+          retention-days: 7
