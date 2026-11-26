@@ -40,6 +40,12 @@ import {
   type SubframeLoadFailure,
 } from '../../src/shared/subframeLoadFailure';
 import {
+  WINDOW_APP_MENU_CHANNEL,
+  WINDOW_CHROME_THEME_CHANNEL,
+  type WindowAppMenuAnchor,
+  type WindowChromeTheme,
+} from '../../src/shared/windowChrome';
+import {
   isWindowCloseRequest,
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -118,6 +124,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
+  setWindowChromeTheme: (theme: WindowChromeTheme) =>
+    ipcRenderer.send(WINDOW_CHROME_THEME_CHANNEL, theme),
+  openWindowAppMenu: (anchor: WindowAppMenuAnchor) =>
+    ipcRenderer.send(WINDOW_APP_MENU_CHANNEL, anchor),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   selectAgentPluginSource: () =>

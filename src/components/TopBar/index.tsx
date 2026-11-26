@@ -20,6 +20,7 @@ import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { TOP_BAR_CONTROL_STATE_CLASS } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import UpdateButton from '@/components/TopBar/UpdateButton';
+import { WindowsAppMenuButton } from '@/components/TopBar/WindowsAppMenuButton';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -96,7 +97,7 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
   return (
     <div
       className={cn(
-        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        'window-chrome-safe-area drag absolute top-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
         // Support is a 28px ghost button: 10px puts its 16px icon 16px from
         // the edge, in line with the page headers' end.
         platform === 'darwin' && 'pr-ds-10'
@@ -126,40 +127,44 @@ function HeaderWin({ searchEnabled = true }: HeaderWinProps) {
           leadingInset={topBarLeadingInset}
           sidebarControls={
             <>
-              <TooltipSimple
-                content={
-                  <ShortcutTooltipContent
-                    label={sidebarToggleLabel}
-                    shortcutId="toggle-workspace-sidebar"
-                  />
-                }
-                compact
-                side="bottom"
-                align="center"
-                variant="instant"
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  buttonRadius="shell"
-                  className={cn(
-                    'no-drag',
-                    TOP_BAR_CONTROL_STATE_CLASS,
-                    'aria-pressed:!bg-transparent'
-                  )}
-                  onClick={toggleWorkspaceSidebar}
-                  aria-pressed={!workspaceSidebarHidden}
-                  aria-label={sidebarToggleLabel}
+              {/* Windows: the app menu sits before the sidebar toggle. */}
+              <div className="flex shrink-0 items-center gap-0.5">
+                <WindowsAppMenuButton platform={platform} />
+                <TooltipSimple
+                  content={
+                    <ShortcutTooltipContent
+                      label={sidebarToggleLabel}
+                      shortcutId="toggle-workspace-sidebar"
+                    />
+                  }
+                  compact
+                  side="bottom"
+                  align="center"
+                  variant="instant"
                 >
-                  {workspaceSidebarHidden ? (
-                    <DsIcon icon={PanelLeftOpen} aria-hidden />
-                  ) : (
-                    <DsIcon icon={PanelLeft} aria-hidden />
-                  )}
-                </Button>
-              </TooltipSimple>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    buttonRadius="shell"
+                    className={cn(
+                      'no-drag',
+                      TOP_BAR_CONTROL_STATE_CLASS,
+                      'aria-pressed:!bg-transparent'
+                    )}
+                    onClick={toggleWorkspaceSidebar}
+                    aria-pressed={!workspaceSidebarHidden}
+                    aria-label={sidebarToggleLabel}
+                  >
+                    {workspaceSidebarHidden ? (
+                      <DsIcon icon={PanelLeftOpen} aria-hidden />
+                    ) : (
+                      <DsIcon icon={PanelLeft} aria-hidden />
+                    )}
+                  </Button>
+                </TooltipSimple>
+              </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <TooltipSimple
                   content={t('layout.back')}
