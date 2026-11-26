@@ -17,6 +17,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+import { resolveAccountDirName } from './accountPath';
+
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
 
@@ -70,10 +72,7 @@ export function writeEnvFile(envPath: string, content: string) {
 }
 
 export function getEnvPath(email: string) {
-  const tempEmail = email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
+  const tempEmail = resolveAccountDirName(email);
   const eigentDir = path.join(os.homedir(), '.eigent');
 
   // Ensure .eigent directory exists
@@ -187,10 +186,7 @@ export function maskProxyUrl(url: string): string {
 }
 
 export function getEmailFolderPath(email: string) {
-  const tempEmail = email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace('.', '_');
+  const tempEmail = resolveAccountDirName(email);
   const MCP_CONFIG_DIR = path.join(os.homedir(), '.eigent');
   const MCP_REMOTE_CONFIG_DIR = path.join(MCP_CONFIG_DIR, tempEmail);
   if (!fs.existsSync(MCP_REMOTE_CONFIG_DIR)) {

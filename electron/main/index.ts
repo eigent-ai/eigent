@@ -129,6 +129,7 @@ import {
 } from './subscriptionAuth';
 import { disposeAllTerminals, registerTerminalIpcHandlers } from './terminal';
 import { registerUpdateIpcHandlers, update } from './update';
+import { registerAccountFolder } from './utils/accountPath';
 import {
   getEmailFolderPath,
   getEnvPath,
@@ -2693,6 +2694,16 @@ function registerIpcHandlers() {
   );
 
   // ==================== env handler ====================
+
+  // Moves an account onto its `user_<id>` folder, copying the files it kept
+  // under its old email-derived folder once. Never throws.
+  ipcMain.handle(
+    'register-account-folder',
+    async (_event, email: unknown, userId: unknown) => {
+      const { dirName, migration } = registerAccountFolder(email, userId);
+      return { dirName, status: migration?.status ?? null };
+    }
+  );
 
   ipcMain.handle('get-env-path', async (_event, email) => {
     return getEnvPath(email);
