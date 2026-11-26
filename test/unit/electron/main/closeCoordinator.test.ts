@@ -296,6 +296,25 @@ describe('CloseCoordinator', () => {
     expect(coordinator.isAppQuitInProgress()).toBe(true);
   });
 
+  it('guards a close again after a cancelled updater quit', () => {
+    const fixture = createWindow();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit: vi.fn(),
+    });
+    coordinator.bindWindow(fixture.window as never);
+
+    coordinator.markAppQuitInProgress();
+    coordinator.cancelAppQuit();
+    fixture.close();
+
+    expect(coordinator.isAppQuitInProgress()).toBe(false);
+    expect(fixture.closeEvents[0].preventDefault).toHaveBeenCalledOnce();
+    expect(fixture.send).toHaveBeenCalledWith('before-close', {
+      intent: 'close-window',
+    });
+  });
+
   it('refuses an unconfirmed quit before the renderer is ready', () => {
     const fixture = createWindow();
     const quit = vi.fn();

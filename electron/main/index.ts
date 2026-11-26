@@ -3170,7 +3170,12 @@ function registerIpcHandlers() {
   });
 
   // ==================== register update related handler ====================
-  registerUpdateIpcHandlers(() => closeCoordinator.markAppQuitInProgress());
+  registerUpdateIpcHandlers(
+    () => closeCoordinator.markAppQuitInProgress(),
+    // The installer never started, so the app keeps running: close and quit
+    // must ask about running Tasks again.
+    () => closeCoordinator.cancelAppQuit()
+  );
 }
 
 // ==================== ensure eigent directories ====================

@@ -130,6 +130,74 @@ describe('useDesktopUpdater', () => {
     expect(useDesktopUpdateStore.getState().phase).toBe('installing');
   });
 
+  it('ignores a late update check while the same update is downloading', async () => {
+    sessionStorage.setItem(AUTO_UPDATE_DOWNLOAD_KEY, '1');
+    renderHook(() => useDesktopUpdater(), { wrapper });
+    act(() => {
+      listeners.get('update-can-available')?.(
+        {},
+        { update: true, newVersion: '2.0.0' }
+      );
+    });
+    await act(async () => {
+      await startDesktopUpdateDownload(ipcRenderer);
+    });
+    act(() => {
+      listeners.get('download-progress')?.({}, { percent: 100 });
+      listeners.get('update-can-available')?.(
+        {},
+        { update: true, newVersion: '2.0.0' }
+      );
+    });
+    expect(useDesktopUpdateStore.getState()).toMatchObject({
+      phase: 'downloading',
+      progress: 100,
+    });
+
+    act(() => {
+      listeners.get('update-can-available')?.(
+        {},
+        { update: false, newVersion: '2.0.0' }
+      );
+    });
+    expect(useDesktopUpdateStore.getState().phase).toBe('downloading');
+
+    act(() => {
+      listeners.get('update-downloaded')?.();
+      listeners.get('update-can-available')?.(
+        {},
+        { update: true, newVersion: '2.0.0' }
+      );
+    });
+    expect(useDesktopUpdateStore.getState().phase).toBe('downloaded');
+    expect(
+      ipcRenderer.invoke.mock.calls.filter(
+        ([channel]) => channel === 'start-download'
+      )
+    ).toHaveLength(1);
+  });
+
+  it('offers Retry when the installer cannot be launched', async () => {
+    renderHook(() => useDesktopUpdater(), { wrapper });
+    act(() => {
+      listeners.get('update-downloaded')?.();
+    });
+    ipcRenderer.invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'quit-and-install') {
+        listeners.get('update-error')?.({}, { message: 'installer failed' });
+      }
+    });
+
+    await act(async () => {
+      await installDesktopUpdate(ipcRenderer);
+    });
+
+    expect(useDesktopUpdateStore.getState()).toMatchObject({
+      phase: 'error',
+      errorMessage: 'installer failed',
+    });
+  });
+
   it('keeps the downloaded phase when the app-level listener remounts', () => {
     const first = renderHook(() => useDesktopUpdater(), { wrapper });
     act(() => {
