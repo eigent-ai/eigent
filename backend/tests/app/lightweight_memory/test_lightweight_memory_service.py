@@ -474,10 +474,10 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
     )
     journal.ensure_run(run_id="run-1", project_id="project-1")
     for event_id, content in (
-        ("project-message", "In this Project, Python 3.12 is standard."),
+        ("project-message", "Remember that Python 3.12 is standard."),
         (
             "space-message",
-            "For this Space, use ISO dates in every report.",
+            "Remember that this Space uses ISO dates in every report.",
         ),
         ("user-message", "My preference is concise status updates."),
     ):
@@ -497,7 +497,7 @@ def test_incremental_maintainer_extracts_explicit_scope_memory_without_review(
     ] == ["Python 3.12 is standard."]
     assert [
         entry.content for entry in service.list_entries("space", "space-1")
-    ] == ["use ISO dates in every report."]
+    ] == ["this Space uses ISO dates in every report."]
     user_entries = service.list_entries("user", "user-1")
     assert [entry.content for entry in user_entries] == [
         "concise status updates."
@@ -531,9 +531,15 @@ def _extracted_scope(message: str) -> str | None:
     return found[0][0] if found else None
 
 
+def test_extractor_version_changed_with_its_patterns():
+    assert ConservativeMemoryExtractor.version == "memory-v2-explicit-user-v2"
+
+
 @pytest.mark.parametrize(
     "message",
     [
+        # Whether these state a lasting rule is the Agent's call
+        # (propose_memory_rule), not a pattern's.
         "In this Project, Python 3.12 is standard.",
         "For this Space, use UTC timestamps.",
         "请在这个项目中统一使用 pnpm",
@@ -542,38 +548,19 @@ def _extracted_scope(message: str) -> str | None:
         "In this project, don't add semicolons.",
         "For this Space, reply in Chinese.",
         "In this project, the entry point is main.py.",
-        "In this project, 3.12 is the required Python version.",
-        # Conventions that open with a verb, wherever the scope phrase is.
         "Write all commit messages in English in this workspace.",
         "Run `make lint` before you tell me something is done in this space.",
-        "test with pytest -q, not unittest, in this workspace pls",
-        "Add type hints to every new function you write in this project.",
-        "In this project, use uv to install dependencies.",
-        "In this project, run tests with `make test`.",
-        "In this project, when writing tests, use pytest fixtures.",
         "In this project:\n1. Use pnpm.\n2. Write tests for new code.",
+        "Create hello.py first. In this project, use Python 3.12.",
         "这个项目里用 uv 安装依赖。",
-        "这个项目中，测试用 pytest 写。",
         "在这个项目里，必须写单元测试",
-        "这个项目里，哪怕很小的改动也要写测试",
-        "我喜欢这个项目里，帮我写的代码都带类型注解",
         "所有项目都用 UTC 时间",
-        # Facts that open with a noun spelled like a request verb.
-        "In this project, help text goes in docs/help.md.",
-        "In this project, delete operations need a confirmation dialog.",
-        "In this project, find-and-replace is done with ripgrep.",
-        "这个项目里，下载链接 24 小时后失效",
-        "这个项目里，创建时间存的是 UTC",
-        # Conventions that open with a request verb but no specific target.
-        "In this project, create migrations with alembic.",
-        "For this Space, summarize in bullet points.",
-        "In this project, fix lint errors with ruff --fix.",
         "这个项目里，新建组件放在 src/components 下",
         "当前项目中，实现新功能先写测试",
     ],
 )
-def test_extractor_keeps_rules_that_name_a_scope(message):
-    assert _extracted_scope(message) is not None
+def test_extractor_leaves_scope_phrase_rules_to_the_agent(message):
+    assert _extracted(message) == []
 
 
 @pytest.mark.parametrize(
@@ -598,13 +585,24 @@ def test_extractor_skips_one_off_requests_that_name_a_scope(message):
     assert _extracted_scope(message) is None
 
 
-def test_extractor_keeps_a_rule_that_follows_a_request():
-    assert (
-        _extracted_scope(
-            "Create hello.py first. In this project, use Python 3.12."
-        )
-        == "project"
-    )
+@pytest.mark.parametrize(
+    ("message", "saved"),
+    [
+        (
+            "Remember that releases ship on Fridays.",
+            ("project", "releases ship on Fridays."),
+        ),
+        ("记住：发布前先跑 lint", ("project", "发布前先跑 lint")),
+        ("I prefer short status updates.", ("user", "short status updates.")),
+        ("My default is metric units.", ("user", "metric units.")),
+        (
+            "我喜欢这个项目里，帮我写的代码都带类型注解",
+            ("user", "这个项目里，帮我写的代码都带类型注解"),
+        ),
+    ],
+)
+def test_extractor_still_saves_explicit_requests(message, saved):
+    assert _extracted(message) == [saved]
 
 
 @pytest.mark.parametrize(
@@ -624,7 +622,7 @@ def test_extractor_keeps_a_preference_that_follows_a_request(message, saved):
     assert _extracted(message) == [saved]
 
 
-def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
+def test_incremental_maintainer_saves_explicit_requests_only(service):
     journal = service.journal
     journal.bind_memory_project_scopes(
         project_id="project-1",
@@ -635,11 +633,11 @@ def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
     messages = (
         "Create hello.py in this project and run it.",
         "In this Project, Python 3.12 is standard.",
-        "在当前项目中创建一个 hello.py 并运行。",
         "请在这个项目中统一使用 pnpm",
-        "For this Space, summarize the competitor notes into competitors.md.",
         "For this Space, reply in Chinese.",
-        "Summarize the launch plan for all projects in the portfolio.",
+        "Remember that releases ship on Fridays.",
+        "记住：发布前先跑 lint",
+        "I prefer short status updates.",
     )
     for index, content in enumerate(messages):
         journal.append_event(
@@ -655,11 +653,11 @@ def test_incremental_maintainer_saves_scoped_rules_but_not_requests(service):
 
     assert sorted(
         entry.content for entry in service.list_entries("project", "project-1")
-    ) == ["Python 3.12 is standard.", "统一使用 pnpm"]
+    ) == ["releases ship on Fridays.", "发布前先跑 lint"]
+    assert not service.list_entries("space", "space-1")
     assert [
-        entry.content for entry in service.list_entries("space", "space-1")
-    ] == ["reply in Chinese."]
-    assert not service.list_entries("user", "user-1")
+        entry.content for entry in service.list_entries("user", "user-1")
+    ] == ["short status updates."]
 
 
 def test_shared_scope_watermarks_are_independent_per_source_project(service):
