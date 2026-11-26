@@ -14,6 +14,7 @@
 
 import antLingImage from '@/assets/model/ant-ling.svg';
 import anthropicImage from '@/assets/model/anthropic.svg';
+import atlascloudImage from '@/assets/model/atlascloud.svg';
 import azureImage from '@/assets/model/azure.svg';
 import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
@@ -50,6 +51,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   meta: metaImage,
   nebius: PROVIDER_AVATAR_URLS.nebius,
   openrouter: openrouterImage,
+  atlascloud: atlascloudImage,
   orcarouter: orcarouterImage,
   'tongyi-qianwen': qwenImage,
   deepseek: deepseekImage,
