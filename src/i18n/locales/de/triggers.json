@@ -173,7 +173,7 @@
   "execution-failed-toast": "Die Automatisierung fehlgeschlagen: {{name}}",
   "automation-verified": "Automatisierung überprüft: #{{id}}",
   "automation-fallback-name": "Automatisierung #{{id}}",
-  "automation-project-name": "Automatisierung: {{name}}",
+  "session-from-automation": "Aus Automatisierung · {{name}}",
   "automation-project-description": "Automatisierung ausgeliefert von einem {{type}}-Automatisierungsprogramm",
   "status-created": "Erstellen",
   "status-updated": "Aktualisieren",

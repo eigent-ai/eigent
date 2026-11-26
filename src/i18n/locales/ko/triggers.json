@@ -173,7 +173,7 @@
   "execution-failed-toast": "자동화 실패: {{name}}",
   "automation-verified": "자동화 확인됨: #{{id}}",
   "automation-fallback-name": "자동화 #{{id}}",
-  "automation-project-name": "자동화: {{name}}",
+  "session-from-automation": "자동화에서 · {{name}}",
   "automation-project-description": "{{type}} 자동화에 의해 자동으로 생성됨",
   "status-created": "생성됨",
   "status-updated": "업데이트됨",

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
+import { resetSessionAutomationCache } from '@/hooks/useSessionAutomation';
 import type { ChatMessageNode } from '@/lib/projector/chat';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
@@ -30,7 +31,14 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { runtimeMock } = vi.hoisted(() => ({ runtimeMock: vi.fn() }));
+const { runtimeMock, fetchSpaceTriggersMock } = vi.hoisted(() => ({
+  runtimeMock: vi.fn(),
+  fetchSpaceTriggersMock: vi.fn(async () => ({ items: [], total: 0 })),
+}));
+
+vi.mock('@/service/triggerApi', () => ({
+  proxyFetchSpaceTriggers: fetchSpaceTriggersMock,
+}));
 
 vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US' })),
@@ -573,6 +581,74 @@ describe('HeaderBox chat timeline mode', () => {
     expect(icon).toHaveAttribute('aria-label', 'Research and development');
     expect(icon).toHaveTextContent('🚀');
     useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+  });
+
+  it('marks a Session that an Automation created, naming the Automation', async () => {
+    resetSessionAutomationCache();
+    fetchSpaceTriggersMock.mockResolvedValueOnce({
+      items: [
+        { id: 3, name: 'Daily inbox summary', project_id: 'project-1' },
+      ] as never,
+      total: 1,
+    });
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+    });
+    render(
+      <HeaderBox projectName="Daily inbox summary" projectId="project-1" />
+    );
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-session-automation-source]')
+      ).toHaveAttribute('aria-label', 'From Automation · Daily inbox summary')
+    );
+    expect(fetchSpaceTriggersMock).toHaveBeenCalledWith('space-research');
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+    resetSessionAutomationCache();
+  });
+
+  it('shows no Automation mark on a Session no Automation owns', async () => {
+    resetSessionAutomationCache();
+    fetchSpaceTriggersMock.mockResolvedValueOnce({
+      items: [{ id: 3, name: 'Other', project_id: 'project-9' }] as never,
+      total: 1,
+    });
+    useSpaceStore.setState({
+      projectIdIndex: { 'project-1': 'space-research' },
+      spaces: {
+        'space-research': {
+          id: 'space-research',
+          name: 'Research',
+          sourceType: 'folder',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+    });
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    await waitFor(() =>
+      expect(fetchSpaceTriggersMock).toHaveBeenCalledWith('space-research')
+    );
+    expect(
+      document.querySelector('[data-session-automation-source]')
+    ).toBeNull();
+    useSpaceStore.setState({ projectIdIndex: {}, spaces: {} });
+    resetSessionAutomationCache();
   });
 
   it('lines up with the top bar: Space icon under Search, last button under Support', () => {
