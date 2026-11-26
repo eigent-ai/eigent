@@ -189,6 +189,36 @@ async def test_scratch_space_initializes_version_history_by_default(
 
 
 @pytest.mark.asyncio
+async def test_scratch_space_binds_under_non_ascii_user_folder(
+    tmp_path,
+    monkeypatch,
+    workspace_dependencies,
+):
+    # Windows profile such as C:\Users\Алексей with a cp1251 locale codec.
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1251")
+    root = tmp_path / "Алексей" / "eigent" / "scratch-space"
+    monkeypatch.setattr(
+        workspace_controller,
+        "_scratch_space_root",
+        lambda *_args, **_kwargs: root,
+    )
+
+    response = await workspace_controller.workspace_scratch(
+        workspace_controller.WorkspaceScratchRequest(
+            space_id="space-1",
+            email="owner@example.com",
+            user_id="user-1",
+        ),
+        _request(),
+    )
+
+    assert response["version_history"]["enabled"] is True
+    assert response["version_history"]["ownership"] == "eigent_owned"
+    assert response["version_history"]["state"] == "ready"
+    assert (root / ".git").is_dir()
+
+
+@pytest.mark.asyncio
 async def test_existing_scratch_binding_heals_unborn_eigent_repository(
     tmp_path,
     workspace_dependencies,
