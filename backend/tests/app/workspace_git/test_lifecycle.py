@@ -477,6 +477,69 @@ def test_finalized_direct_run_replays_its_persisted_commit_after_head_moves(
     ) == 1
 
 
+def test_a_run_whose_space_folder_is_gone_is_skipped_not_failed(
+    tmp_path,
+    journal,
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    git = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "result.txt"
+    target.write_text("seed\n", encoding="utf-8")
+    git.commit_paths(space, (target,), message="seed")
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="run-1",
+        session_mode="single-agent",
+    )
+    target.write_text("run one\n", encoding="utf-8")
+    git.commit_paths(space, (target,), message="run one")
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-completed",
+            event_type="run.completed",
+            payload={},
+        ),
+    )
+    assert lifecycle.finalize_run("run-1").outcome == "committed_primary"
+
+    # the user moves the Space's folder away; every later startup replays it
+    space.rename(tmp_path / "space-moved")
+    reconciliation = lifecycle.finalize_terminal_runs()
+
+    assert reconciliation.failed_run_ids == ()
+    assert [(f.run_id, f.outcome) for f in reconciliation.finalizations] == [
+        ("run-1", "workspace_missing")
+    ]
+
+
 def test_timed_out_shared_checkout_run_finalizes_and_releases_its_writer(
     tmp_path,
     journal,
