@@ -722,8 +722,9 @@ export class ModelConfigurationStore {
       accounts: {},
     });
     this.unreadableFile = false;
-    if (!fs.existsSync(this.filePath)) return empty();
+    let content: string;
     try {
+      if (!fs.existsSync(this.filePath)) return empty();
       const stat = fs.lstatSync(this.filePath);
       if (
         stat.isSymbolicLink() ||
@@ -732,9 +733,17 @@ export class ModelConfigurationStore {
       ) {
         throw new Error('unsafe file');
       }
-      const parsed: unknown = JSON.parse(
-        fs.readFileSync(this.filePath, 'utf8')
+      content = fs.readFileSync(this.filePath, 'utf8');
+    } catch {
+      // Something is there but cannot be read right now. Answering "no
+      // models" would let the next save replace it, so this is an error.
+      throw new ModelConfigurationError(
+        'storage_failed',
+        'Model configurations on this device could not be read'
       );
+    }
+    try {
+      const parsed: unknown = JSON.parse(content);
       if (
         !isPlainObject(parsed) ||
         parsed.version !== FORMAT_VERSION ||
@@ -766,8 +775,9 @@ export class ModelConfigurationStore {
       }
       return parsed as unknown as StoreDocument;
     } catch {
-      // An unreadable file must not lock the user out of their models. It is
-      // kept aside on the next save and the list starts empty.
+      // A file whose content is not a store document must not lock the user
+      // out of their models. It is kept aside on the next save and the list
+      // starts empty.
       this.unreadableFile = true;
       return empty();
     }
@@ -798,7 +808,11 @@ export class ModelConfigurationStore {
     try {
       fs.renameSync(this.filePath, `${this.filePath}.unreadable`);
     } catch {
-      fs.rmSync(this.filePath, { force: true });
+      // Never delete what could not be kept.
+      throw new ModelConfigurationError(
+        'storage_failed',
+        'Model configurations on this device could not be saved'
+      );
     }
   }
 

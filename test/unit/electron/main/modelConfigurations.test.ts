@@ -534,6 +534,20 @@ describe('ModelConfigurationStore', () => {
     expect(fs.existsSync(`${configurations.filePath}.unreadable`)).toBe(true);
   });
 
+  it('reports a file it cannot read instead of replacing it', () => {
+    const configurations = store();
+    fs.mkdirSync(configurations.rootDir, { recursive: true });
+    // Something that is not a regular file sits where the store file belongs.
+    fs.mkdirSync(configurations.filePath);
+    fs.writeFileSync(path.join(configurations.filePath, 'kept'), 'kept');
+
+    expect(() => configurations.list(account)).toThrow(/could not be read/);
+    expect(() => configurations.save(request())).toThrow(/could not be read/);
+    expect(
+      fs.readFileSync(path.join(configurations.filePath, 'kept'), 'utf8')
+    ).toBe('kept');
+  });
+
   it('rejects malformed requests', () => {
     const configurations = store();
 
