@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchDelete } from '@/api/http';
 import SearchInput from '@/components/Dashboard/SearchInput';
 import CollectionToolbar, {
   COLLECTION_RAIL_CLASS,
@@ -44,8 +43,8 @@ import {
 } from '@/lib/cloudModelAvailability';
 import {
   configurationHint,
+  deleteConfiguredProvider,
   modelProviders,
-  notifyModelConfigurationsChanged,
   providerCategory,
   providerDefinition,
   selectableConfiguredModels,
@@ -305,9 +304,8 @@ function ModelsContent() {
     setBusy(true);
     setError('');
     try {
-      await proxyFetchDelete(`/api/v1/provider/${deleting.id}`);
+      await deleteConfiguredProvider(deleting);
       setDeleting(null);
-      notifyModelConfigurationsChanged();
     } catch {
       setError(t('setting.reset-failed'));
     } finally {
@@ -336,15 +334,24 @@ function ModelsContent() {
       {t('setting.default')}
     </Badge>
   );
-  const modelStatus = (configured: boolean) => (
+  const modelStatus = (configured: boolean, keyNeeded = false) => (
     <Badge
       variant="secondary"
       size="xs"
       tone={configured ? 'success' : 'error'}
     >
-      {t(configured ? 'setting.configured' : 'setting.not-configured')}
+      {t(
+        configured
+          ? 'setting.configured'
+          : keyNeeded
+            ? 'setting.model-list.key-needed'
+            : 'setting.not-configured'
+      )}
     </Badge>
   );
+  const keyNeededCount = inventory.records.filter(
+    (record) => record.key_state === 'needed'
+  ).length;
   const availabilityStatus = (model: CloudModel) => {
     const status = cloudModelAvailabilityStatus(model, planKey);
     return (
@@ -505,6 +512,24 @@ function ModelsContent() {
               </DsText>
             </div>
           )}
+          <div
+            data-model-key-note
+            role={keyNeededCount > 0 ? 'status' : undefined}
+            className="flex flex-col gap-ds-stack-related"
+          >
+            {keyNeededCount > 0 && (
+              <DsText weight="medium">
+                {t('setting.model-list.keys-needed-note')}
+              </DsText>
+            )}
+            <DsText role="meta" className="text-ds-ink-muted-default">
+              {t(
+                inventory.keyStorage === 'secure'
+                  ? 'setting.model-list.device-keys-note'
+                  : 'setting.model-list.session-keys-note'
+              )}
+            </DsText>
+          </div>
           <div className="flex flex-col gap-ds-24">
             <section
               data-model-provider-banner
@@ -943,6 +968,7 @@ function ModelsContent() {
                       ) : (
                         records.map((record) => {
                           const configured = getProviderValid(record);
+                          const keyNeeded = record.key_state === 'needed';
                           const hint = configurationHint(
                             record,
                             inventory.records
@@ -961,7 +987,19 @@ function ModelsContent() {
                                 )}
                               </DsText>
                               {isDefault(record) && badge}
-                              {modelStatus(configured)}
+                              {modelStatus(configured, keyNeeded)}
+                              {keyNeeded && (
+                                <Button
+                                  variant="secondary"
+                                  size="xs"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    setEditing({ provider: group, record })
+                                  }
+                                >
+                                  {t('setting.model-list.enter-key')}
+                                </Button>
+                              )}
                               {actions(
                                 record.model_type,
                                 <>

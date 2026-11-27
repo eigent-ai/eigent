@@ -32,7 +32,16 @@
     "missing-configuration": "La configuración del modelo de esta sesión no está disponible. Selecciona otro modelo o restáurala en Ajustes → Modelos.",
     "no-results": "No hay modelos ni proveedores coincidentes.",
     "availability-unknown": "Estado del plan no disponible",
-    "pinned-load-failed": "No se pudo cargar el modelo guardado de esta sesión. Comprueba la conexión y vuelve a intentarlo."
+    "pinned-load-failed": "No se pudo cargar el modelo guardado de esta sesión. Comprueba la conexión y vuelve a intentarlo.",
+    "key-needed": "Clave necesaria",
+    "enter-key": "Introducir clave",
+    "keys-needed-note": "Vuelve a introducir la clave de cada modelo marcado como «Clave necesaria». Ahora las claves se guardan solo en este dispositivo, por lo que una clave añadida antes no está disponible aquí.",
+    "device-keys-note": "Las claves de tus propios modelos se guardan solo en este dispositivo.",
+    "session-keys-note": "Este dispositivo no tiene almacenamiento seguro de claves, así que las claves se conservan solo hasta que cierres Eigent.",
+    "key-saved-placeholder": "Guardada en este dispositivo. Introduce una clave nueva para reemplazarla.",
+    "secret-saved-placeholder": "Guardado en este dispositivo",
+    "key-needed-for-address": "Vuelve a introducir la clave para usarla con una dirección diferente.",
+    "address-partly-hidden": "Parte de esta dirección está guardada en este dispositivo y no se muestra. Introduce la dirección completa para cambiarla."
   },
   "settings": "Ajustes",
   "general": "Generales",

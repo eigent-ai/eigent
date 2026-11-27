@@ -46,5 +46,6 @@ export function workerModelOption(
     api_url: config.api_url,
     model_config_dict: config.model_config_dict,
     extra_params: config.extra_params,
+    model_credential: config.model_credential,
   };
 }

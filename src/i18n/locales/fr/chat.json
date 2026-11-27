@@ -620,5 +620,6 @@
   "workspace-blocked-failed": "Impossible de résoudre l'opération bloquée. Réessayez.",
   "notice-space-folder-home": "Eigent ne peut pas travailler directement dans votre dossier personnel.",
   "notice-space-folder-app-data": "Eigent ne peut pas travailler dans un dossier qui contient ses propres données d’application.",
-  "notice-space-folder-description": "Créez un espace à partir d’un dossier de votre dossier personnel, par exemple Documents."
+  "notice-space-folder-description": "Créez un espace à partir d’un dossier de votre dossier personnel, par exemple Documents.",
+  "model-key-needed": "La clé de ce modèle n’est pas enregistrée sur cet appareil. Saisissez-la à nouveau dans Paramètres > Modèles."
 }

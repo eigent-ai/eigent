@@ -54,6 +54,8 @@ import {
   resolveSourceMessageId,
 } from '@/lib/messageIdentity';
 import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
+import type { ModelCredentialReference } from '@/lib/modelConfigurationStore';
+import { plainEndpoint } from '@/lib/modelProviderRegistration';
 import { reportError } from '@/lib/notifyError';
 import { isTerminalHumanControlEvent } from '@/lib/projector/control/adapter';
 import { isStoppedRunStatus } from '@/lib/projector/runSummary';
@@ -3594,6 +3596,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         model_config_dict: {},
         extra_params: {},
         auth_source: undefined as 'codex_subscription' | undefined,
+        // Names an own model saved on this device. Its key is not in this
+        // window: the local backend reads it for the run.
+        model_credential: undefined as ModelCredentialReference | undefined,
       };
       if (
         !type &&
@@ -3620,11 +3625,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
         if (!provider) {
-          const res = await proxyFetchGet('/api/v1/providers', {
-            prefer: true,
-          });
-          const providerList = Array.isArray(res) ? res : res.items || [];
-          provider = providerList[0];
+          // The default own model is read from this device.
+          let providerList: Awaited<
+            ReturnType<typeof fetchConfiguredProviders>
+          >;
+          try {
+            providerList = await fetchConfiguredProviders();
+          } catch (error) {
+            console.error('Failed to load the default model:', error);
+            finishStartupFailure();
+            throw new Error(i18next.t('setting.model-list.pinned-load-failed'));
+          }
+          provider = providerList.find((item) => item.prefer) ?? null;
         }
 
         if (!provider) {
@@ -3636,6 +3648,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           );
         }
+        if (provider.key_state === 'needed') {
+          finishStartupFailure();
+          throw createLocalError(i18next.t('chat.model-key-needed'));
+        }
 
         const providerModel = buildAgentModelConfigFromProvider(provider);
         apiModel = {
@@ -3646,6 +3662,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_config_dict: providerModel.model_config_dict ?? {},
           extra_params: providerModel.extra_params ?? {},
           auth_source: undefined,
+          model_credential: providerModel.model_credential,
         };
         resolvedProviderId = provider.id;
       } else if (!type && effectiveModelType === 'cloud') {
@@ -3737,6 +3754,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_config_dict: {},
           extra_params: cloudModelRequestExtraParams(resolvedCloudModel.model),
           auth_source: undefined,
+          model_credential: undefined,
         };
         resolvedCloudModelId = resolvedCloudModel.model.id;
       } else if (!type && effectiveModelType === 'codex_subscription') {
@@ -3752,6 +3770,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_config_dict: {},
           extra_params: {},
           auth_source: 'codex_subscription',
+          model_credential: undefined,
         };
         resolvedCodexModelId = codexModelId;
       }
@@ -3886,7 +3905,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const providerId = worker.workerInfo?.model_provider_id;
           return (
             Number.isInteger(providerId) &&
-            !workerProvidersById.has(providerId as number)
+            // A model whose key is not on this device cannot run either.
+            workerProvidersById.get(providerId as number)?.key_state !==
+              'saved' &&
+            workerProvidersById.get(providerId as number)?.key_state !==
+              'not_required'
           );
         });
         if (missingWorker) {
@@ -3968,7 +3991,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           language: systemLanguage,
           model_platform: apiModel.model_platform,
           model_type: apiModel.model_type,
-          api_url: effectiveModelType === 'cloud' ? 'cloud' : apiModel.api_url,
+          // Only the plain address is recorded with the task: no sign-in
+          // part, no query. The key is never part of this request.
+          api_url:
+            effectiveModelType === 'cloud'
+              ? 'cloud'
+              : plainEndpoint(apiModel.api_url),
           max_retries: 3,
           file_save_path: 'string',
           installed_mcp: 'string',
@@ -4590,6 +4618,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             api_url: apiModel.api_url,
             model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
+            model_credential: apiModel.model_credential,
             thinking_effort:
               projectStore.getProjectThinkingEffortOverride(
                 project_id ?? null

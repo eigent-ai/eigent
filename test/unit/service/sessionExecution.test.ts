@@ -38,6 +38,20 @@ const http = vi.hoisted(() => ({
   proxyFetchPatch: vi.fn(),
 }));
 vi.mock('@/api/http', () => http);
+// The Session's model is saved on this device and mirrored by one account
+// record; a managed Session names that record.
+const models = vi.hoisted(() => ({
+  list: vi.fn(),
+  register: vi.fn(),
+  scope: 'a'.repeat(64),
+}));
+vi.mock('@/lib/savedModels', () => ({ fetchSavedModels: models.list }));
+vi.mock('@/lib/modelProviderRegistration', () => ({
+  registerModelConfiguration: models.register,
+}));
+vi.mock('@/lib/modelConfigurationStore', () => ({
+  modelAccountScope: async () => models.scope,
+}));
 vi.mock('@/store/authStore', async () => {
   const { create } = await import('zustand');
   const useAuthStore = create(() => ({ user_id: 1, token: 'synthetic' }));
@@ -97,6 +111,8 @@ beforeEach(() => {
     metadata: { modelSelection: selection, thinkingEffort: 'high' },
   });
   http.fetchPost.mockResolvedValue(registered);
+  models.list.mockResolvedValue([{ id: 1, server_id: 1 }]);
+  models.register.mockResolvedValue(null);
 });
 afterEach(() => {
   resetSessionExecutionStore();
@@ -123,8 +139,8 @@ describe('Session submission configuration and observation', () => {
     expect(http.proxyFetchPatch).not.toHaveBeenCalled();
     expect(http.fetchPost).not.toHaveBeenCalled();
     pending.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    // The saved model is looked up on this device before the Session is saved.
+    await vi.waitFor(() => expect(http.proxyFetchPatch).toHaveBeenCalled());
     expect(
       http.proxyFetchPatch.mock.calls[0][1].metadata.modelSelection.provider_id
     ).toBe(1);
@@ -137,6 +153,11 @@ describe('Session submission configuration and observation', () => {
     });
     await preparation;
     expect(http.fetchPost.mock.calls[0][1]).toEqual({});
+    // The local backend is told where this account's keys are saved on the
+    // device. The request body still carries no model, key or account.
+    expect(http.fetchPost.mock.calls[0][2]).toEqual({
+      'X-Eigent-Model-Account': models.scope,
+    });
     expect(intent.body).toMatchObject({
       request_id: intent.requestId,
       envelope: { ...envelope, prompt: 'draft' },

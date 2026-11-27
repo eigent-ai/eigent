@@ -12,9 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
 import { createHost } from '@/host/createHost';
-import { MODEL_CONFIGURATIONS_CHANGED } from '@/lib/configuredModels';
+import {
+  fetchConfiguredProviders,
+  MODEL_CONFIGURATIONS_CHANGED,
+} from '@/lib/configuredModels';
 import { getProviderValid } from '@/lib/providerStatus';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
@@ -36,6 +38,8 @@ export function useModelConfigCheck(): {
   hasModel: boolean;
   isConfigLoaded: boolean;
   cloudUsageLimitReached: boolean;
+  /** The default own model is set up but its key is not on this device. */
+  modelKeyNeeded: boolean;
 } {
   const modelType = useAuthStore((s) => s.modelType);
   const hasModel = useAuthStore((s) => s.hasModelConfigured);
@@ -45,6 +49,7 @@ export function useModelConfigCheck(): {
   // used by callers that need to wait for a fresh validation (e.g. share
   // token handling) rather than trusting the persisted optimistic value.
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+  const [modelKeyNeeded, setModelKeyNeeded] = useState(false);
   const cloudUsageLimitReached = useUsageNoticeStore((state) =>
     state.incidents.some((item) =>
       ['credits', 'trial-daily', 'trial-total', 'free-credits'].includes(
@@ -75,12 +80,19 @@ export function useModelConfigCheck(): {
           : null;
         setHasModelConfigured(Boolean(status?.connected));
       } else if (modelType === 'local' || modelType === 'custom') {
-        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
-        const providerList = Array.isArray(res) ? res : res.items || [];
+        const providerList = (await fetchConfiguredProviders()).filter(
+          (provider) => provider.prefer
+        );
         setHasModelConfigured(providerList.some(getProviderValid));
+        setModelKeyNeeded(
+          !providerList.some(getProviderValid) &&
+            providerList.some((provider) => provider.key_state === 'needed')
+        );
+        return;
       } else {
         setHasModelConfigured(false);
       }
+      setModelKeyNeeded(false);
     } catch (err: any) {
       console.error('Failed to check model config:', err);
     } finally {
@@ -110,5 +122,5 @@ export function useModelConfigCheck(): {
     };
   }, [checkModelConfig]);
 
-  return { hasModel, isConfigLoaded, cloudUsageLimitReached };
+  return { hasModel, isConfigLoaded, cloudUsageLimitReached, modelKeyNeeded };
 }

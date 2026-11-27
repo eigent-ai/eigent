@@ -14,44 +14,44 @@
 
 import { workerModelOption } from '@/lib/workerModelOptions';
 import { describe, expect, it } from 'vitest';
+import { localModelRecord, modelCredential } from '../helpers/localModels';
 
 describe('worker model configuration identity', () => {
-  it('keeps credentials with the exact saved record when names repeat', () => {
+  it('names the exact saved record when names repeat, without a key', () => {
     const records = [
-      {
+      localModelRecord({
         id: 11,
         provider_name: 'openai',
         model_type: 'gpt-5',
-        api_key: 'first',
-        endpoint_url: '',
-      },
-      {
+        api_key: 'unit-test-first',
+      }),
+      localModelRecord({
         id: 12,
         provider_name: 'openai',
         model_type: 'gpt-5',
-        api_key: 'second',
-        endpoint_url: '',
-      },
+        api_key: 'unit-test-second',
+      }),
     ];
     const [first, second] = records.map((record) =>
       workerModelOption(record, 'OpenAI', records)
     );
     expect(first.value).toBe('provider:11');
     expect(second.value).toBe('provider:12');
-    expect(first.label).toBe('OpenAI (gpt-5) · …irst');
-    expect(second.label).toBe('OpenAI (gpt-5) · …cond');
-    expect(first.api_key).toBe('first');
-    expect(second.api_key).toBe('second');
+    expect(first.label).toBe('OpenAI (gpt-5) · #1');
+    expect(second.label).toBe('OpenAI (gpt-5) · #2');
+    // Each option names its own saved model; neither holds a key.
+    expect(first.model_credential).toEqual(modelCredential(11));
+    expect(second.model_credential).toEqual(modelCredential(12));
+    expect(first.api_key).toBe('');
+    expect(JSON.stringify([first, second])).not.toContain('unit-test-');
   });
 
   it('labels a unique configuration without a hint', () => {
-    const record = {
+    const record = localModelRecord({
       id: 11,
       provider_name: 'openai',
       model_type: 'gpt-5',
-      api_key: 'first',
-      endpoint_url: '',
-    };
+    });
     expect(workerModelOption(record, 'OpenAI', [record]).label).toBe(
       'OpenAI (gpt-5)'
     );

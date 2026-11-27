@@ -1,5 +1,14 @@
 {
   "model-list": {
+    "key-needed": "需要密钥",
+    "enter-key": "输入密钥",
+    "keys-needed-note": "请为每个标记为“需要密钥”的模型重新输入密钥。密钥现在只保存在此设备上，因此之前添加的密钥在这里不可用。",
+    "device-keys-note": "你自己的模型的密钥只保存在此设备上。",
+    "session-keys-note": "此设备没有安全的密钥存储，因此密钥只会保留到你退出 Eigent 为止。",
+    "key-saved-placeholder": "已保存在此设备上。输入新密钥即可替换。",
+    "secret-saved-placeholder": "已保存在此设备上",
+    "key-needed-for-address": "如需用于其他地址，请重新输入密钥。",
+    "address-partly-hidden": "此地址的一部分保存在此设备上，不会显示。如需更改，请输入完整地址。",
     "all-providers": "所有模型提供商",
     "default-model": "默认模型",
     "default-model-description": "在您更改之前，新空间将使用此默认模型。",

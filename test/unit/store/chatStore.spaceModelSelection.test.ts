@@ -18,6 +18,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { modelCredential } from '../helpers/localModels';
 const mocks = vi.hoisted(() => ({
   auth: {} as any,
   projectStore: {} as any,
@@ -28,6 +29,10 @@ const mocks = vi.hoisted(() => ({
   spaces: {} as Record<string, any>,
   updateSpaceOnServer: vi.fn(async () => {}),
   toastWarning: vi.fn(),
+  savedModels: {
+    rows: (): any[] => [],
+    error: null as Error | null,
+  },
 }));
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), {
@@ -38,6 +43,18 @@ vi.mock('sonner', () => ({
     dismiss: vi.fn(),
   }),
 }));
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+vi.mock('@/lib/modelConfigurationStore', async (importOriginal) => {
+  const { localModelList } = await import('../helpers/localModels');
+  return {
+    ...(await importOriginal<typeof import('@/lib/modelConfigurationStore')>()),
+    listLocalModelConfigurations: async () => {
+      if (mocks.savedModels.error) throw mocks.savedModels.error;
+      return localModelList(mocks.savedModels.rows());
+    },
+  };
+});
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
     if (url === '/executions/capabilities')
@@ -125,6 +142,12 @@ const provider = {
   },
 };
 
+/** Calls to the server's model provider routes. A run must make none. */
+const providerRouteCalls = () =>
+  mocks.get.mock.calls
+    .map(([url]) => String(url))
+    .filter((url) => /\/api\/v1\/(model-)?providers?(\/|$)/.test(url));
+
 describe('Space default through the real Chat start path', () => {
   let chat: ReturnType<typeof useChatStore>;
   let project: any;
@@ -165,6 +188,8 @@ describe('Space default through the real Chat start path', () => {
       thinking_effort: 'high',
     };
     providers = [provider];
+    mocks.savedModels.rows = () => providers;
+    mocks.savedModels.error = null;
     mocks.projectStore = {
       activeProjectId: 'session-1',
       getProjectById: () => project,
@@ -216,7 +241,6 @@ describe('Space default through the real Chat start path', () => {
           value: 'synthetic-cloud-key',
           api_url: 'https://cloud.example.test',
         };
-      if (url === '/api/v1/providers') return { items: providers, pages: 1 };
       return [];
     });
     mocks.post.mockImplementation(async (url: string) =>
@@ -667,12 +691,6 @@ describe('Space default through the real Chat start path', () => {
           : [{ ...provider, provider_name: platform, prefer: false }];
       if (category !== 'cloud')
         installed.model_ref = `provider://${category}/${platform}/deployment`;
-      const originalGet = mocks.get.getMockImplementation()!;
-      mocks.get.mockImplementation(async (url, params) =>
-        url === '/api/v1/providers' && params?.prefer
-          ? { items: [], pages: 1 }
-          : originalGet(url, params)
-      );
       await start();
       expect(request()).toMatchObject({
         model_type: category === 'cloud' ? 'gpt-6-astra' : 'deployment',
@@ -684,11 +702,7 @@ describe('Space default through the real Chat start path', () => {
         model_ref: installed.model_ref,
       });
       expect(mocks.auth.hasModelConfigured).toBe(false);
-      expect(
-        mocks.get.mock.calls.some(
-          ([url, params]) => url === '/api/v1/providers' && params?.prefer
-        )
-      ).toBe(false);
+      expect(providerRouteCalls()).toEqual([]);
     }
   );
 
@@ -860,7 +874,9 @@ describe('Space default through the real Chat start path', () => {
         expect(body).toMatchObject({
           model_type: category === 'local' ? 'org/model:8b' : 'deployment',
           model_platform: category === 'local' ? 'ollama' : 'azure',
-          api_key: category === 'local' ? '' : 'synthetic-custom-key',
+          // The request names the saved model; it carries no key.
+          api_key: '',
+          model_credential: modelCredential(42),
           api_url:
             category === 'local'
               ? 'http://localhost:11434/v1'
@@ -917,26 +933,29 @@ describe('Space default through the real Chat start path', () => {
     await start();
     expect(request()).toMatchObject({
       model_type: 'deployment',
-      api_key: 'synthetic-second-key',
+      api_key: '',
+      model_credential: modelCredential(43),
     });
-    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/providers', {
-      prefer: true,
-    });
+    expect(JSON.stringify(request())).not.toContain('synthetic-second-key');
+    expect(providerRouteCalls()).toEqual([]);
   });
   it('stops a pinned Session whose saved configuration was removed', async () => {
     pinConfiguration(99);
     await expect(start()).rejects.toThrow('model configuration is unavailable');
-    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/providers', {
-      prefer: true,
-    });
+    expect(providerRouteCalls()).toEqual([]);
     expect(mocks.sse).not.toHaveBeenCalled();
   });
+  it('stops before the run when the key of the saved model is not on this device', async () => {
+    providers = [{ ...provider, is_valid: 1, key_state: 'needed' }];
+    pinConfiguration(42);
+    await expect(start()).rejects.toThrow(
+      'The key for this model is not saved on this device'
+    );
+    expect(mocks.sse).not.toHaveBeenCalled();
+    expect(providerRouteCalls()).toEqual([]);
+  });
   it('stops a pinned Session when its saved configuration cannot be loaded', async () => {
-    const original = mocks.get.getMockImplementation()!;
-    mocks.get.mockImplementation(async (url, params) => {
-      if (url === '/api/v1/providers') throw new Error('offline');
-      return original(url, params);
-    });
+    mocks.savedModels.error = new Error('unreadable');
     pinConfiguration(42);
     await expect(start()).rejects.toThrow('saved model. Check your connection');
     expect(mocks.sse).not.toHaveBeenCalled();
@@ -979,7 +998,8 @@ describe('Space default through the real Chat start path', () => {
       await start();
       expect(request()).toMatchObject({
         model_type: 'deployment',
-        api_key: 'synthetic-custom-key',
+        api_key: '',
+        model_credential: modelCredential(42),
       });
       expect(project.metadata.modelSelection).toMatchObject({
         modelType: 'custom',
@@ -1059,11 +1079,8 @@ describe('Space default through the real Chat start path', () => {
         model_platform: 'azure',
         model_type: 'deployment',
       });
-      mocks.get.mockImplementation(async (url) => {
-        if (url === '/api/v1/providers') throw new Error('offline');
-        return [];
-      });
-      await expect(start()).rejects.toThrow('offline');
+      mocks.savedModels.error = new Error('unreadable');
+      await expect(start()).rejects.toThrow('unreadable');
       expect(mocks.toastWarning).not.toHaveBeenCalled();
       expect(mocks.sse).not.toHaveBeenCalled();
       expect(project.metadata.spaceModelDefaultPending).toBe(true);

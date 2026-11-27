@@ -38,6 +38,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The Space page's composer is the full chat composer, covered by its own
 // tests; here it only needs to be on the page.
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+const savedModels = vi.hoisted(() => ({
+  rows: (): any[] => [],
+}));
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../helpers/localModels');
+  const inventory = async () => {
+    const list = localModelList(savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/components/Home/SpaceQuickComposer', () => ({
   SpaceQuickComposer: () => <div data-testid="space-quick-composer" />,
 }));
@@ -344,31 +360,22 @@ describe('SettingsPage', () => {
       }
       return {};
     });
+    savedModels.rows = () => [
+      { id: 11, provider_name: 'openai', model_type: 'gpt-work', is_valid: 2 },
+      {
+        id: 12,
+        provider_name: 'anthropic',
+        model_type: 'claude-personal',
+        is_valid: 2,
+      },
+      {
+        id: 13,
+        provider_name: 'openai',
+        model_type: 'gpt-expired',
+        is_valid: 1,
+      },
+    ];
     homeOverviewMocks.proxyFetchGet.mockImplementation(async (path: string) => {
-      if (path === '/api/v1/providers') {
-        return {
-          items: [
-            {
-              id: 11,
-              provider_name: 'openai',
-              model_type: 'gpt-work',
-              is_valid: 2,
-            },
-            {
-              id: 12,
-              provider_name: 'anthropic',
-              model_type: 'claude-personal',
-              is_valid: 2,
-            },
-            {
-              id: 13,
-              provider_name: 'openai',
-              model_type: 'gpt-expired',
-              is_valid: 1,
-            },
-          ],
-        };
-      }
       if (path === '/api/v1/server/capabilities') {
         return { features: { connector_gateway: { enabled: true } } };
       }

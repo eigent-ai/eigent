@@ -201,6 +201,8 @@ interface BottomBoxCommonProps {
 
   /** Full-area warning overlay on the input card when no model is configured. */
   noModelOverlay?: boolean;
+  /** The model is set up; only its key has to be entered on this device. */
+  modelKeyNeeded?: boolean;
   onSelectModel?: () => void;
 }
 
@@ -237,6 +239,7 @@ export default function BottomBox({
   layout = 'docked',
   loading = false,
   noModelOverlay = false,
+  modelKeyNeeded = false,
   onSelectModel,
 }: BottomBoxProps) {
   const { t } = useTranslation();
@@ -647,7 +650,11 @@ export default function BottomBox({
               aria-hidden
             />
             <span className="block text-ds-text-base font-normal text-ds-text-warning-default-default">
-              {t('layout.please-select-model')}
+              {t(
+                modelKeyNeeded
+                  ? 'layout.enter-model-key-again'
+                  : 'layout.please-select-model'
+              )}
             </span>
             <Button
               type="button"
@@ -657,9 +664,11 @@ export default function BottomBox({
               buttonRadius="full"
               onClick={onSelectModel}
             >
-              {t('layout.select-model-cta', {
-                defaultValue: 'Select a model',
-              })}
+              {modelKeyNeeded
+                ? t('layout.enter-model-key-cta')
+                : t('layout.select-model-cta', {
+                    defaultValue: 'Select a model',
+                  })}
             </Button>
           </motion.div>
         ) : null}

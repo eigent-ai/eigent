@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchPost, proxyFetchPost, proxyFetchPut } from '@/api/http';
+import { fetchPost } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -28,7 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import {
   fetchConfiguredProviders,
-  notifyModelConfigurationsChanged,
+  saveConfiguredProvider,
   type ConfiguredProvider,
 } from '@/lib/configuredModels';
 import {
@@ -37,12 +37,12 @@ import {
   parseModelConfigJson,
   splitProviderConfig,
 } from '@/lib/modelConfig';
+import { SAVED_VALUE_MARKER } from '@/lib/modelConfigurationStore';
 import {
   fetchProviderModels,
   ProviderModelsError,
   type ProviderModelGroup,
 } from '@/lib/providerModels';
-import { toProviderValidStatus } from '@/lib/providerStatus';
 import { getAuthStore } from '@/store/authStore';
 import type { Provider } from '@/types';
 import { ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
@@ -70,6 +70,14 @@ type ContentProps = Props & {
 // Thinking effort belongs to the input box, not a saved configuration.
 const EFFORT_PARAMETERS = ['reasoning_effort', 'thinking_effort'] as const;
 
+function endpointHost(endpoint: string) {
+  try {
+    return new URL(endpoint.trim()).host;
+  } catch {
+    return endpoint.trim();
+  }
+}
+
 function effortParameter(parameters: string) {
   try {
     const config = parseModelConfigJson(parameters);
@@ -89,9 +97,17 @@ export function ModelConfigurationContent({
   const { t } = useTranslation();
   const local = LOCAL_MODEL_OPTIONS.find((item) => item.id === provider.id);
   const stored = splitProviderConfig(record?.encrypted_config);
-  const [key, setKey] = useState(
-    record?.api_key === 'not-required' ? '' : (record?.api_key ?? '')
+  // A saved key is never shown again: this window does not have it. Leaving
+  // the field empty keeps the saved key.
+  const savedKey = Boolean(record?.has_api_key && record.key_state === 'saved');
+  const secretFields =
+    provider.externalConfig
+      ?.filter((field) => field.secret)
+      .map((field) => field.key) ?? [];
+  const savedSecretFields = secretFields.filter(
+    (field) => stored.extraParams[field] === SAVED_VALUE_MARKER
   );
+  const [key, setKey] = useState('');
   const [endpoint, setEndpoint] = useState(
     record?.endpoint_url || provider.apiHost
   );
@@ -106,6 +122,8 @@ export function ModelConfigurationContent({
       provider.externalConfig?.map((field) => [field.key, field.value]) ?? []
     ),
     ...stored.extraParams,
+    // Saved secret settings start empty; empty keeps what is saved.
+    ...Object.fromEntries(savedSecretFields.map((field) => [field, ''])),
   }));
   const [visibleSecrets, setVisibleSecrets] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -168,7 +186,9 @@ export function ModelConfigurationContent({
         result = await fetchProviderModels(
           endpoint.trim(),
           provider.modelsEndpoint!,
-          key.trim()
+          key.trim(),
+          undefined,
+          savedKey ? record?.model_credential : undefined
         );
       }
       if (generation === request.current.generation) setGroups(result);
@@ -191,8 +211,17 @@ export function ModelConfigurationContent({
     if (busy) return;
     const { user_id: savingAccount, email: savingEmail } = getAuthStore();
     setError('');
-    if (!optionalKey && !key.trim()) {
+    if (!optionalKey && !key.trim() && !savedKey) {
       setKeyError(t('setting.api-key-can-not-be-empty'));
+      return;
+    }
+    if (
+      savedKey &&
+      !key.trim() &&
+      endpointHost(endpoint) !== endpointHost(record?.endpoint_url ?? '')
+    ) {
+      // A saved key is only used with the host it was saved for.
+      setKeyError(t('setting.model-list.key-needed-for-address'));
       return;
     }
     if (!model.trim()) {
@@ -215,6 +244,20 @@ export function ModelConfigurationContent({
           ? appendV1ToEndpoint(endpoint)
           : endpoint.trim();
       const apiKey = key.trim() || (local ? 'not-required' : '');
+      const keepSavedKey = savedKey && !key.trim();
+      // Secret settings are replaced together: typing one clears the others
+      // left empty; typing none keeps all that are saved.
+      const typedSecret = secretFields.some(
+        (field) => String(extra[field] ?? '') !== ''
+      );
+      const settings = {
+        ...extra,
+        ...Object.fromEntries(
+          typedSecret
+            ? []
+            : savedSecretFields.map((field) => [field, SAVED_VALUE_MARKER])
+        ),
+      };
       if (provider.id === 'llama.cpp') {
         // Preserve llama.cpp's health-check path: its tool-call validation is not compatible.
         const health = await fetch(`${toEndpointBaseUrl(url)}/v1/health`, {
@@ -225,11 +268,15 @@ export function ModelConfigurationContent({
         const validation = await fetchPost('/model/validate', {
           model_platform: provider.id,
           model_type: model.trim(),
-          api_key: apiKey || null,
+          // A saved key and saved secret settings are filled in by the local
+          // backend from the configuration named here.
+          api_key: keepSavedKey ? (record?.api_key ?? null) : apiKey || null,
+          model_credential:
+            record?.key_state === 'saved' ? record.model_credential : undefined,
           url,
           model_config_dict: config,
           extra_params: Object.fromEntries(
-            Object.entries(extra).filter(
+            Object.entries(settings).filter(
               ([key]) =>
                 !['model_platform', 'model_type', 'api_key', 'url'].includes(
                   key
@@ -268,27 +315,27 @@ export function ModelConfigurationContent({
         getAuthStore().email !== savingEmail
       )
         return;
-      const payload = {
+      // Saved on this device only. The key is not sent to any server.
+      await saveConfiguredProvider({
+        ...(record ? { id: record.id } : {}),
         provider_name: provider.id,
         model_type: model.trim(),
-        api_key: apiKey,
+        ...(keepSavedKey ? {} : { api_key: apiKey }),
         endpoint_url: url,
-        is_valid: toProviderValidStatus(true),
+        is_valid: true,
         prefer: currentRecord?.prefer ?? false,
-        encrypted_config: buildProviderConfig(
+        secret_fields: secretFields,
+        config: buildProviderConfig(
           local
             ? {
-                ...extra,
+                ...settings,
                 model_platform: provider.id,
                 model_type: model.trim(),
               }
-            : extra,
+            : settings,
           config
         ),
-      };
-      if (record) await proxyFetchPut(`/api/v1/provider/${record.id}`, payload);
-      else await proxyFetchPost('/api/v1/provider', payload);
-      notifyModelConfigurationsChanged();
+      });
       if (active.current) onClose();
     } catch (cause) {
       if (active.current)
@@ -346,9 +393,15 @@ export function ModelConfigurationContent({
                   }
                   autoComplete="off"
                   value={key}
-                  placeholder={t('setting.enter-your-api-key')}
+                  placeholder={t(
+                    savedKey
+                      ? 'setting.model-list.key-saved-placeholder'
+                      : 'setting.enter-your-api-key'
+                  )}
                   aria-invalid={Boolean(keyError)}
-                  aria-describedby={keyError ? 'model-key-error' : undefined}
+                  aria-describedby={
+                    keyError ? 'model-key-error' : 'model-key-hint'
+                  }
                   onChange={(event) => {
                     setKey(event.target.value);
                     invalidateDiscovery();
@@ -380,6 +433,13 @@ export function ModelConfigurationContent({
                   {keyError}
                 </DsText>
               )}
+              <DsText
+                id="model-key-hint"
+                role="meta"
+                className="text-ds-ink-muted-default"
+              >
+                {t('setting.model-list.device-keys-note')}
+              </DsText>
             </div>
             <div className="flex flex-col gap-ds-stack-related">
               <label htmlFor="model-endpoint">
@@ -391,11 +451,25 @@ export function ModelConfigurationContent({
                 id="model-endpoint"
                 value={endpoint}
                 placeholder={provider.hostPlaceHolder || provider.apiHost}
+                aria-describedby={
+                  record?.endpoint_has_secret
+                    ? 'model-endpoint-hint'
+                    : undefined
+                }
                 onChange={(event) => {
                   setEndpoint(event.target.value);
                   invalidateDiscovery(true);
                 }}
               />
+              {record?.endpoint_has_secret && (
+                <DsText
+                  id="model-endpoint-hint"
+                  role="meta"
+                  className="text-ds-ink-muted-default"
+                >
+                  {t('setting.model-list.address-partly-hidden')}
+                </DsText>
+              )}
             </div>
             {provider.externalConfig?.map((field) => (
               <div
@@ -436,7 +510,11 @@ export function ModelConfigurationContent({
                       }
                       autoComplete="off"
                       value={String(extra[field.key] ?? '')}
-                      placeholder={field.placeholder}
+                      placeholder={
+                        savedSecretFields.includes(field.key)
+                          ? t('setting.model-list.secret-saved-placeholder')
+                          : field.placeholder
+                      }
                       onChange={(event) =>
                         setExtra((old) => ({
                           ...old,
@@ -478,7 +556,7 @@ export function ModelConfigurationContent({
                   loading={discovering}
                   error={null}
                   fetchError={discoveryError}
-                  disabled={!optionalKey && !key.trim()}
+                  disabled={!optionalKey && !key.trim() && !savedKey}
                   disabledReason={t('setting.models-api-key-required')}
                   onRefresh={discover}
                 />

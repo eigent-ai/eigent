@@ -28,6 +28,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { localModelList, localModelRecord } from '../../helpers/localModels';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -55,6 +56,36 @@ const mocks = vi.hoisted(() => ({
     getModelDisplayName: (id: string) => id,
     getEffectiveModelId: (id: string) => id,
   },
+}));
+// The user's own models are saved on the device. `device` stands in for
+// that store; `server` records what little the account's server is told.
+const device = vi.hoisted(() => ({
+  rows: [] as any[],
+  list: vi.fn(),
+  save: vi.fn(),
+  remove: vi.fn(),
+  setDefault: vi.fn(),
+}));
+const server = vi.hoisted(() => ({
+  importEarlier: vi.fn(),
+  register: vi.fn(),
+  registerDefault: vi.fn(),
+  unregister: vi.fn(),
+}));
+vi.mock('@/lib/modelConfigurationStore', () => ({
+  SAVED_VALUE_MARKER: '[saved on this device]',
+  modelAccountScope: async () => 'a'.repeat(64),
+  listLocalModelConfigurations: device.list,
+  saveLocalModelConfiguration: device.save,
+  deleteLocalModelConfiguration: device.remove,
+  setLocalModelConfigurationDefault: device.setDefault,
+}));
+vi.mock('@/lib/modelProviderRegistration', () => ({
+  plainEndpoint: (value: string) => value,
+  importEarlierModelConfigurations: server.importEarlier,
+  registerModelConfiguration: server.register,
+  registerDefaultModelConfiguration: server.registerDefault,
+  unregisterModelConfiguration: server.unregister,
 }));
 vi.mock('@/api/http', () => ({
   proxyFetchGet: mocks.get,
@@ -125,10 +156,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.auth.modelType = 'cloud';
   mocks.auth.user_id = 1;
-  mocks.get.mockResolvedValue({ items: records });
+  device.rows = records.map((record) => ({ ...record }));
+  device.list.mockImplementation(async () => localModelList(device.rows));
+  device.save.mockImplementation(async (_account, input) =>
+    localModelRecord({
+      ...input,
+      id: input.id ?? 2147483648,
+      encrypted_config: input.config,
+      is_valid: input.is_valid ? 2 : 1,
+    })
+  );
+  device.remove.mockResolvedValue(undefined);
+  device.setDefault.mockResolvedValue(undefined);
+  server.importEarlier.mockResolvedValue(false);
+  server.register.mockResolvedValue(null);
+  server.registerDefault.mockResolvedValue(undefined);
+  server.unregister.mockResolvedValue(undefined);
+  mocks.get.mockResolvedValue({});
   mocks.validate.mockResolvedValue({ is_valid: true, is_tool_calls: true });
-  mocks.post.mockResolvedValue({ id: 13 });
-  mocks.put.mockResolvedValue({ id: 12 });
+  mocks.post.mockResolvedValue({});
+  mocks.put.mockResolvedValue({});
   mocks.remove.mockResolvedValue(undefined);
   useSettingsStore.setState({ modelProvider: null });
   useModelVisibilityStore.setState({ hiddenByAccount: {} });
@@ -167,7 +214,7 @@ async function fillAntLing() {
 
 describe('Models collections and configuration dialogs', () => {
   it('shows model loading beside the Models heading', () => {
-    mocks.get.mockReturnValue(new Promise(() => undefined));
+    device.list.mockReturnValue(new Promise(() => undefined));
     renderPage();
 
     const toolbar = screen.getByRole('region', { name: 'Models' });
@@ -182,22 +229,14 @@ describe('Models collections and configuration dialogs', () => {
   it('keeps loaded models and the default selector usable during a focus refresh', async () => {
     renderPage();
     expect(await screen.findByText('model-a')).toBeInTheDocument();
-    const providerCallsBeforeFocus = mocks.get.mock.calls.filter(
-      ([url]) => url === '/api/v1/providers'
-    ).length;
-    mocks.get.mockImplementation((url: string) =>
-      url === '/api/v1/providers'
-        ? new Promise(() => undefined)
-        : Promise.resolve({})
-    );
+    const readsBeforeFocus = device.list.mock.calls.length;
+    device.list.mockImplementation(() => new Promise(() => undefined));
     act(() => window.dispatchEvent(new Event('focus')));
     expect(screen.getByText('model-a')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /select default model/i })
     ).toBeEnabled();
-    expect(
-      mocks.get.mock.calls.filter(([url]) => url === '/api/v1/providers')
-    ).toHaveLength(providerCallsBeforeFocus + 1);
+    expect(device.list.mock.calls).toHaveLength(readsBeforeFocus + 1);
   });
 
   it('lists every saved record under its provider, not the catalog', async () => {
@@ -360,10 +399,12 @@ describe('Models collections and configuration dialogs', () => {
       screen.queryByRole('menuitemradio', { name: 'Claude' })
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('menuitemradio', { name: 'model-a' }));
+    // The default is saved on this device, then the server is told.
     await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith('/api/v1/provider/prefer', {
-        provider_id: 11,
-      })
+      expect(device.setDefault).toHaveBeenCalledWith(expect.anything(), 11)
+    );
+    expect(server.registerDefault).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 11 })
     );
     const providerIcon = within(providerBanner).getByRole('button', {
       name: 'Anthropic',
@@ -379,9 +420,7 @@ describe('Models collections and configuration dialogs', () => {
     ).toBeInTheDocument();
   });
   it('marks invalid or expired credentials and their model name as errors', async () => {
-    mocks.get.mockResolvedValue({
-      items: [{ ...records[0], is_valid: 1 }, records[1]],
-    });
+    device.rows = [{ ...records[0], is_valid: 1 }, records[1]];
     renderPage();
 
     const invalidName = await screen.findByText('model-a');
@@ -417,25 +456,111 @@ describe('Models collections and configuration dialogs', () => {
   it('edits only the selected configuration ID and preserves its default flag', async () => {
     renderPage();
     await editRecord('model-b');
-    expect(screen.getByDisplayValue('test-personal')).toBeInTheDocument();
+    // A saved key is never shown again: this window does not have it.
+    const key = screen.getByLabelText(/API key setting/i);
+    expect(key).toHaveValue('');
+    expect(key).toHaveAttribute(
+      'placeholder',
+      'Saved on this device. Enter a new key to replace it.'
+    );
+    expect(screen.queryByDisplayValue('test-personal')).not.toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain('test-personal');
     fireEvent.change(screen.getByLabelText(/Model type setting/i), {
       target: { value: 'model-b-updated' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
-    await waitFor(() =>
-      expect(mocks.put).toHaveBeenCalledWith(
-        '/api/v1/provider/12',
-        expect.objectContaining({
-          model_type: 'model-b-updated',
-          api_key: 'test-personal',
-          prefer: true,
-        })
-      )
+    await waitFor(() => expect(device.save).toHaveBeenCalledTimes(1));
+    const [, saved] = device.save.mock.calls[0];
+    expect(saved).toMatchObject({
+      id: 12,
+      model_type: 'model-b-updated',
+      prefer: true,
+    });
+    // Leaving the field empty keeps the saved key: none is sent anywhere.
+    expect(saved).not.toHaveProperty('api_key');
+    expect(mocks.validate).toHaveBeenCalledWith(
+      '/model/validate',
+      expect.objectContaining({
+        api_key: null,
+        model_credential: { account_scope: 'a'.repeat(64), credential_id: 12 },
+      })
     );
+    expect(mocks.put).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     );
+  });
+  it('asks for the key again before a saved model moves to another host', async () => {
+    renderPage();
+    await editRecord('model-b');
+    fireEvent.change(screen.getByLabelText(/API Host setting/i), {
+      target: { value: 'https://elsewhere.example.test/v1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+
+    expect(
+      await screen.findByText(
+        'Enter the key again to use it with a different address.'
+      )
+    ).toBeInTheDocument();
+    expect(mocks.validate).not.toHaveBeenCalled();
+    expect(device.save).not.toHaveBeenCalled();
+  });
+  it('marks a model whose key is not on this device and asks for the key', async () => {
+    device.rows = [
+      { ...records[0], api_key: '', is_valid: 1, key_state: 'needed' },
+      records[1],
+    ];
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = (await screen.findByText('model-a')).parentElement!;
+    expect(within(row).getByText('Key needed')).toHaveAttribute(
+      'data-tone',
+      'error'
+    );
+    expect(
+      screen.getByText(/Enter the key again for each model marked/)
+    ).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'Enter key' }));
+
+    const key = await screen.findByLabelText(/API key setting/i);
+    expect(key).toHaveAttribute('placeholder', 'Enter your API key');
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    expect(
+      await screen.findByText('API Key can not be empty!')
+    ).toBeInTheDocument();
+    expect(device.save).not.toHaveBeenCalled();
+
+    fireEvent.change(key, { target: { value: 'test-entered-again' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    await waitFor(() => expect(device.save).toHaveBeenCalledTimes(1));
+    expect(device.save.mock.calls[0][1]).toMatchObject({
+      id: 11,
+      api_key: 'test-entered-again',
+    });
+    // Nothing readable is saved yet, so no saved value is asked for.
+    expect(mocks.validate.mock.calls[0][1].model_credential).toBeUndefined();
+  });
+  it('says where keys are kept, also when the device cannot keep them', async () => {
+    renderPage();
+    expect(
+      await screen.findByText(
+        'Keys for your own models are saved on this device only.'
+      )
+    ).toBeInTheDocument();
+
+    device.list.mockImplementation(async () => ({
+      ...localModelList(device.rows),
+      storage: 'session',
+    }));
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(
+      await screen.findByText(
+        'This device has no secure key storage, so keys are kept only until you quit Eigent.'
+      )
+    ).toBeInTheDocument();
   });
   it('adds a second model with fresh credentials without replacing the existing model or default', async () => {
     renderPage('openai');
@@ -455,16 +580,27 @@ describe('Models collections and configuration dialogs', () => {
       target: { value: 'new-model' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
-    await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith(
-        '/api/v1/provider',
-        expect.objectContaining({
-          model_type: 'new-model',
-          api_key: 'test-new-key',
-          prefer: false,
-        })
-      )
-    );
+    await waitFor(() => expect(device.save).toHaveBeenCalledTimes(1));
+    const [, saved] = device.save.mock.calls[0];
+    // Saved on this device as a new record.
+    expect(saved).toMatchObject({
+      provider_name: 'openai',
+      model_type: 'new-model',
+      api_key: 'test-new-key',
+      prefer: false,
+    });
+    expect(saved).not.toHaveProperty('id');
+    // The key goes to the device store only: no server request carries it.
+    await waitFor(() => expect(server.register).toHaveBeenCalledTimes(1));
+    expect(
+      JSON.stringify([
+        server.register.mock.calls,
+        mocks.post.mock.calls,
+        mocks.put.mock.calls,
+        mocks.get.mock.calls,
+      ])
+    ).not.toContain('test-new-key');
+    expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
     expect(mocks.auth.setModelType).not.toHaveBeenCalled();
   });
@@ -475,8 +611,8 @@ describe('Models collections and configuration dialogs', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
     await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith(
-        '/api/v1/provider',
+      expect(device.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           provider_name: 'vllm',
           api_key: 'not-required',
@@ -506,7 +642,7 @@ describe('Models collections and configuration dialogs', () => {
     expect(parameters).toHaveFocus();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(mocks.validate).not.toHaveBeenCalled();
-    expect(mocks.put).not.toHaveBeenCalled();
+    expect(device.save).not.toHaveBeenCalled();
     fireEvent.change(parameters, { target: { value: '{"temperature":0.2}' } });
     expect(parameters).toHaveAttribute('aria-invalid', 'false');
   });
@@ -646,13 +782,14 @@ describe('Models collections and configuration dialogs', () => {
       await screen.findByRole('button', { name: 'Actions for model-a' })
     );
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(device.remove).not.toHaveBeenCalled();
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' })
     );
     await waitFor(() =>
-      expect(mocks.remove).toHaveBeenCalledWith('/api/v1/provider/11')
+      expect(device.remove).toHaveBeenCalledWith(expect.anything(), 11)
     );
+    expect(device.remove).toHaveBeenCalledTimes(1);
   });
   it('keeps routing deep links and replaces a mounted provider dialog', async () => {
     openSettings('models', { modelProvider: 'ant-ling' });

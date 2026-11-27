@@ -1790,5 +1790,7 @@
   "show-fewer-sessions-in-space": "عرض جلسات أقل في {{name}}",
   "new-session-space": "مساحة هذه الجلسة",
   "spaces-switch-failed": "تعذّر الانتقال إلى المساحة",
-  "space-emoji-load-failed": "تعذّر تحميل الرموز التعبيرية. تحقق من اتصالك."
+  "space-emoji-load-failed": "تعذّر تحميل الرموز التعبيرية. تحقق من اتصالك.",
+  "enter-model-key-again": "أدخل مفتاح نموذجك مرة أخرى للمتابعة. تُحفظ المفاتيح الآن على هذا الجهاز فقط.",
+  "enter-model-key-cta": "إدخال المفتاح"
 }

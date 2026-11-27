@@ -1,4 +1,6 @@
 {
+  "enter-model-key-again": "请重新输入模型的密钥以继续。密钥现在只保存在此设备上。",
+  "enter-model-key-cta": "输入密钥",
   "report-bug": "报告 bug",
   "report-bug-dialog-title": "报告 bug",
   "report-bug-footer-hint": "我们会将应用日志打包为 ZIP 并打开您的邮件客户端。发送前请将该 ZIP 作为附件。",

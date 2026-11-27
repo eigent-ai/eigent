@@ -87,6 +87,26 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+const savedModels = vi.hoisted(() => ({
+  rows: (): any[] => [],
+  error: null as Error | null,
+  reads: 0,
+}));
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../helpers/localModels');
+  const inventory = async () => {
+    savedModels.reads += 1;
+    if (savedModels.error) throw savedModels.error;
+    const list = localModelList(savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
   default: () => ({
     chatStore: { activeTaskId: null, tasks: {} },
@@ -181,7 +201,8 @@ async function renderAfterGlobalProviderReset(
   await waitFor(() =>
     expect(useAuthStore.getState().hasModelConfigured).toBe(false)
   );
-  expect(mocks.get).toHaveBeenCalledWith('/api/v1/providers', { prefer: true });
+  // The default own model is looked for on this device.
+  expect(savedModels.reads).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Session message'), {
     target: { value: question },
   });
@@ -190,6 +211,9 @@ async function renderAfterGlobalProviderReset(
 describe('Workspace delegates current Space model validation to launch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    savedModels.rows = () => [];
+    savedModels.error = null;
+    savedModels.reads = 0;
     mocks.input = null;
     mocks.network.mockImplementation(async () => {
       throw new Error('Network forbidden in the synthetic fixture');
@@ -212,7 +236,6 @@ describe('Workspace delegates current Space model validation to launch', () => {
       },
     };
     mocks.get.mockImplementation(async (url) => {
-      if (url === '/api/v1/providers') return { items: [], pages: 1 };
       if (url === '/api/v1/cloud-models')
         return {
           models: [
@@ -310,9 +333,7 @@ describe('Workspace delegates current Space model validation to launch', () => {
       });
       // Workspace adds no duplicate catalog/credential preflight before Chat.
       expect(mocks.localGet).not.toHaveBeenCalled();
-      expect(
-        mocks.get.mock.calls.every(([url]) => url === '/api/v1/providers')
-      ).toBe(true);
+      expect(mocks.get).not.toHaveBeenCalled();
       expect(mocks.projectState.setProjectModel).not.toHaveBeenCalled();
     }
   );

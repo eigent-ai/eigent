@@ -32,7 +32,16 @@
     "missing-configuration": "La configuration du modèle de cette session est indisponible. Sélectionnez un autre modèle ou restaurez la configuration dans Paramètres → Modèles.",
     "no-results": "Aucun modèle ou fournisseur correspondant.",
     "availability-unknown": "Statut de l’abonnement indisponible",
-    "pinned-load-failed": "Impossible de charger le modèle enregistré pour cette session. Vérifiez votre connexion et réessayez."
+    "pinned-load-failed": "Impossible de charger le modèle enregistré pour cette session. Vérifiez votre connexion et réessayez.",
+    "key-needed": "Clé requise",
+    "enter-key": "Saisir la clé",
+    "keys-needed-note": "Saisissez à nouveau la clé de chaque modèle marqué « Clé requise ». Les clés sont désormais enregistrées uniquement sur cet appareil ; une clé ajoutée auparavant n’est donc pas disponible ici.",
+    "device-keys-note": "Les clés de vos propres modèles sont enregistrées uniquement sur cet appareil.",
+    "session-keys-note": "Cet appareil ne dispose pas d’un stockage sécurisé des clés ; elles sont donc conservées uniquement jusqu’à ce que vous quittiez Eigent.",
+    "key-saved-placeholder": "Enregistrée sur cet appareil. Saisissez une nouvelle clé pour la remplacer.",
+    "secret-saved-placeholder": "Enregistré sur cet appareil",
+    "key-needed-for-address": "Saisissez à nouveau la clé pour l’utiliser avec une autre adresse.",
+    "address-partly-hidden": "Une partie de cette adresse est enregistrée sur cet appareil et n’est pas affichée. Saisissez l’adresse complète pour la modifier."
   },
   "settings": "Réglages",
   "general": "Général",

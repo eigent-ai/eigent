@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { ModelCredentialReference } from '@/shared/modelConfiguration';
+
 export const MODEL_CONFIG_DICT_KEY = 'model_config_dict' as const;
 
 export type ModelConfigDict = Record<string, unknown>;
@@ -23,6 +25,8 @@ export type AgentModelConfig = {
   api_url?: string;
   model_config_dict?: ModelConfigDict;
   extra_params?: Record<string, unknown>;
+  /** Names a configuration saved on this device; the key is read locally. */
+  model_credential?: ModelCredentialReference;
 };
 
 export type AgentModelConfigSource = {
@@ -32,6 +36,7 @@ export type AgentModelConfigSource = {
   api_url?: string;
   model_config_dict?: ModelConfigDict;
   extra_params?: Record<string, unknown>;
+  model_credential?: ModelCredentialReference;
 };
 
 export type StoredModelProvider = {
@@ -41,6 +46,7 @@ export type StoredModelProvider = {
   endpoint_url?: unknown;
   api_url?: unknown;
   encrypted_config?: unknown;
+  model_credential?: ModelCredentialReference;
 };
 
 export type ModelConfigJsonErrorCode = 'invalid_json' | 'not_object';
@@ -144,11 +150,18 @@ export function buildAgentModelConfig(
   if (source.extra_params !== undefined) {
     config.extra_params = { ...source.extra_params };
   }
+  if (source.model_credential !== undefined) {
+    config.model_credential = { ...source.model_credential };
+  }
 
   return config;
 }
 
-/** Resolve a stored custom/local provider into a transient per-agent config. */
+/**
+ * Resolve a saved custom/local provider into a transient per-agent config.
+ * A provider saved in the desktop app carries a reference and no key: the
+ * local backend reads the key, address and settings for that reference.
+ */
 export function buildAgentModelConfigFromProvider(
   provider: StoredModelProvider
 ): AgentModelConfig {
@@ -161,9 +174,10 @@ export function buildAgentModelConfigFromProvider(
       extraParams.model_platform || provider.provider_name || ''
     ),
     model_type: String(extraParams.model_type || provider.model_type || ''),
-    api_key: String(provider.api_key ?? ''),
+    api_key: provider.model_credential ? '' : String(provider.api_key ?? ''),
     api_url: String(provider.endpoint_url || provider.api_url || ''),
     model_config_dict: modelConfigDict,
     extra_params: extraParams,
+    model_credential: provider.model_credential,
   });
 }

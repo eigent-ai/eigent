@@ -32,7 +32,16 @@
     "missing-configuration": "Die Modellkonfiguration dieser Sitzung ist nicht verfügbar. Wähle ein anderes Modell oder stelle die Konfiguration unter Einstellungen → Modelle wieder her.",
     "no-results": "Keine passenden Modelle oder Anbieter.",
     "availability-unknown": "Planstatus nicht verfügbar",
-    "pinned-load-failed": "Das gespeicherte Modell dieser Sitzung konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+    "pinned-load-failed": "Das gespeicherte Modell dieser Sitzung konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "key-needed": "Schlüssel erforderlich",
+    "enter-key": "Schlüssel eingeben",
+    "keys-needed-note": "Geben Sie den Schlüssel für jedes Modell mit dem Hinweis „Schlüssel erforderlich“ erneut ein. Schlüssel werden jetzt nur auf diesem Gerät gespeichert, daher ist ein früher hinzugefügter Schlüssel hier nicht verfügbar.",
+    "device-keys-note": "Schlüssel für Ihre eigenen Modelle werden nur auf diesem Gerät gespeichert.",
+    "session-keys-note": "Dieses Gerät hat keinen sicheren Schlüsselspeicher, daher bleiben Schlüssel nur erhalten, bis Sie Eigent beenden.",
+    "key-saved-placeholder": "Auf diesem Gerät gespeichert. Geben Sie einen neuen Schlüssel ein, um ihn zu ersetzen.",
+    "secret-saved-placeholder": "Auf diesem Gerät gespeichert",
+    "key-needed-for-address": "Geben Sie den Schlüssel erneut ein, um ihn mit einer anderen Adresse zu verwenden.",
+    "address-partly-hidden": "Ein Teil dieser Adresse ist auf diesem Gerät gespeichert und wird nicht angezeigt. Geben Sie die vollständige Adresse ein, um sie zu ändern."
   },
   "settings": "Einstellungen",
   "general": "Allgemein",

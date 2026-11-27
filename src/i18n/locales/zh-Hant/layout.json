@@ -1,4 +1,6 @@
 {
+  "enter-model-key-again": "請重新輸入模型的金鑰以繼續。金鑰現在只儲存在此裝置上。",
+  "enter-model-key-cta": "輸入金鑰",
   "report-bug": "報告 bug",
   "report-bug-dialog-title": "報告 bug",
   "report-bug-footer-hint": "我們會將應用記錄打包為 ZIP 並打開您的電子電子郵件客戶端。發送前請將該 ZIP 作為附件。",

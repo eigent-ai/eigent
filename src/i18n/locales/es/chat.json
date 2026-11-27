@@ -620,5 +620,6 @@
   "workspace-blocked-failed": "No se pudo resolver la operación bloqueada. Inténtalo de nuevo.",
   "notice-space-folder-home": "Eigent no puede trabajar directamente en tu carpeta personal.",
   "notice-space-folder-app-data": "Eigent no puede trabajar en una carpeta que contiene sus propios datos de la app.",
-  "notice-space-folder-description": "Crea un espacio a partir de una carpeta dentro de tu carpeta personal, como Documentos."
+  "notice-space-folder-description": "Crea un espacio a partir de una carpeta dentro de tu carpeta personal, como Documentos.",
+  "model-key-needed": "La clave de este modelo no está guardada en este dispositivo. Vuelve a introducirla en Ajustes > Modelos."
 }

@@ -1698,5 +1698,7 @@
   "show-fewer-sessions-in-space": "Weniger Sitzungen in {{name}} anzeigen",
   "new-session-space": "Space für diese Sitzung",
   "spaces-switch-failed": "Der Arbeitsbereich konnte nicht gewechselt werden",
-  "space-emoji-load-failed": "Emojis konnten nicht geladen werden. Prüfe deine Verbindung."
+  "space-emoji-load-failed": "Emojis konnten nicht geladen werden. Prüfe deine Verbindung.",
+  "enter-model-key-again": "Geben Sie den Schlüssel für Ihr Modell erneut ein, um fortzufahren. Schlüssel werden jetzt nur auf diesem Gerät gespeichert.",
+  "enter-model-key-cta": "Schlüssel eingeben"
 }

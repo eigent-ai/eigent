@@ -1,5 +1,14 @@
 {
   "model-list": {
+    "key-needed": "需要金鑰",
+    "enter-key": "輸入金鑰",
+    "keys-needed-note": "請為每個標示為「需要金鑰」的模型重新輸入金鑰。金鑰現在只儲存在此裝置上，因此先前新增的金鑰在這裡無法使用。",
+    "device-keys-note": "你自己的模型的金鑰只儲存在此裝置上。",
+    "session-keys-note": "此裝置沒有安全的金鑰儲存空間，因此金鑰只會保留到你結束 Eigent 為止。",
+    "key-saved-placeholder": "已儲存在此裝置上。輸入新金鑰即可取代。",
+    "secret-saved-placeholder": "已儲存在此裝置上",
+    "key-needed-for-address": "如需用於其他位址，請重新輸入金鑰。",
+    "address-partly-hidden": "此位址的一部分儲存在此裝置上，不會顯示。如需變更，請輸入完整位址。",
     "all-providers": "所有模型提供商",
     "default-model": "預設模型",
     "default-model-description": "在您變更之前，新空間將使用此預設模型。",
