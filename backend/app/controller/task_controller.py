@@ -13,15 +13,20 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
+from types import SimpleNamespace
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from app.auth import require_local_control_if_configured
 from app.component.environment import sanitize_env_path, set_user_env_path
 from app.model.chat import NewAgent, UpdateData
+from app.model.local_model_configuration import (
+    LocalModelConfigurationError,
+    apply_local_model_configurations,
+)
 from app.service.task import (
     Action,
     ActionNewAgent,
@@ -145,6 +150,17 @@ def add_agent(id: str, data: NewAgent):
             "has_custom_model_config": data.custom_model_config is not None,
         },
     )
+    try:
+        # A model saved on this device arrives as a reference; read its key
+        # from the desktop app for this agent only.
+        apply_local_model_configurations(
+            SimpleNamespace(model_credential=None, new_agents=[data])
+        )
+    except LocalModelConfigurationError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from None
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
     # Load environment with validated path

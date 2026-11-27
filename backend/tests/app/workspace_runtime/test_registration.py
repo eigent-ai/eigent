@@ -116,6 +116,8 @@ class Deployment:
         self.projects = {}
         self.valid_refs = {}
         self.calls = []
+        self.device_key_value = "synthetic-model-secret"
+        self.device_key_calls = []
         self.before_response = None
         monkeypatch.setattr(
             workspace_resolver,
@@ -144,6 +146,8 @@ class Deployment:
             workspace_store=self.workspace_store,
             configuration_reader=lambda: self.context,
             transport=self.transport,
+            # The model key is saved on the device, not on the server.
+            device_key=self.device_key,
         )
         self.service = runtime.get_default_execution_service()
         assert self.service is not None, (
@@ -152,6 +156,12 @@ class Deployment:
         self.service.scan_interval = 0.02
         self.service.stop_timeout = 2
         self.registration = runtime.get_default_registration_service()
+
+    def device_key(self, principal_ref, provider_id, api_url):
+        self.device_key_calls.append((principal_ref, provider_id, api_url))
+        if self.device_key_value is None:
+            raise ValueError("no key saved on this device")
+        return self.device_key_value
 
     async def server_io(self, request):
         self.calls.append(request.url.path)
@@ -178,7 +188,8 @@ class Deployment:
             source["provider"] = copy.deepcopy(
                 self.valid_refs[body["provider_ref"]]
             )
-            source["api_key"] = "synthetic-model-secret"
+            # An older server may still answer with a key. It is never used.
+            source["api_key"] = "server-side-value-must-not-be-used"
         if self.before_response:
             await self.before_response(request)
         return httpx.Response(200, json=source)

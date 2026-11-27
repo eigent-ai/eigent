@@ -22,6 +22,7 @@ from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
 from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
+from app.model.local_model_configuration import ModelCredentialReference
 from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
@@ -96,6 +97,10 @@ class Chat(BaseModel):
     # the desktop-local resolver instead. None => legacy api_key path (default,
     # no behavior change). See docs/models/codex-subscription-auth-review.md.
     auth_source: Literal["codex_subscription"] | None = None
+    # Names a model configuration saved on the user's device. When set, the
+    # request carries no key: the saved key, address and provider settings are
+    # read from the desktop app for this run and kept in memory only.
+    model_credential: ModelCredentialReference | None = None
     language: str = "en"
     timezone: str | None = None
     browser_port: int = 9222
@@ -315,6 +320,8 @@ class AgentModelConfig(BaseModel):
     api_url: str | None = None
     model_config_dict: dict[str, Any] | None = None
     extra_params: dict | None = None
+    # Same reference as `Chat.model_credential`, for this agent only.
+    model_credential: ModelCredentialReference | None = None
 
     def has_custom_config(self) -> bool:
         """Check if any custom model configuration is set."""

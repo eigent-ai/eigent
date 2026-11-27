@@ -30,6 +30,11 @@ from app.component.model_validation import (
     validate_model_with_details,
 )
 from app.component.provider_model_transport import ProviderModelTransport
+from app.model.local_model_configuration import (
+    LocalModelConfigurationError,
+    ModelCredentialReference,
+    fill_saved_model_values,
+)
 from app.model.model_platform import NormalizedModelPlatform
 
 logger = logging.getLogger("model_controller")
@@ -53,6 +58,22 @@ class ValidateModelRequest(BaseModel):
     )
     include_diagnostics: bool = Field(
         False, description="Include detailed diagnostic information"
+    )
+    model_credential: ModelCredentialReference | None = Field(
+        None,
+        description=(
+            "Configuration saved on this device that is being edited. "
+            "Values left out of this request are taken from it."
+        ),
+    )
+
+
+def _saved_model_http_error(
+    exc: LocalModelConfigurationError,
+) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={"message": str(exc), "error_code": exc.code},
     )
 
 
@@ -88,7 +109,14 @@ class ListProviderModelsRequest(BaseModel):
     models_endpoint: str = Field(
         ..., min_length=1, description="Provider model-list path"
     )
-    api_key: str = Field(..., min_length=1, description="Provider API key")
+    api_key: str | None = Field(None, description="Provider API key")
+    model_credential: ModelCredentialReference | None = Field(
+        None,
+        description=(
+            "Configuration saved on this device whose key is used when "
+            "api_key is left out."
+        ),
+    )
 
 
 def _provider_models_url(api_host: str, models_endpoint: str) -> str:
@@ -169,6 +197,24 @@ async def _provider_model_addresses(url: httpx.URL) -> list[str]:
 @router.post("/model/list")
 async def list_provider_models(request: ListProviderModelsRequest):
     """Fetch an OpenAI-compatible model list without renderer CORS limits."""
+    api_key = (request.api_key or "").strip()
+    if not api_key and request.model_credential is not None:
+        try:
+            # The saved key is only used with the host it was saved for.
+            api_key = (
+                await asyncio.to_thread(
+                    fill_saved_model_values,
+                    request.model_credential,
+                    api_key=None,
+                    url=request.api_host,
+                    model_config_dict=None,
+                    extra_params=None,
+                )
+            ).api_key or ""
+        except LocalModelConfigurationError as exc:
+            raise _saved_model_http_error(exc) from None
+    if not api_key:
+        raise HTTPException(status_code=422, detail="API key is required.")
     url = _provider_models_url(request.api_host, request.models_endpoint)
     try:
         target = httpx.URL(url)
@@ -193,7 +239,7 @@ async def list_provider_models(request: ListProviderModelsRequest):
                             target.copy_with(host=address),
                             headers={
                                 "Host": target.netloc.decode("ascii"),
-                                "Authorization": f"Bearer {request.api_key}",
+                                "Authorization": f"Bearer {api_key}",
                                 "Accept": "application/json",
                             },
                             # Dial only a validated literal; TLS still checks
@@ -257,6 +303,26 @@ async def validate_model(request: ValidateModelRequest):
 
     Returns detailed diagnostic information if include_diagnostics is True.
     """
+    if request.model_credential is not None:
+        try:
+            filled = await asyncio.to_thread(
+                fill_saved_model_values,
+                request.model_credential,
+                api_key=request.api_key,
+                url=request.url,
+                model_config_dict=request.model_config_dict,
+                extra_params=request.extra_params,
+            )
+        except LocalModelConfigurationError as exc:
+            raise _saved_model_http_error(exc) from None
+        request = request.model_copy(
+            update={
+                "api_key": filled.api_key,
+                "url": filled.url,
+                "model_config_dict": filled.model_config_dict,
+                "extra_params": filled.extra_params,
+            }
+        )
     platform = request.model_platform
     model_type = request.model_type
     has_custom_url = request.url is not None

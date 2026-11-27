@@ -272,6 +272,28 @@ class WorkspaceSecretBroker:
             "slot_id": identity.slot_id,
         }
 
+    def exchange(
+        self,
+        path: str,
+        request: dict,
+        *,
+        max_response_bytes: int | None = None,
+    ) -> tuple[int, dict]:
+        """POST to another route of this private channel.
+
+        Returns the HTTP status with the JSON body, or an empty body when the
+        answer is not a JSON object. The body is never logged or echoed.
+        """
+
+        status, raw = self._send(
+            path, request, max_response_bytes=max_response_bytes
+        )
+        try:
+            response = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            response = None
+        return status, response if isinstance(response, dict) else {}
+
     def _request(
         self,
         path: str,
@@ -279,6 +301,32 @@ class WorkspaceSecretBroker:
         *,
         max_response_bytes: int | None = None,
     ) -> dict:
+        status, raw = self._send(
+            path, request, max_response_bytes=max_response_bytes
+        )
+        if status != 200:
+            raise WorkspaceSecretBrokerError(
+                f"Workspace secret is unavailable (broker_status_{status})"
+            )
+        try:
+            response = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WorkspaceSecretBrokerError(
+                "Workspace secret broker returned an invalid response"
+            ) from exc
+        if not isinstance(response, dict):
+            raise WorkspaceSecretBrokerError(
+                "Workspace secret broker returned an invalid response"
+            )
+        return response
+
+    def _send(
+        self,
+        path: str,
+        request: dict,
+        *,
+        max_response_bytes: int | None = None,
+    ) -> tuple[int, bytes]:
         response_limit = max_response_bytes or self.MAX_RESPONSE_BYTES
         encoded = json.dumps(
             request, separators=(",", ":"), sort_keys=True
@@ -321,25 +369,11 @@ class WorkspaceSecretBroker:
                 raise WorkspaceSecretBrokerError(
                     "Workspace secret broker response is too large"
                 )
-            if http_response.status != 200:
-                raise WorkspaceSecretBrokerError(
-                    "Workspace secret is unavailable "
-                    f"(broker_status_{http_response.status})"
-                )
+            status = http_response.status
         except (OSError, TimeoutError, HTTPException) as exc:
             raise WorkspaceSecretBrokerError(
                 "Workspace secret broker is unavailable"
             ) from exc
         finally:
             connection.close()
-        try:
-            response = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise WorkspaceSecretBrokerError(
-                "Workspace secret broker returned an invalid response"
-            ) from exc
-        if not isinstance(response, dict):
-            raise WorkspaceSecretBrokerError(
-                "Workspace secret broker returned an invalid response"
-            )
-        return response
+        return status, raw

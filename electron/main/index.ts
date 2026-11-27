@@ -105,6 +105,10 @@ import {
 } from './localFileSecurity';
 import { filePathFromLocalFileUrl } from './localFileUrl';
 import {
+  getDefaultModelConfigurationStore,
+  registerModelConfigurationIpcHandlers,
+} from './modelConfigurations';
+import {
   authorizeWorkspaceLocalNode,
   openWorkspaceLocalFile,
   rememberBoundedPathGrant,
@@ -1305,6 +1309,11 @@ function registerIpcHandlers() {
   registerWorkspaceSecretIpcHandlers(
     ipcMain,
     getDefaultWorkspaceSecretVault(),
+    assertMainRendererSender
+  );
+  registerModelConfigurationIpcHandlers(
+    ipcMain,
+    getDefaultModelConfigurationStore(),
     assertMainRendererSender
   );
   // Event streams to the Brain this process runs bypass the renderer's

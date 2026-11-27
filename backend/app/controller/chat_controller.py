@@ -49,6 +49,10 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
+from app.model.local_model_configuration import (
+    LocalModelConfigurationError,
+    apply_local_model_configurations,
+)
 from app.model.model_platform import canonical_model_platform
 from app.run_context import (
     RunContext,
@@ -1127,7 +1131,11 @@ def _build_run_context(
     )
     credential_sources = {
         "model": data.auth_source
-        or ("request_api_key" if data.api_key else "none"),
+        or (
+            "device_model_configuration"
+            if data.model_credential is not None
+            else ("request_api_key" if data.api_key else "none")
+        ),
         "cloud": "request_api_key" if data.is_cloud() else "none",
         "search": "request_search_config" if data.search_config else "none",
     }
@@ -2077,6 +2085,16 @@ async def start_chat_stream(data: Chat, request: Request):
 )
 async def post(data: Chat, request: Request):
     from app.workspace_config.models import WorkspaceModelSelectionChangedError
+
+    try:
+        # A model saved on this device arrives as a reference. Its key is read
+        # from the desktop app here and stays in memory for this run.
+        await asyncio.to_thread(apply_local_model_configurations, data)
+    except LocalModelConfigurationError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from None
 
     try:
         stream = await start_chat_stream(data, request)

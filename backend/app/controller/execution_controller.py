@@ -30,6 +30,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import LocalControlPrincipal, require_local_control_principal
+from app.model.local_model_configuration import remember_account_scope
 from app.workspace_runtime.admission import (
     AdmissionError,
     ExecutionRequest,
@@ -46,6 +47,8 @@ from app.workspace_runtime.service import (
     ExecutionUnavailable,
 )
 from app.workspace_runtime.store import WorkspaceStateError
+
+MODEL_ACCOUNT_SCOPE_HEADER = "x-eigent-model-account"
 
 
 class ExecutionRoute(APIRoute):
@@ -214,8 +217,15 @@ async def register_execution_configuration(
             # The owned Project/Space/provider records supply the config. This
             # route accepts no account, key, path, permission or model payload.
             raise ValueError("registration accepts references only")
+        origin = await _origin(principal)
+        # The app names the local scope under which this account's own model
+        # keys are saved on the device. It is a digest, not a credential.
+        remember_account_scope(
+            origin.principal_ref,
+            request.headers.get(MODEL_ACCOUNT_SCOPE_HEADER, ""),
+        )
         return await registration.register(
-            project_id, await _origin(principal), claim_session=claim_session
+            project_id, origin, claim_session=claim_session
         )
     except (AdmissionError, ValueError) as exc:
         raise _error(exc) from None
