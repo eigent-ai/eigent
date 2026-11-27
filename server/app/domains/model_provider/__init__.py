@@ -12,4 +12,4 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Model Provider domain - API key / model supplier management."""
+"""Model Provider domain - non-secret model provider metadata. Keys stay on the user's device."""

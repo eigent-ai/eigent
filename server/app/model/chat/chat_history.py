@@ -16,12 +16,13 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import Float, Integer
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Column, Field, SmallInteger, String
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from app.model.provider.metadata import public_address
 from app.shared.types.space_types import SkipReason
 
 
@@ -52,7 +53,8 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     language: str
     model_platform: str
     model_type: str
-    api_key: str
+    # A label for where the model ran: "cloud" or the address of the user's own
+    # endpoint without login part, query or fragment. Never a credential.
     api_url: str = Field(sa_column=Column(String(500)))
     max_retries: int = Field(default=3)
     file_save_path: str | None = None
@@ -65,7 +67,16 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     skip_reason: SkipReason | None = Field(default=None, sa_column=Column(JSON))
 
 
+# The table still has a required "api_key" column from the time when a copy of
+# the model key was saved with each task. It is kept out of the model on
+# purpose: no query selects it and no code can read or write it. New rows get an
+# empty value. The column is removed in a later migration.
+ChatHistory.__table__.append_column(Column("api_key", String, nullable=False, default=""))
+
+
 class ChatHistoryIn(BaseModel):
+    # Older clients may still send "api_key". It is not a field here, so it is
+    # dropped before anything is stored.
     task_id: str
     project_id: str | None = None
     space_id: str | None = None
@@ -75,7 +86,6 @@ class ChatHistoryIn(BaseModel):
     language: str
     model_platform: str
     model_type: str
-    api_key: str | None = ""
     api_url: str | None = None
     max_retries: int = 3
     file_save_path: str | None = None
@@ -96,6 +106,11 @@ class ChatHistoryIn(BaseModel):
     # → 404 mapping in history_controller.
     mode: Literal["single-agent", "workforce"] | None = None
 
+    @field_validator("api_url")
+    @classmethod
+    def keep_public_address_only(cls, value: str | None) -> str | None:
+        return None if value is None else public_address(value)
+
 
 class ChatHistoryOut(BaseModel):
     id: int
@@ -107,7 +122,6 @@ class ChatHistoryOut(BaseModel):
     language: str
     model_platform: str
     model_type: str
-    api_key: str | None = None
     api_url: str | None = None
     max_retries: int
     file_save_path: str | None = None
@@ -119,6 +133,12 @@ class ChatHistoryOut(BaseModel):
     skip_reason: SkipReason | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @field_validator("api_url")
+    @classmethod
+    def keep_public_address_only(cls, value: str | None) -> str | None:
+        # Rows saved by older clients can hold an address with a login part.
+        return None if value is None else public_address(value)
 
     @model_validator(mode="after")
     def fill_project_id_from_task_id(self):

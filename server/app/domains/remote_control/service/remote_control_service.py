@@ -58,6 +58,7 @@ from app.domains.space.service.space_service import SpaceService
 from app.model.chat.chat_history import ChatHistory, ChatStatus
 from app.model.chat.chat_step import ChatStep
 from app.model.project.project import Project, ProjectIn, ProjectMode, ProjectOut
+from app.model.provider.metadata import public_address, stored_model_type, stored_provider_name
 from app.model.provider.provider import Provider
 from app.model.remote_control import (
     RemoteCommandState,
@@ -1031,8 +1032,10 @@ class RemoteControlService:
         if fallback:
             return fallback
 
+        # Only the three labels a history row needs. The provider's key is not
+        # on this server; the desktop that runs the task has it.
         provider = db.exec(
-            select(Provider)
+            select(Provider.provider_name, Provider.model_type, Provider.endpoint_url)
             .where(Provider.user_id == user_id, Provider.prefer == True, Provider.no_delete())  # noqa: E712
             .order_by(desc(Provider.updated_at), desc(Provider.id))
         ).first()
@@ -1043,9 +1046,8 @@ class RemoteControlService:
             )
         return SimpleNamespace(
             language="en",
-            model_platform=provider.provider_name,
-            model_type=provider.model_type or "",
-            api_key=provider.api_key or "",
+            model_platform=stored_provider_name(provider.provider_name),
+            model_type=stored_model_type(provider.model_type),
             api_url=provider.endpoint_url or "",
             max_retries=3,
             file_save_path=None,
@@ -1073,8 +1075,8 @@ class RemoteControlService:
             language=template.language,
             model_platform=template.model_platform,
             model_type=template.model_type,
-            api_key=template.api_key,
-            api_url=template.api_url,
+            # The template can be a row saved by an older client.
+            api_url=public_address(template.api_url),
             max_retries=template.max_retries,
             file_save_path=template.file_save_path,
             installed_mcp=template.installed_mcp,

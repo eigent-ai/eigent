@@ -36,12 +36,28 @@ from app.domains.model_provider.service import provider_service
 from app.domains.model_provider.service.provider_service import ProviderService
 from app.domains.remote_control.api.command_control_controller import router as device_router
 from app.model.project import Project
-from app.model.provider.provider import Provider, ProviderIn, ProviderOut, VaildStatus
+from app.model.provider.metadata import parse_model_provider_write
+from app.model.provider.provider import ModelProviderOut, Provider
 from app.model.remote_control.command_control import DesktopDevice
 from app.model.space import Space
 from app.model.user.user import User
 from app.shared.auth import user_auth
 from app.shared.exception import TokenException
+
+# A value an older client stored in the row. No route may ever return it.
+STORED_BY_OLDER_CLIENT = "synthetic-provider-secret"
+
+
+def metadata(**changes):
+    return parse_model_provider_write(
+        {
+            "provider_name": "openai",
+            "model_type": "gpt-5",
+            "endpoint_url": "https://api.openai.com/v1",
+            "is_valid": True,
+            **changes,
+        }
+    )
 
 
 @pytest.fixture
@@ -75,17 +91,10 @@ def authority(tmp_path, monkeypatch):
     async def rejected(_request, _exception):
         return JSONResponse(status_code=401, content={"code": "authentication_required"})
 
-    provider = ProviderService.create(
-        1,
-        ProviderIn(
-            provider_name="openai",
-            model_type="gpt-5",
-            api_key="synthetic-provider-secret",
-            endpoint_url="https://api.openai.com/v1",
-            is_valid=VaildStatus.is_valid,
-            prefer=True,
-        ).model_dump(),
-    )["provider"]
+    provider = ProviderService.create(1, metadata())["provider"]
+    assert ProviderService.set_prefer(provider.id, 1)["success"]
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE provider SET api_key=:key"), {"key": STORED_BY_OLDER_CLIENT})
     with TestClient(app) as client:
         headers = {"Authorization": "Bearer " + user_auth.create_access_token(1), "X-Desktop-Instance-ID": "device"}
         assert client.post("/sync/devices/register", headers=headers, json={}).status_code == 200
@@ -97,7 +106,7 @@ def reference(authority):
     response = authority.client.get("/sync/execution/projects/project/configuration", headers=authority.headers)
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
-    assert "synthetic-provider-secret" not in response.text
+    assert STORED_BY_OLDER_CLIENT not in response.text
     config = response.json()
     return {
         "provider_ref": config["provider"]["provider_ref"],
@@ -116,10 +125,16 @@ def test_existing_auth_and_exact_reference(authority):
     ref = reference(authority)
     result = resolve(authority, ref)
     assert result.status_code == 200, result.text
-    assert result.json()["api_key"] == "synthetic-provider-secret"
+    # The exact reference is confirmed, and the answer carries no key: it is the
+    # same object as the configuration read.
+    assert "api_key" not in result.json()
+    assert STORED_BY_OLDER_CLIENT not in result.text
+    assert (
+        result.json()
+        == authority.client.get("/sync/execution/projects/project/configuration", headers=authority.headers).json()
+    )
     assert result.headers["cache-control"] == "no-store"
-    # Legacy DTO remains compatible and never acquires the revision field.
-    assert "execution_revision" not in ProviderOut.model_fields
+    assert "api_key" not in ModelProviderOut.model_fields
     assert authority.client.get("/sync/execution/identity").status_code == 401
     alien = dict(authority.headers, Authorization="Bearer " + user_auth.create_access_token(2))
     assert authority.client.get("/sync/execution/identity", headers=alien).status_code in (403, 404)
@@ -136,7 +151,7 @@ def test_every_provider_writer_invalidates_old_reference(authority, mutation):
     ref = reference(authority)
     identity = authority.provider.id
     if mutation == "update":
-        ProviderService.update(identity, 1, {"api_key": "synthetic-rotated-secret"})
+        assert ProviderService.update(identity, 1, metadata(model_type="gpt-4o"))["success"]
     elif mutation == "invalidate":
         ProviderService.invalidate(identity, 1)
     elif mutation == "delete":
@@ -224,7 +239,12 @@ def test_unsupported_configuration_and_input_do_not_echo_secrets(authority, conf
     ref = reference(authority)
     invalid = resolve(authority, dict(ref, api_key="input-secret"))
     assert invalid.status_code == 422 and "input-secret" not in invalid.text
-    ProviderService.update(authority.provider.id, 1, {"encrypted_config": config})
+    # A row as an older client could have saved it; the service refuses such a write today.
+    with Session(authority.engine) as db:
+        provider = db.get(Provider, authority.provider.id)
+        provider.encrypted_config = config
+        db.add(provider)
+        db.commit()
     result = authority.client.get("/sync/execution/projects/project/configuration", headers=authority.headers)
     assert result.status_code == 409 and "input-secret" not in result.text
 
