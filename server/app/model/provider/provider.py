@@ -15,13 +15,21 @@
 from enum import IntEnum
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, Field as PydanticField, field_validator
+from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, SmallInteger, String, event, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Field
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.model.provider.execution_revision import after_create
+from app.model.provider.metadata import (
+    ModelProviderConfig,
+    ModelProviderWrite,
+    stored_config,
+    stored_endpoint_url,
+    stored_model_type,
+    stored_provider_name,
+)
 
 
 class VaildStatus(IntEnum):
@@ -30,14 +38,21 @@ class VaildStatus(IntEnum):
 
 
 class Provider(AbstractModel, DefaultTimes, table=True):
+    """Non-secret description of a model provider a user has set up.
+
+    The provider's key and every other secret part of its configuration stay on
+    the user's device. This server never receives them.
+    """
+
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     provider_name: str
     model_type: str
-    api_key: str
     # Assigned by database triggers. It is random, never a hash of a key/token.
     execution_revision: str = Field(default="", sa_column=Column(String(32), nullable=False, server_default=text("''")))
     endpoint_url: str = ""
+    # Plain settings from the allow-list in app.model.provider.metadata. The
+    # column name is historical: the content is not encrypted and not secret.
     encrypted_config: dict | None = Field(default=None, sa_column=Column(JSON))
     prefer: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("false")))
     is_valid: VaildStatus = Field(
@@ -46,35 +61,43 @@ class Provider(AbstractModel, DefaultTimes, table=True):
     )
 
 
-class ProviderIn(BaseModel):
-    provider_name: str
-    model_type: str
-    api_key: str
-    endpoint_url: str
-    encrypted_config: dict | None = None
-    is_valid: VaildStatus = PydanticField(
-        default=VaildStatus.not_valid,
-        validation_alias=AliasChoices("is_valid", "is_vaild"),
-    )
-    prefer: bool = False
-
-    @field_validator("is_valid", mode="before")
-    @classmethod
-    def normalize_is_valid(cls, value):
-        if isinstance(value, bool):
-            return VaildStatus.is_valid if value else VaildStatus.not_valid
-        return value
+# The table still has a required "api_key" column from the time when keys were
+# sent to this server. It is kept out of the model on purpose: no query selects
+# it and no code can read or write it. New rows get an empty value. The column
+# is removed in a later migration.
+Provider.__table__.append_column(Column("api_key", String, nullable=False, default=""))
 
 
 class ProviderPreferIn(BaseModel):
     provider_id: int
 
 
-class ProviderOut(ProviderIn):
+class ModelProviderOut(BaseModel):
+    """The only shape in which a provider row leaves this server."""
+
     id: int
-    user_id: int
+    provider_name: str
+    model_type: str
+    endpoint_url: str
+    config: ModelProviderConfig
+    is_valid: VaildStatus
     prefer: bool
-    model_type: str | None = None
+    execution_revision: str
+
+    @classmethod
+    def from_row(cls, row: Provider) -> "ModelProviderOut":
+        # Rows written by older clients can hold values that are refused today.
+        # Such a value is returned empty instead of being passed through.
+        return cls(
+            id=row.id,
+            provider_name=stored_provider_name(row.provider_name),
+            model_type=stored_model_type(row.model_type),
+            endpoint_url=stored_endpoint_url(row.endpoint_url),
+            config=stored_config(row.encrypted_config),
+            is_valid=row.is_valid,
+            prefer=bool(row.prefer),
+            execution_revision=row.execution_revision or "",
+        )
 
 
 class ProviderModelMetadata(BaseModel):
@@ -95,8 +118,9 @@ class ProviderModelMetadata(BaseModel):
         configured_model_type: str | None,
     ) -> "ProviderModelMetadata":
         """Accept only projected scalars, so discovery never needs a Provider row."""
-        platform = configured_model_platform or provider_name
-        model_type = configured_model_type or model_type
+        provider_name = stored_provider_name(provider_name)
+        platform = stored_provider_name(configured_model_platform) or provider_name
+        model_type = stored_model_type(configured_model_type) or stored_model_type(model_type)
         local = provider_name in {"ollama", "vllm", "sglang", "lmstudio", "llama.cpp"}
         return cls(
             category="local" if local else "custom",
@@ -105,5 +129,15 @@ class ProviderModelMetadata(BaseModel):
             available=bool(model_type) and is_valid == VaildStatus.is_valid,
         )
 
+
+__all__ = [
+    "ModelProviderConfig",
+    "ModelProviderOut",
+    "ModelProviderWrite",
+    "Provider",
+    "ProviderModelMetadata",
+    "ProviderPreferIn",
+    "VaildStatus",
+]
 
 event.listen(Provider.__table__, "after_create", after_create)

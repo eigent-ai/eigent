@@ -14,9 +14,10 @@
 
 """Authenticated projection of existing Project, Space and Provider records.
 
-This is not a second configuration or credential store. Resolving a pinned
-provider requires its exact database-owned revision and a currently authorized
-account/device. Values are returned only by the private credential operation.
+This is not a second configuration store and it holds no credential. Checking a
+pinned provider requires its exact database-owned revision and a currently
+authorized account/device. The provider's key never passes through here: it
+stays on the user's device.
 """
 
 import copy
@@ -29,6 +30,7 @@ from sqlmodel import select
 
 from app.domains.remote_control.service.command_control_service import CommandControlService
 from app.model.project import Project
+from app.model.provider.metadata import looks_like_credential
 from app.model.provider.provider import Provider, VaildStatus
 from app.model.remote_control.command_control import DesktopDevice
 from app.model.space import Space
@@ -45,7 +47,7 @@ def provider_projection(provider):
         or provider.is_valid != VaildStatus.is_valid
         or not re.fullmatch(r"[0-9a-f]{32}", provider.execution_revision or "")
         or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}", provider.model_type or "")
-        or provider.model_type.lower().startswith(("sk-", "sk_"))
+        or looks_like_credential(provider.model_type)
     ):
         unavailable()
     endpoint = urlsplit(provider.endpoint_url)
@@ -107,9 +109,8 @@ def provider_projection(provider):
         or not 0 <= retries <= 3
     ):
         unavailable()
-    # Never derive a durable fingerprint from a secret, including a secret
-    # accidentally copied into an otherwise non-secret string field.
-    if provider.api_key and any(provider.api_key in value for value in (provider.model_type, provider.endpoint_url)):
+    # A credential pasted into the address by mistake must not be handed on.
+    if any(looks_like_credential(segment) for segment in endpoint.path.split("/")):
         unavailable()
     return {
         "provider_ref": f"provider:{provider.id}:{provider.execution_revision}",
@@ -201,7 +202,9 @@ class ExecutionConfigurationSource:
             for field in ("model_platform", "model_type"):
                 if field in selection and selection[field] != projection[field]:
                     unavailable()
-        result = {
+        # The same answer for the current selection and for an exact pinned
+        # revision. It never carries a key: the device supplies that itself.
+        return {
             **identity,
             "project_id": project.id,
             "space_id": space.id,
@@ -211,9 +214,3 @@ class ExecutionConfigurationSource:
             "thinking_effort": effort,
             "provider": projection,
         }
-        if exact is not None:
-            if not isinstance(provider.api_key, str) or not provider.api_key.strip():
-                unavailable()
-            # Never log, hash or persist this response in the Brain.
-            result["api_key"] = provider.api_key
-        return result

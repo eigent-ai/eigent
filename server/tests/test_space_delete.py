@@ -134,7 +134,6 @@ def _add_dependents(engine, project_id, space_id="space-a"):
                 language="en",
                 model_platform="synthetic",
                 model_type="synthetic",
-                api_key="",
                 api_url="",
             )
         )

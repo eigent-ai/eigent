@@ -12,7 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Device/account-authenticated configuration and exact credential projection."""
+"""Device/account-authenticated configuration and exact provider confirmation."""
 
 from typing import Annotated, Literal
 
@@ -24,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.database import session
 from app.domains.model_provider.service.execution_configuration import ExecutionConfigurationSource
 from app.domains.remote_control.api.command_control_controller import DevicePrincipal, device_principal_must
+from app.model.provider.metadata import ModelParameters, Number, PlainSettings
 
 router = APIRouter(prefix="/sync/execution", tags=["Managed Execution Configuration"])
 Principal = Annotated[DevicePrincipal, Depends(device_principal_must)]
@@ -37,25 +38,68 @@ class ExactProviderReference(BaseModel):
     session_mode: Literal["single-agent", "workforce"]
 
 
-def private_response(response):
+class ExecutionIdentity(BaseModel):
+    account_owner_id: str
+    desktop_instance_id: str
+    device_credential_version: int
+
+
+class ExecutionConstructorParameters(PlainSettings):
+    api_mode: str | None = None
+    timeout: Number | None = None
+    max_retries: int | None = None
+
+
+class ExecutionProvider(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    provider_ref: str
+    model_platform: str
+    model_type: str
+    api_url: str
+    model_config_dict: ModelParameters
+    extra_params: ExecutionConstructorParameters
+
+
+class ExecutionConfiguration(ExecutionIdentity):
+    """Everything a run needs from the account except the provider's key.
+
+    The response model is also a filter: a field that is not listed here cannot
+    leave through these routes.
+    """
+
+    project_id: str
+    space_id: str
+    space_source_type: str | None
+    session_mode: str
+    space_root: str
+    thinking_effort: str | None
+    provider: ExecutionProvider
+
+
+def private_response(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
 
 
-@router.get("/identity")
+@router.get("/identity", response_model=ExecutionIdentity)
 def identity(principal: Principal, db: Database, response: Response):
     private_response(response)
     return ExecutionConfigurationSource.identity(db, principal)
 
 
-@router.get("/projects/{project_id}/configuration")
+@router.get("/projects/{project_id}/configuration", response_model=ExecutionConfiguration)
 def configuration(project_id: str, principal: Principal, db: Database, response: Response):
     private_response(response)
     return ExecutionConfigurationSource.read(db, principal, project_id)
 
 
-@router.post("/projects/{project_id}/credentials:resolve")
+@router.post("/projects/{project_id}/credentials:resolve", response_model=ExecutionConfiguration)
 async def resolve(project_id: str, principal: Principal, db: Database, request: Request, response: Response):
+    """Confirm that an exact pinned provider revision is still valid for this device.
+
+    The path is historical. The answer holds no credential: the provider's key
+    stays on the device and is never stored on or returned by this server.
+    """
     private_response(response)
     try:
         raw = b""

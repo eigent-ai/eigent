@@ -155,7 +155,6 @@ class TriggerCrudService:
             model_platform=data.agent_model or "none",
             model_type=data.agent_model or "none",
             installed_mcp="none",
-            api_key="",
             api_url="",
             max_retries=3,
             project_name=data.name,

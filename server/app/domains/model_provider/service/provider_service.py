@@ -12,31 +12,46 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""ProviderService: model provider CRUD with prefer/invalidate. Follows CreditsService pattern."""
+"""ProviderService: model provider metadata with prefer/invalidate.
+
+A provider row describes which model a user has set up. It never holds the
+provider's key: keys stay on the user's device.
+"""
 
 from sqlalchemy import update
-from sqlmodel import select, col
+from sqlmodel import col, select
 from loguru import logger
 
 from app.core.database import session_make
+from app.model.provider.metadata import ModelProviderWrite
 from app.model.provider.provider import Provider, VaildStatus
+
+
+def _columns(data: ModelProviderWrite) -> dict:
+    columns = data.to_columns()
+    columns["is_valid"] = VaildStatus(columns["is_valid"])
+    return columns
 
 
 class ProviderService:
     """Model provider management - static methods, self-managed session."""
 
     @staticmethod
+    def owned(user_id: int, keyword: str | None = None, prefer: bool | None = None):
+        """Statement for a user's providers, newest first."""
+        stmt = select(Provider).where(Provider.user_id == user_id, Provider.no_delete())
+        if keyword:
+            safe_keyword = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            stmt = stmt.where(col(Provider.provider_name).like(f"%{safe_keyword}%", escape="\\"))
+        if prefer is not None:
+            stmt = stmt.where(Provider.prefer == prefer)
+        return stmt.order_by(col(Provider.created_at).desc(), col(Provider.id).desc())
+
+    @staticmethod
     def list_for_user(user_id: int, keyword: str | None = None, prefer: bool | None = None) -> list[Provider]:
         """List user providers, supports keyword search and prefer filter."""
         with session_make() as s:
-            stmt = select(Provider).where(Provider.user_id == user_id, Provider.no_delete())
-            if keyword:
-                safe_keyword = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                stmt = stmt.where(col(Provider.provider_name).like(f"%{safe_keyword}%"))
-            if prefer is not None:
-                stmt = stmt.where(Provider.prefer == prefer)
-            stmt = stmt.order_by(col(Provider.created_at).desc(), col(Provider.id).desc())
-            return list(s.exec(stmt).all())
+            return list(s.exec(ProviderService.owned(user_id, keyword, prefer)).all())
 
     @staticmethod
     def get(provider_id: int, user_id: int) -> Provider | None:
@@ -48,39 +63,25 @@ class ProviderService:
             return model
 
     @staticmethod
-    def create(user_id: int, data: dict) -> dict:
-        """Create provider. Returns {"success": True, "provider": Provider}."""
+    def create(user_id: int, data: ModelProviderWrite) -> dict:
+        """Create provider metadata. Returns {"success": True, "provider": Provider}."""
         with session_make() as s:
-            model = Provider(**data, user_id=user_id)
+            model = Provider(**_columns(data), user_id=user_id)
             model.save(s)
             s.refresh(model)
             return {"success": True, "provider": model}
 
     @staticmethod
-    def update(provider_id: int, user_id: int, data: dict) -> dict:
-        """Update provider: ownership check."""
+    def update(provider_id: int, user_id: int, data: ModelProviderWrite) -> dict:
+        """Replace provider metadata: ownership check. The default flag is kept."""
         with session_make() as s:
             model = s.exec(
                 select(Provider).where(Provider.user_id == user_id, Provider.no_delete(), Provider.id == provider_id)
             ).first()
             if not model:
                 return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
-            # Only allow updating provider fields owned by this CRUD surface.
-            _UPDATABLE_FIELDS = {
-                "provider_name",
-                "api_key",
-                "endpoint_url",
-                "encrypted_config",
-                "model_type",
-                "prefer",
-                "is_valid",
-                "is_vaild",
-            }
-            for key, value in data.items():
-                if key in _UPDATABLE_FIELDS:
-                    if key == "is_vaild":
-                        key = "is_valid"
-                    setattr(model, key, value)
+            for key, value in _columns(data).items():
+                setattr(model, key, value)
             model.save(s)
             s.refresh(model)
             return {"success": True, "provider": model}
@@ -117,9 +118,12 @@ class ProviderService:
         """Set preferred provider: lock user rows, clear all prefer flags, then set the specified one."""
         with session_make() as s:
             # Lock all provider rows for this user to prevent concurrent prefer changes
-            s.exec(
-                select(Provider).where(Provider.user_id == user_id, Provider.no_delete()).with_for_update()
+            owned = s.exec(
+                select(Provider.id).where(Provider.user_id == user_id, Provider.no_delete()).with_for_update()
             ).all()
+            if provider_id not in owned:
+                # Leave the current default alone when the id is not this user's.
+                return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
             # Clear all prefer flags for this user
             s.exec(update(Provider).where(Provider.user_id == user_id, Provider.no_delete()).values(prefer=False))
             # Set the specified provider as preferred
