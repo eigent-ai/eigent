@@ -71,6 +71,9 @@ async def application(deployment):
             workspace_store=d.workspace_store,
             configuration_reader=lambda: d.context,
             transport=d.transport,
+            # The model key is saved on the device. This harness starts no
+            # desktop app, so the device side is synthetic like the server.
+            device_key=d.device_key,
         )
         d.service = runtime.get_default_execution_service()
         d.registration = runtime.get_default_registration_service()
@@ -333,6 +336,13 @@ async def test_delivery_manifest_to_parallel_files(
                 artifacts["start-a"]["content_digest"]
                 != artifacts["next-a"]["content_digest"]
             )
+            # Every key came from the device, asked for the pinned provider
+            # and the address the Session's model is called at.
+            assert d.device_key_calls
+            assert {
+                (provider_id, address)
+                for _, provider_id, address in d.device_key_calls
+            } == {(1, "https://model.example.test/authorized/v1")}
             record_observation(
                 tmp_path,
                 {
