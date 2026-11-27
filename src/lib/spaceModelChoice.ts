@@ -21,6 +21,7 @@
 
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { fetchConfiguredProviders } from '@/lib/configuredModels';
+import { createLocalError } from '@/lib/localError';
 import { getProviderValid } from '@/lib/providerStatus';
 import { isLegacySpace } from '@/lib/spaceLabel';
 import { getAuthStore } from '@/store/authStore';
@@ -173,6 +174,10 @@ export async function resolveSpaceModelChoice(
   const records = await fetchConfiguredProviders();
   assertCurrent();
   const record = records.find((item) => item.id === choice.provider_id);
+  // The model is still set up and only its key is missing on this device.
+  // Ask for the key instead of quietly running the Space on another model.
+  if (record?.key_state === 'needed')
+    throw createLocalError(i18next.t('chat.model-key-needed'));
   if (!record || !getProviderValid(record)) return null;
   return {
     modelType: choice.modelType,

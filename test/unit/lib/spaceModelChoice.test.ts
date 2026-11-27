@@ -237,5 +237,21 @@ describe('Space model choice', () => {
         'offline'
       );
     });
+
+    it('asks for the key instead of leaving a model whose key is not on this device', async () => {
+      mocks.providers.mockResolvedValue([
+        {
+          id: 2,
+          provider_name: 'openai',
+          model_type: 'x',
+          is_valid: 1,
+          key_state: 'needed',
+        },
+      ]);
+      // Not null: null would run the Space on the default model instead.
+      await expect(resolveSpaceModelChoice(byok, current)).rejects.toThrow(
+        'The key for this model is not saved on this device'
+      );
+    });
   });
 });

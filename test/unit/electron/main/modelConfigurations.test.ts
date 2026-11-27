@@ -101,7 +101,7 @@ describe('ModelConfigurationStore', () => {
       rootDir: path.join(rootDir, 'secure'),
       crypto: fakeCrypto(options),
       platform,
-      now: () => new Date('2026-11-20T00:00:00.000Z'),
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
     });
   }
 
