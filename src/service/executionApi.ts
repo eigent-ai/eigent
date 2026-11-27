@@ -24,6 +24,9 @@ import {
   captureDefaultModelSelection,
   type DefaultModelSelectionSnapshot,
 } from '@/lib/defaultModelSelectionState';
+import { modelAccountScope } from '@/lib/modelConfigurationStore';
+import { registerModelConfiguration } from '@/lib/modelProviderRegistration';
+import { fetchSavedModels } from '@/lib/savedModels';
 import { getAuthStore } from '@/store/authStore';
 
 export interface ExecutionScope {
@@ -92,6 +95,22 @@ export interface ExecutionArtifact {
   size: number;
   content_digest: string;
   checkpoint_revision: string;
+}
+
+/**
+ * The account's record for a model saved on this device. A managed Session
+ * names its model by that record; the key itself stays on the device.
+ */
+async function accountProviderId(providerId: number): Promise<number> {
+  const records = await fetchSavedModels();
+  const record =
+    records.find((item) => item.id === providerId) ??
+    records.find((item) => item.server_id === providerId);
+  const id = record
+    ? (record.server_id ?? (await registerModelConfiguration(record)))
+    : null;
+  if (id == null) throw new SessionExecutionError('model_unsupported');
+  return id;
 }
 
 export class SessionExecutionError extends Error {
@@ -237,17 +256,22 @@ export async function prepareSessionMessage(
   assertExecutionScope(scope);
   await input.waitForConfigurationWrites();
   assertExecutionScope(scope);
-  const selection =
+  const chosen =
     input.selection ??
     input.defaultSelection?.selection ??
     (await fetchSessionExecutionRoute(scope)).selection;
   if (
-    !selection ||
-    !['custom', 'local'].includes(selection.modelType) ||
-    !Number.isInteger(selection.provider_id)
+    !chosen ||
+    !['custom', 'local'].includes(chosen.modelType) ||
+    !Number.isInteger(chosen.provider_id)
   ) {
     throw new SessionExecutionError('model_unsupported');
   }
+  const selection = {
+    ...chosen,
+    provider_id: await accountProviderId(chosen.provider_id as number),
+  };
+  assertExecutionScope(scope);
   const metadata = {
     modelSelection: { ...selection },
     thinkingEffort: input.thinkingEffort,
@@ -280,7 +304,9 @@ export async function prepareSessionMessage(
     fetchPost(
       `/projects/${encodeURIComponent(scope.projectId)}/execution-configurations?claim_session=true`,
       {},
-      undefined,
+      // Names where this account's own model keys are saved on the device.
+      // It is a digest, not a credential, and goes to the local backend only.
+      { 'X-Eigent-Model-Account': await modelAccountScope(getAuthStore()) },
       options(scope)
     )
   );

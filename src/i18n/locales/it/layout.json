@@ -1721,5 +1721,7 @@
   "show-fewer-sessions-in-space": "Mostra meno sessioni in {{name}}",
   "new-session-space": "Spazio per questa sessione",
   "spaces-switch-failed": "Impossibile cambiare spazio",
-  "space-emoji-load-failed": "Impossibile caricare le emoji. Controlla la connessione."
+  "space-emoji-load-failed": "Impossibile caricare le emoji. Controlla la connessione.",
+  "enter-model-key-again": "Inserisci di nuovo la chiave del tuo modello per continuare. Ora le chiavi vengono salvate solo su questo dispositivo.",
+  "enter-model-key-cta": "Inserisci chiave"
 }

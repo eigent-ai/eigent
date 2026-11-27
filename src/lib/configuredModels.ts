@@ -12,27 +12,39 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
 import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import { INIT_PROVODERS } from '@/lib/llm';
+import {
+  deleteLocalModelConfiguration,
+  saveLocalModelConfiguration,
+  setLocalModelConfigurationDefault,
+  type ModelConfigurationInput,
+} from '@/lib/modelConfigurationStore';
 import { configuredModelName, modelDisplayName } from '@/lib/modelDisplayName';
+import {
+  registerDefaultModelConfiguration,
+  registerModelConfiguration,
+  unregisterModelConfiguration,
+} from '@/lib/modelProviderRegistration';
 import { getProviderValid } from '@/lib/providerStatus';
+import {
+  fetchSavedModelInventory,
+  fetchSavedModels,
+  type ModelKeyStorage,
+  type SavedModel,
+} from '@/lib/savedModels';
 import { getAuthStore } from '@/store/authStore';
 import type { CloudModel } from '@/store/cloudModelStore';
 import type { Provider } from '@/types';
 
-export type ConfiguredProvider = {
-  id: number;
-  provider_name: string;
-  model_type: string;
-  api_key: string;
-  endpoint_url: string;
-  encrypted_config?: Record<string, unknown> | null;
-  prefer?: boolean;
-  is_valid?: number | boolean;
-  is_vaild?: number | boolean;
-};
+/**
+ * One of the user's own model configurations. It is kept on this device and
+ * carries no key: a run names it by `model_credential` instead.
+ */
+export type ConfiguredProvider = SavedModel;
+
+export type { ModelKeyStorage };
 
 export type ConfiguredModelChoice =
   | { id: string; group: 'eigent'; name: string; cloudModel: CloudModel }
@@ -90,8 +102,6 @@ export function selectableConfiguredModels({
   ];
 }
 
-const UNSET_KEYS = new Set(['', 'not-required']);
-
 function endpointHost(endpoint: string) {
   try {
     return new URL(endpoint).host;
@@ -100,14 +110,10 @@ function endpointHost(endpoint: string) {
   }
 }
 
-function keySuffix(apiKey: string) {
-  const key = apiKey.trim();
-  return UNSET_KEYS.has(key) ? '' : key.slice(-4);
-}
-
 /**
  * Tells a record apart from saved records with the same provider and model:
- * its endpoint host, else its key suffix, else its ID. Empty when unique.
+ * its endpoint host, else its position among them. Empty when unique. No part
+ * of a key is shown: this window does not have the key.
  */
 export function configurationHint(
   record: ConfiguredProvider,
@@ -126,13 +132,12 @@ export function configurationHint(
     twins.every((other) => endpointHost(other.endpoint_url ?? '') !== host)
   )
     return host;
-  const suffix = keySuffix(record.api_key ?? '');
-  if (
-    suffix &&
-    twins.every((other) => keySuffix(other.api_key ?? '') !== suffix)
-  )
-    return `…${suffix}`;
-  return `#${record.id}`;
+  const position =
+    [record, ...twins]
+      .map((item) => item.id)
+      .sort((left, right) => left - right)
+      .indexOf(record.id) + 1;
+  return `#${position}`;
 }
 
 export const MODEL_CONFIGURATIONS_CHANGED =
@@ -170,54 +175,37 @@ export function providerCategory(id: string): 'local' | 'custom' {
     : 'custom';
 }
 
-/** Do not collapse records by provider name: credentials belong to a record ID. */
-export async function fetchConfiguredProviders(): Promise<
-  ConfiguredProvider[]
-> {
-  const records = new Map<number, ConfiguredProvider>();
-  for (let page = 1; ; page++) {
-    const response = await proxyFetchGet('/api/v1/providers', {
-      page,
-      size: 100,
-    });
-    if (
-      !Array.isArray(response) &&
-      response?.code != null &&
-      response.code !== 0
-    ) {
-      throw new Error('Configured providers request failed');
-    }
-    if (
-      !Array.isArray(response) &&
-      (!response || !Array.isArray(response.items))
-    ) {
-      throw new Error('Invalid configured providers response');
-    }
-    const items: ConfiguredProvider[] = Array.isArray(response)
-      ? response
-      : response.items;
-    const previousSize = records.size;
-    for (const record of items) records.set(record.id, record);
-    if (page > 1 && items.length > 0 && previousSize === records.size) {
-      throw new Error('Provider pagination did not advance');
-    }
-    if (
-      Array.isArray(response) ||
-      items.length === 0 ||
-      (response.pages != null && page >= response.pages) ||
-      (response.total != null && records.size >= response.total) ||
-      (response.pages == null && response.total == null)
-    )
-      break;
-  }
-  return [...records.values()];
+/** The user's own model configurations, read from this device. */
+export const fetchConfiguredProviders = fetchSavedModels;
+
+/** The same list with where its keys are kept. */
+export const fetchConfiguredModelInventory = fetchSavedModelInventory;
+
+/** Save a configuration on this device. The key never leaves it. */
+export async function saveConfiguredProvider(
+  input: ModelConfigurationInput
+): Promise<ConfiguredProvider> {
+  const saved = await saveLocalModelConfiguration(getAuthStore(), input);
+  // The server only learns the name and plain settings, and only if it can.
+  void registerModelConfiguration(saved);
+  notifyModelConfigurationsChanged();
+  return saved;
+}
+
+export async function deleteConfiguredProvider(
+  provider: Pick<ConfiguredProvider, 'id' | 'server_id'>
+) {
+  await deleteLocalModelConfiguration(getAuthStore(), provider.id);
+  void unregisterModelConfiguration(provider.server_id);
+  notifyModelConfigurationsChanged();
 }
 
 export async function setConfiguredProviderDefault(
   provider: ConfiguredProvider
 ) {
   const { user_id: account, email } = getAuthStore();
-  await proxyFetchPost('/api/v1/provider/prefer', { provider_id: provider.id });
+  await setLocalModelConfigurationDefault(getAuthStore(), provider.id);
+  void registerDefaultModelConfiguration(provider);
   if (getAuthStore().user_id === account && getAuthStore().email === email) {
     getAuthStore().setModelType(providerCategory(provider.provider_name));
   }

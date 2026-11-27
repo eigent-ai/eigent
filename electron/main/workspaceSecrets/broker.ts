@@ -14,6 +14,10 @@
 
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import {
+  ModelConfigurationError,
+  type ModelConfigurationStore,
+} from '../modelConfigurations/store';
 import type {
   WorkspaceSecretBrokerRuntime,
   WorkspaceSecretLookup,
@@ -76,6 +80,35 @@ function parseLookup(value: unknown): WorkspaceSecretLookup {
     space_id: body.space_id as string,
     revision_id: body.revision_id as string,
     slot_id: body.slot_id as string,
+  };
+}
+
+/** A request names the configuration by its local id or its server record. */
+function parseModelConfigurationLookup(value: unknown): {
+  account_scope: string;
+  credential_id?: number;
+  server_provider_id?: number;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ModelConfigurationError(
+      'invalid_request',
+      'Invalid model configuration request'
+    );
+  }
+  const body = value as Record<string, unknown>;
+  const byLocalId = typeof body.credential_id === 'number';
+  const byServerRecord = typeof body.server_provider_id === 'number';
+  if (typeof body.account_scope !== 'string' || byLocalId === byServerRecord) {
+    throw new ModelConfigurationError(
+      'invalid_request',
+      'Invalid model configuration request'
+    );
+  }
+  return {
+    account_scope: body.account_scope,
+    ...(byLocalId
+      ? { credential_id: body.credential_id as number }
+      : { server_provider_id: body.server_provider_id as number }),
   };
 }
 
@@ -144,6 +177,9 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
  * agent subprocesses cannot inherit broker authority. Renderer IPC deliberately
  * exposes put/status/delete only; resolving a value is available solely through
  * this private loopback channel and always requires the complete binding tuple.
+ *
+ * The same channel hands the Brain a saved model configuration with its key.
+ * The renderer can save and list those configurations but cannot read a key.
  */
 export class WorkspaceSecretBroker {
   private server: http.Server | null = null;
@@ -151,7 +187,8 @@ export class WorkspaceSecretBroker {
 
   constructor(
     private readonly vault: WorkspaceSecretVault,
-    private readonly randomBytes: (size: number) => Buffer = crypto.randomBytes
+    private readonly randomBytes: (size: number) => Buffer = crypto.randomBytes,
+    private readonly modelConfigurations: ModelConfigurationStore | null = null
   ) {}
 
   async start(): Promise<WorkspaceSecretBrokerRuntime> {
@@ -214,13 +251,34 @@ export class WorkspaceSecretBroker {
     const isBatchVerify = request.url === '/v1/workspace-secrets/verify-batch';
     const isBatchResolve =
       request.url === '/v1/workspace-secrets/resolve-batch';
-    if (!isSingleVerify && !isBatchVerify && !isBatchResolve) {
+    const isModelResolve =
+      this.modelConfigurations !== null &&
+      request.url === '/v1/model-configurations/resolve';
+    if (
+      !isSingleVerify &&
+      !isBatchVerify &&
+      !isBatchResolve &&
+      !isModelResolve
+    ) {
       sendJson(response, 404, { error_code: 'not_found' });
       return;
     }
     try {
       const body = await readJsonBody(request);
-      if (isBatchResolve) {
+      if (isModelResolve) {
+        const lookup = parseModelConfigurationLookup(body);
+        const configuration =
+          lookup.credential_id !== undefined
+            ? this.modelConfigurations!.resolve({
+                account_scope: lookup.account_scope,
+                id: lookup.credential_id,
+              })
+            : this.modelConfigurations!.resolveByServerId(
+                lookup.account_scope,
+                lookup.server_provider_id!
+              );
+        sendJson(response, 200, { configuration });
+      } else if (isBatchResolve) {
         const resolutions = parseLookupBatch(body).map((lookup) => ({
           ...lookup,
           value: this.vault.resolve(lookup),
@@ -242,7 +300,18 @@ export class WorkspaceSecretBroker {
         sendJson(response, code, { status });
       }
     } catch (error) {
-      if (error instanceof WorkspaceSecretBindingMismatchError) {
+      if (error instanceof ModelConfigurationError) {
+        // Only the code leaves this process: never the message or a value.
+        const status =
+          error.code === 'not_found'
+            ? 404
+            : error.code === 'key_required'
+              ? 409
+              : error.code === 'invalid_request'
+                ? 400
+                : 500;
+        sendJson(response, status, { error_code: error.code });
+      } else if (error instanceof WorkspaceSecretBindingMismatchError) {
         sendJson(response, 403, {
           error_code: 'binding_scope_mismatch',
         });

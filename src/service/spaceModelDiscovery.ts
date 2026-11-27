@@ -16,6 +16,7 @@ import { proxyFetchGet } from '@/api/http';
 import { LOCAL_MODEL_OPTIONS } from '@/components/Settings/Models/localModels';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { getProviderValid } from '@/lib/providerStatus';
+import { fetchSavedModels } from '@/lib/savedModels';
 import {
   parseSpaceModelReference,
   spaceModelReference,
@@ -73,120 +74,32 @@ function configuredCandidate(raw: unknown): SpaceModelCandidate | null {
 }
 
 /**
- * Older APIs expose the same account-scoped source used by Models settings and
- * resolveSpaceModelBinding through /providers. Keep only projected metadata from
- * each response; never return, cache or log the credential-bearing provider row.
+ * The user's own models are saved on this device. Only projected metadata is
+ * kept from each record; a record carries no key.
  */
-async function legacyProviderCandidates(
-  assertCurrent: () => void,
-  requireComplete: boolean
-): Promise<SpaceModelCandidate[]> {
-  const projected = new Map<number, SpaceModelCandidate | null>();
-  let pagination: { pages: number; total: number; size: number } | undefined;
-  for (let page = 1; page <= 6; page++) {
-    assertCurrent();
-    const response: unknown = await proxyFetchGet('/api/v1/providers', {
-      page,
-      size: 100,
-    });
-    assertCurrent();
-    const envelope = record(response);
-    const items = Array.isArray(response) ? response : envelope.items;
-    if (!Array.isArray(items)) throw new Error('model_catalog_unavailable');
-    if (requireComplete) {
-      const { pages, total, size } = envelope;
-      // Pin the legacy Page envelope for this read. A bare array or missing
-      // metadata cannot attest completeness; pagination drift invalidates even
-      // candidates already observed on an earlier page.
-      if (
-        typeof pages !== 'number' ||
-        !Number.isSafeInteger(pages) ||
-        typeof total !== 'number' ||
-        !Number.isSafeInteger(total) ||
-        total < 0 ||
-        size !== 100 ||
-        envelope.page !== page ||
-        pages !== Math.ceil(total / size) ||
-        (pagination &&
-          (pages !== pagination.pages ||
-            total !== pagination.total ||
-            size !== pagination.size)) ||
-        items.length !== Math.min(size, Math.max(total - (page - 1) * size, 0))
-      )
-        throw new Error('model_catalog_incomplete');
-      pagination ??= { pages, total, size };
-    }
-    for (const raw of items) {
-      const provider = record(raw);
-      if (!Number.isInteger(provider.id)) {
-        if (requireComplete) throw new Error('model_catalog_incomplete');
-        continue;
-      }
-      if (requireComplete && projected.has(provider.id as number))
-        throw new Error('model_catalog_incomplete');
-      const config = record(provider.encrypted_config);
-      projected.set(
-        provider.id as number,
-        configuredCandidate({
-          category: LOCAL_MODEL_OPTIONS.some(
-            (option) => option.id === provider.provider_name
-          )
-            ? 'local'
-            : 'custom',
-          // Match buildAgentModelConfigFromProvider's override precedence.
-          model_platform: String(
-            config.model_platform || provider.provider_name || ''
-          ),
-          model_type: String(config.model_type || provider.model_type || ''),
-          available: getProviderValid(provider),
-        })
-      );
-    }
-    if (projected.size > 512) throw new Error('model_catalog_unavailable');
-    if (
-      pagination &&
-      projected.size !== Math.min(page * pagination.size, pagination.total)
-    )
-      throw new Error('model_catalog_incomplete');
-    if (
-      Array.isArray(response) ||
-      (typeof envelope.pages === 'number'
-        ? page >= envelope.pages
-        : items.length < 100)
-    )
-      return [...projected.values()].filter(
-        (candidate): candidate is SpaceModelCandidate => candidate !== null
-      );
-  }
-  throw new Error('model_catalog_unavailable');
-}
-
 async function configuredCandidates(
-  assertCurrent: () => void,
-  requireComplete: boolean
+  assertCurrent: () => void
 ): Promise<SpaceModelCandidate[]> {
-  let response: unknown;
-  try {
-    assertCurrent();
-    response = await proxyFetchGet('/api/v1/provider-models');
-    assertCurrent();
-  } catch (error) {
-    assertCurrent();
-    const failure = record(error);
-    // Missing metadata capability is the only compatibility fallback. Do not
-    // bypass permission errors or hide a failed service with a second endpoint.
-    if ((failure.status ?? record(failure.response).status) !== 404)
-      throw error;
-    return legacyProviderCandidates(assertCurrent, requireComplete);
-  }
-  if (!Array.isArray(response)) throw new Error('model_catalog_unavailable');
-  if (
-    requireComplete &&
-    response.some((raw) => typeof record(raw).available !== 'boolean')
-  )
-    throw new Error('model_catalog_incomplete');
-  return response
-    .map(configuredCandidate)
+  assertCurrent();
+  const records = await fetchSavedModels();
+  assertCurrent();
+  return records
+    .map((provider) => {
+      const config = record(provider.encrypted_config);
+      return configuredCandidate({
+        category: LOCAL_MODEL_OPTIONS.some(
+          (option) => option.id === provider.provider_name
+        )
+          ? 'local'
+          : 'custom',
+        // Match buildAgentModelConfigFromProvider's override precedence.
+        model_platform: String(
+          config.model_platform || provider.provider_name || ''
+        ),
+        model_type: String(config.model_type || provider.model_type || ''),
+        available: getProviderValid(provider),
+      });
+    })
     .filter(
       (candidate): candidate is SpaceModelCandidate => candidate !== null
     );
@@ -252,7 +165,7 @@ export async function discoverSpaceModels({
   };
   const [cloud, configured] = await Promise.allSettled([
     cloudCandidates(assertCurrent, requireComplete),
-    configuredCandidates(assertCurrent, requireComplete),
+    configuredCandidates(assertCurrent),
   ]);
   assertCurrent();
   const providers = configured.status === 'fulfilled' ? configured.value : [];

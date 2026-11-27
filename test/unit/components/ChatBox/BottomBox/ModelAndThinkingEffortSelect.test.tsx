@@ -53,6 +53,26 @@ const mocks = vi.hoisted(() => ({
   spaceChoice: null as null | Record<string, unknown>,
   setSpaceModelChoice: vi.fn(),
 }));
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+const savedModels = vi.hoisted(() => ({
+  rows: (): any[] => [],
+  error: null as Error | null,
+  reads: 0,
+}));
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../../../helpers/localModels');
+  const inventory = async () => {
+    savedModels.reads += 1;
+    if (savedModels.error) throw savedModels.error;
+    const list = localModelList(savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/api/http', () => ({
   proxyFetchGet: mocks.get,
   proxyFetchPost: mocks.post,
@@ -140,7 +160,9 @@ beforeEach(() => {
   mocks.spaceId = 'space-1';
   mocks.spaceChoice = null;
   mocks.auth.modelType = 'cloud';
-  mocks.get.mockResolvedValue({ items: records });
+  savedModels.rows = () => records;
+  savedModels.error = null;
+  mocks.get.mockResolvedValue({ items: [] });
   mocks.post.mockResolvedValue({});
   useModelVisibilityStore.setState({ hiddenByAccount: {} });
   useUsageNoticeStore.setState({ subscription: { plan_key: 'free' } });
@@ -424,28 +446,27 @@ describe('Configured model input menu', () => {
     });
   });
   it('tells repeated configurations of one model apart', async () => {
-    mocks.get.mockResolvedValue({
-      items: [
-        ...records,
-        {
-          id: 5,
-          provider_name: 'openai',
-          model_type: 'personal-model',
-          api_key: 'test-c',
-          is_valid: 2,
-        },
-      ],
-    });
+    savedModels.rows = () => [
+      ...records,
+      {
+        id: 5,
+        provider_name: 'openai',
+        model_type: 'personal-model',
+        api_key: 'test-c',
+        is_valid: 2,
+      },
+    ];
     render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
     const user = await openRoot();
     await user.hover(screen.getByRole('menuitem', { name: 'GPT' }));
     expect(
       await screen.findByRole('menuitemradio', {
-        name: 'personal-model · …st-b',
+        // Told apart by position: no part of a key is shown.
+        name: 'personal-model · #1',
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitemradio', { name: 'personal-model · …st-c' })
+      screen.getByRole('menuitemradio', { name: 'personal-model · #2' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('menuitemradio', { name: 'work-model' })

@@ -45,6 +45,27 @@ vi.mock('@/api/http', () => ({
   proxyFetchPost: mocks.prefer,
   proxyFetchGet: mocks.configs,
 }));
+// The user's own models and their default are saved on this device. Saving
+// the default is the write these tests order against the first message.
+const savedModels = Array.from({ length: 9 }, (_, index) => ({
+  id: index + 1,
+  server_id: index + 1,
+  provider_name: 'openai',
+}));
+vi.mock('@/lib/savedModels', () => ({
+  fetchSavedModels: async () => savedModels,
+}));
+vi.mock('@/lib/configuredModels', () => ({
+  fetchConfiguredProviders: async () => savedModels,
+  setConfiguredProviderDefault: (provider: { id: number }) =>
+    mocks.prefer('default', { provider_id: provider.id }),
+}));
+vi.mock('@/lib/modelProviderRegistration', () => ({
+  registerModelConfiguration: async () => null,
+}));
+vi.mock('@/lib/modelConfigurationStore', () => ({
+  modelAccountScope: async () => 'a'.repeat(64),
+}));
 vi.mock('@/store/authStore', async () => {
   const { create } = await import('zustand');
   const useAuthStore = create(() => ({ user_id: 1, token: 'synthetic' }));

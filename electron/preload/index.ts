@@ -30,6 +30,13 @@ import {
   BRAIN_STREAM_RELAY_TARGET_CHANNEL,
   type BrainStreamRelayRequest,
 } from '../../src/shared/brainStreamRelay';
+import type {
+  ModelConfigurationDefaultRequest,
+  ModelConfigurationImportRequest,
+  ModelConfigurationLookup,
+  ModelConfigurationSaveRequest,
+  ModelConfigurationServerLinkRequest,
+} from '../../src/shared/modelConfiguration';
 import {
   NATIVE_MENU_LOCALE_CHANNEL,
   type NativeMenuLocale,
@@ -231,6 +238,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('workspace-secret:status', request),
   workspaceSecretDelete: (request: WorkspaceSecretLookup) =>
     ipcRenderer.invoke('workspace-secret:delete', request),
+  // Own model configurations stay on this device; no call returns a key.
+  modelConfigurationList: (request: { account_scope: string }) =>
+    ipcRenderer.invoke('model-configuration:list', request),
+  modelConfigurationSave: (request: ModelConfigurationSaveRequest) =>
+    ipcRenderer.invoke('model-configuration:save', request),
+  modelConfigurationSetDefault: (request: ModelConfigurationDefaultRequest) =>
+    ipcRenderer.invoke('model-configuration:set-default', request),
+  modelConfigurationImport: (request: ModelConfigurationImportRequest) =>
+    ipcRenderer.invoke('model-configuration:import', request),
+  modelConfigurationSetServerId: (
+    request: ModelConfigurationServerLinkRequest
+  ) => ipcRenderer.invoke('model-configuration:set-server-id', request),
+  modelConfigurationDelete: (request: ModelConfigurationLookup) =>
+    ipcRenderer.invoke('model-configuration:delete', request),
   // command execution
   executeCommand: (command: string, email: string) =>
     ipcRenderer.invoke('execute-command', command, email),

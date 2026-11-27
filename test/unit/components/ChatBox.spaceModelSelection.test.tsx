@@ -48,6 +48,7 @@ import {
 import i18next from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { modelCredential } from '../helpers/localModels';
 
 // Keep ChatBox, useModelConfigCheck, ChatStore startup, and binding resolution
 // real. Only isolate account/Space containers, HTTP/SSE, and unrelated UI.
@@ -76,6 +77,26 @@ const mocks = vi.hoisted(() => ({
   durableRun: null as any,
   host: null as any,
 }));
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+const savedModels = vi.hoisted(() => ({
+  rows: (): any[] => [],
+  error: null as Error | null,
+  reads: 0,
+}));
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../helpers/localModels');
+  const inventory = async () => {
+    savedModels.reads += 1;
+    if (savedModels.error) throw savedModels.error;
+    const list = localModelList(savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
     if (url.endsWith('/execution-route'))
@@ -310,6 +331,8 @@ describe('ChatBox after an accepted Space model selection', () => {
     resetConnectionConfig();
     mocks.snapshot = null;
     vi.clearAllMocks();
+    savedModels.rows = () => [];
+    savedModels.error = null;
     window.sessionStorage.clear();
     runProjectionStore.clear();
     runDomainEventHub.clear();
@@ -453,7 +476,6 @@ describe('ChatBox after an accepted Space model selection', () => {
           value: 'synthetic-cloud-key',
           api_url: 'https://cloud.example.test',
         };
-      if (url === '/api/v1/providers') return { items: [], pages: 1 };
       return [];
     });
     mocks.post.mockImplementation(async (url: string) =>
@@ -1417,12 +1439,8 @@ describe('ChatBox after an accepted Space model selection', () => {
         model_config_dict: { temperature: 0.2 },
       },
     };
-    const get = mocks.get.getMockImplementation()!;
-    mocks.get.mockImplementation(async (...args) =>
-      args[0] === '/api/v1/providers'
-        ? { items: args[1]?.prefer ? [] : [provider], pages: 1 }
-        : get(...args)
-    );
+    // Saved on this device, and not the account's default own model.
+    savedModels.rows = () => [provider];
   }
   it.each([
     { globalModelType: 'cloud', category: 'custom' },
@@ -1458,7 +1476,9 @@ describe('ChatBox after an accepted Space model selection', () => {
         run_id: acceptedRequest.run_id,
         model_type: 'deployment',
         model_platform: acceptedRequest.model_platform,
-        api_key: 'synthetic-custom-key',
+        // The request names the saved model; it carries no key.
+        api_key: '',
+        model_credential: modelCredential(42),
         api_url: 'https://custom.example.test',
         extra_params: { api_mode: 'responses' },
       });

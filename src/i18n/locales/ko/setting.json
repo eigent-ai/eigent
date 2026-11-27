@@ -32,7 +32,16 @@
     "missing-configuration": "이 세션의 모델 설정을 사용할 수 없습니다. 다른 모델을 선택하거나 설정 → 모델에서 설정을 복원하세요.",
     "no-results": "일치하는 모델이나 제공업체가 없습니다.",
     "availability-unknown": "요금제 상태를 확인할 수 없음",
-    "pinned-load-failed": "이 세션에 저장된 모델을 불러올 수 없습니다. 연결을 확인한 후 다시 시도하세요."
+    "pinned-load-failed": "이 세션에 저장된 모델을 불러올 수 없습니다. 연결을 확인한 후 다시 시도하세요.",
+    "key-needed": "키 필요",
+    "enter-key": "키 입력",
+    "keys-needed-note": "\"키 필요\"로 표시된 각 모델의 키를 다시 입력하세요. 이제 키는 이 기기에만 저장되므로 이전에 추가한 키는 여기에서 사용할 수 없습니다.",
+    "device-keys-note": "직접 설정한 모델의 키는 이 기기에만 저장됩니다.",
+    "session-keys-note": "이 기기에는 안전한 키 저장소가 없어 Eigent를 종료할 때까지만 키가 유지됩니다.",
+    "key-saved-placeholder": "이 기기에 저장되어 있습니다. 바꾸려면 새 키를 입력하세요.",
+    "secret-saved-placeholder": "이 기기에 저장됨",
+    "key-needed-for-address": "다른 주소에서 사용하려면 키를 다시 입력하세요.",
+    "address-partly-hidden": "이 주소의 일부는 이 기기에 저장되어 있으며 표시되지 않습니다. 변경하려면 전체 주소를 입력하세요."
   },
   "settings": "설정",
   "general": "일반",

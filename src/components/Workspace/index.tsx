@@ -197,7 +197,7 @@ export default function Workspace({
     activeSpaceId,
     managedSelected,
   ]);
-  const { hasModel } = useModelConfigCheck();
+  const { hasModel, modelKeyNeeded } = useModelConfigCheck();
   // A fresh Session resolves its materialized Space model at launch. The
   // unrelated global preference cannot establish whether that model is usable.
   const canResolveSpaceModelAtLaunch = Boolean(
@@ -762,6 +762,7 @@ export default function Workspace({
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!canStartWithModel && !modelQuota.blocked}
           usageLimitBanner={usageLimitBanner}
+          modelKeyNeeded={modelKeyNeeded}
           onSelectModel={() => openSettings('models')}
           inputProps={{
             ...composerInputProps,

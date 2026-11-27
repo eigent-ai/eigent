@@ -17,8 +17,12 @@
  * switching e.g. chat input without navigating to settings when already configured.
  */
 
-import { proxyFetchGet, proxyFetchPost } from '@/api/http';
+import { proxyFetchGet } from '@/api/http';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  fetchConfiguredProviders,
+  setConfiguredProviderDefault,
+} from '@/lib/configuredModels';
 import { saveDefaultModelSelection } from '@/lib/defaultModelSelectionState';
 import { isSearchConfigured } from '@/lib/searchConfig';
 import { getAuthStore } from '@/store/authStore';
@@ -55,6 +59,19 @@ export function isDefaultModelConfigured(
     return !!opts.localProviderIds[modelId];
   }
   return false;
+}
+
+/** Make one saved configuration the default on this device. */
+async function preferProvider(
+  providerId: number,
+  assertAccount: () => void
+): Promise<void> {
+  const provider = (await fetchConfiguredProviders()).find(
+    (item) => item.id === providerId
+  );
+  assertAccount();
+  if (!provider) throw new Error('Model configuration is missing');
+  await setConfiguredProviderDefault(provider);
 }
 
 async function checkHasSearchKey(accountKey: string): Promise<boolean> {
@@ -161,14 +178,7 @@ export async function applyDefaultModelSelection(
               closeButton: true,
             });
           }
-          await proxyFetchPost(
-            '/api/v1/provider/prefer',
-            {
-              provider_id: providerId,
-            },
-            undefined,
-            { expectedAccountKey: accountKey }
-          );
+          await preferProvider(providerId as number, assertAccount);
           assertAccount();
           setModelType('custom');
           setCloudPrefer(false);
@@ -196,14 +206,7 @@ export async function applyDefaultModelSelection(
               closeButton: true,
             });
           }
-          await proxyFetchPost(
-            '/api/v1/provider/prefer',
-            {
-              provider_id: targetProviderId,
-            },
-            undefined,
-            { expectedAccountKey: accountKey }
-          );
+          await preferProvider(targetProviderId, assertAccount);
           assertAccount();
           setModelType('local');
           setForm((f) =>

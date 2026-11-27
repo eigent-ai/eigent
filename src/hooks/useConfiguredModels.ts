@@ -14,9 +14,10 @@
 
 import { createHost } from '@/host/createHost';
 import {
-  fetchConfiguredProviders,
+  fetchConfiguredModelInventory,
   MODEL_CONFIGURATIONS_CHANGED,
   type ConfiguredProvider,
+  type ModelKeyStorage,
 } from '@/lib/configuredModels';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
@@ -27,6 +28,7 @@ const EMPTY_IDS: string[] = [];
 type InventoryState = {
   key: string;
   records: ConfiguredProvider[];
+  keyStorage: ModelKeyStorage;
   loading: boolean;
   error: boolean;
   loaded: boolean;
@@ -34,6 +36,7 @@ type InventoryState = {
 const emptyInventory: InventoryState = {
   key: '',
   records: [],
+  keyStorage: 'secure',
   loading: true,
   error: false,
   loaded: false,
@@ -60,12 +63,13 @@ function loadInventory(key: string, force = false): Promise<void> {
     loading: !previous.loaded,
     error: false,
   });
-  const promise = fetchConfiguredProviders()
-    .then((records) => {
+  const promise = fetchConfiguredModelInventory()
+    .then(({ records, keyStorage }) => {
       if (request === generation)
         setInventory({
           key,
           records,
+          keyStorage,
           loading: false,
           error: false,
           loaded: true,
@@ -172,6 +176,7 @@ export function useConfiguredModels() {
   }, [account, email]);
   return {
     records: state.key === key ? state.records : [],
+    keyStorage: state.key === key ? state.keyStorage : 'secure',
     loading: state.key !== key || state.loading,
     error: state.key === key && state.error,
     refresh,

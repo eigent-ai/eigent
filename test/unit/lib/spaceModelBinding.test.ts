@@ -24,11 +24,15 @@ import {
   spaceModelReference,
 } from '@/lib/spaceModelReference';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const { get, localGet } = vi.hoisted(() => ({
+import { localModelRecord, modelCredential } from '../helpers/localModels';
+const { get, localGet, savedModels } = vi.hoisted(() => ({
   get: vi.fn(),
   localGet: vi.fn(),
+  savedModels: vi.fn(),
 }));
 vi.mock('@/api/http', () => ({ proxyFetchGet: get, fetchGet: localGet }));
+// The user's own models are read from this device, not from the server.
+vi.mock('@/lib/savedModels', () => ({ fetchSavedModels: savedModels }));
 
 const cloud = {
   id: 'fixture',
@@ -39,7 +43,7 @@ const cloud = {
   kind: 'chat',
   capabilities: { request_compatibility: { preferred_transport: 'responses' } },
 };
-const provider = {
+const provider = localModelRecord({
   id: 42,
   provider_name: 'azure',
   model_type: 'deployment',
@@ -52,7 +56,7 @@ const provider = {
     model_capability: { fixture: true },
     api_version: 'fixture-version',
   },
-};
+});
 
 describe('Space model binding adapter', () => {
   beforeEach(() => vi.resetAllMocks());
@@ -109,7 +113,7 @@ describe('Space model binding adapter', () => {
     ).rejects.toThrow('unavailable');
   });
   it.each(['custom', 'local'] as const)(
-    'keeps all %s binding fields together and reads all provider pages',
+    'keeps all %s binding fields together and names the saved model without a key',
     async (category) => {
       const config =
         category === 'local'
@@ -124,12 +128,10 @@ describe('Space model binding adapter', () => {
               },
             }
           : provider;
-      get
-        .mockResolvedValueOnce({
-          items: [{ ...provider, id: 1, model_type: 'other' }],
-          pages: 2,
-        })
-        .mockResolvedValueOnce({ items: [config], pages: 2 });
+      savedModels.mockResolvedValue([
+        { ...provider, id: 1, model_type: 'other' },
+        config,
+      ]);
       const ref =
         category === 'local'
           ? 'provider://local/ollama/org%2Fmodel%3A8b'
@@ -140,8 +142,10 @@ describe('Space model binding adapter', () => {
       expect(JSON.stringify(bound.selection)).not.toMatch(
         /synthetic|api_key|endpoint_url|api_mode|model_capability/
       );
+      expect(JSON.stringify(bound)).not.toContain('synthetic-key');
       expect(buildAgentModelConfigFromProvider(bound.provider!)).toMatchObject({
-        api_key: 'synthetic-key',
+        api_key: '',
+        model_credential: modelCredential(42),
         api_url: 'https://synthetic.example',
         model_config_dict: { temperature: 0.3 },
         extra_params: {
@@ -150,18 +154,19 @@ describe('Space model binding adapter', () => {
           api_version: 'fixture-version',
         },
       });
-      expect(get).toHaveBeenNthCalledWith(2, '/api/v1/providers', {
-        page: 2,
-        size: 100,
-      });
+      // No route of the server is asked for the user's own models.
+      expect(get).not.toHaveBeenCalled();
     }
   );
   it('rejects invalid and ambiguous providers, including duplicate nonpreferred matches', async () => {
-    get.mockResolvedValue([{ ...provider, is_valid: 1 }]);
+    savedModels.mockResolvedValue([{ ...provider, is_valid: 1 }]);
     await expect(
       resolveSpaceModelBinding('provider://custom/azure/deployment', () => {})
     ).rejects.toThrow('unavailable');
-    get.mockResolvedValue([provider, { ...provider, id: 43, prefer: true }]);
+    savedModels.mockResolvedValue([
+      provider,
+      { ...provider, id: 43, prefer: true },
+    ]);
     await expect(
       resolveSpaceModelBinding('provider://custom/azure/deployment', () => {})
     ).rejects.toThrow('More than one');
@@ -171,7 +176,7 @@ describe('Space model binding adapter', () => {
     const assertCurrent = () => {
       if (!current) throw new Error('scope changed');
     };
-    get.mockImplementation(async () => {
+    savedModels.mockImplementation(async () => {
       current = false;
       return [provider];
     });
@@ -325,14 +330,11 @@ describe('Space model binding adapter', () => {
       expect(get).not.toHaveBeenCalled();
     });
   });
-  it('bounds a malformed unending provider catalog', async () => {
-    get.mockResolvedValue({
-      items: Array.from({ length: 100 }, (_, id) => ({ ...provider, id })),
-      pages: 1000,
-    });
+  it('reports saved models that cannot be read as unavailable', async () => {
+    savedModels.mockRejectedValue(new Error('store unreadable'));
     await expect(fetchRuntimeModelProviders(() => {})).rejects.toThrow(
       'unavailable'
     );
-    expect(get).toHaveBeenCalledTimes(6);
+    expect(get).not.toHaveBeenCalled();
   });
 });

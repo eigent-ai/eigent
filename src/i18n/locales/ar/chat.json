@@ -632,5 +632,6 @@
   "workspace-blocked-failed": "تعذر حل العملية المحظورة. حاول مرة أخرى.",
   "notice-space-folder-home": "لا يمكن لـ Eigent العمل مباشرة في مجلد المنزل.",
   "notice-space-folder-app-data": "لا يمكن لـ Eigent العمل في مجلد يحتوي على بيانات التطبيق الخاصة به.",
-  "notice-space-folder-description": "أنشئ مساحة من مجلد داخل مجلد المنزل، مثل المستندات."
+  "notice-space-folder-description": "أنشئ مساحة من مجلد داخل مجلد المنزل، مثل المستندات.",
+  "model-key-needed": "مفتاح هذا النموذج غير محفوظ على هذا الجهاز. أدخله مرة أخرى في الإعدادات > النماذج."
 }

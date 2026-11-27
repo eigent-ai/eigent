@@ -194,6 +194,24 @@ interface ElectronAPI {
     slot_id: string;
     state: 'missing';
   }>;
+  modelConfigurationList: (request: {
+    account_scope: string;
+  }) => Promise<import('@/shared/modelConfiguration').ModelConfigurationList>;
+  modelConfigurationSave: (
+    request: import('@/shared/modelConfiguration').ModelConfigurationSaveRequest
+  ) => Promise<import('@/shared/modelConfiguration').ModelConfigurationView>;
+  modelConfigurationSetDefault: (
+    request: import('@/shared/modelConfiguration').ModelConfigurationDefaultRequest
+  ) => Promise<void>;
+  modelConfigurationImport: (
+    request: import('@/shared/modelConfiguration').ModelConfigurationImportRequest
+  ) => Promise<void>;
+  modelConfigurationSetServerId: (
+    request: import('@/shared/modelConfiguration').ModelConfigurationServerLinkRequest
+  ) => Promise<void>;
+  modelConfigurationDelete: (
+    request: import('@/shared/modelConfiguration').ModelConfigurationLookup
+  ) => Promise<void>;
   executeCommand: (
     command: string,
     email: string

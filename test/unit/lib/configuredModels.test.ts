@@ -14,67 +14,178 @@
 
 import {
   configurationHint,
+  deleteConfiguredProvider,
+  fetchConfiguredModelInventory,
   fetchConfiguredProviders,
+  saveConfiguredProvider,
   selectableConfiguredModels,
   setConfiguredProviderDefault,
 } from '@/lib/configuredModels';
 import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { localModelList, localModelRecord } from '../helpers/localModels';
 const mocks = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
+  list: vi.fn(),
+  save: vi.fn(),
+  remove: vi.fn(),
+  setDefault: vi.fn(),
+  importEarlier: vi.fn(),
+  register: vi.fn(),
+  registerDefault: vi.fn(),
+  unregister: vi.fn(),
   setModelType: vi.fn(),
+  http: vi.fn(),
 }));
+// Any call to the server from this module would go through here.
 vi.mock('@/api/http', () => ({
-  proxyFetchGet: mocks.get,
-  proxyFetchPost: mocks.post,
+  proxyFetchGet: mocks.http,
+  proxyFetchPost: mocks.http,
+  proxyFetchPut: mocks.http,
+  proxyFetchDelete: mocks.http,
 }));
+vi.mock('@/lib/modelConfigurationStore', () => ({
+  SAVED_VALUE_MARKER: '[saved on this device]',
+  listLocalModelConfigurations: mocks.list,
+  saveLocalModelConfiguration: mocks.save,
+  deleteLocalModelConfiguration: mocks.remove,
+  setLocalModelConfigurationDefault: mocks.setDefault,
+}));
+vi.mock('@/lib/modelProviderRegistration', () => ({
+  importEarlierModelConfigurations: mocks.importEarlier,
+  registerModelConfiguration: mocks.register,
+  registerDefaultModelConfiguration: mocks.registerDefault,
+  unregisterModelConfiguration: mocks.unregister,
+}));
+const account = { user_id: 7, email: 'person@example.test' };
 vi.mock('@/store/authStore', () => ({
-  getAuthStore: () => ({ setModelType: mocks.setModelType }),
+  getAuthStore: () => ({ ...account, setModelType: mocks.setModelType }),
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.importEarlier.mockResolvedValue(false);
+  mocks.register.mockResolvedValue(null);
   useModelVisibilityStore.setState({ hiddenByAccount: {} });
 });
 describe('Configured model identity', () => {
-  it('loads all pages without collapsing repeated providers', async () => {
-    mocks.get
-      .mockResolvedValueOnce({
-        items: [{ id: 1, provider_name: 'openai' }],
-        pages: 2,
-        total: 2,
-      })
-      .mockResolvedValueOnce({
-        items: [{ id: 2, provider_name: 'openai' }],
-        pages: 2,
-        total: 2,
-      });
+  it('reads the models from this device without collapsing repeated providers', async () => {
+    mocks.list.mockResolvedValue(
+      localModelList([
+        { id: 1, provider_name: 'openai' },
+        { id: 2, provider_name: 'openai' },
+      ])
+    );
     expect(
       (await fetchConfiguredProviders()).map((record) => record.id)
     ).toEqual([1, 2]);
-    expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/providers', {
-      page: 2,
-      size: 100,
+    expect(mocks.list).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 7 })
+    );
+    // The list is local: no model provider route of the server is called.
+    expect(mocks.http).not.toHaveBeenCalled();
+    expect(mocks.importEarlier).not.toHaveBeenCalled();
+  });
+  it('takes over the earlier model list once when nothing is saved here', async () => {
+    mocks.list
+      .mockResolvedValueOnce({
+        storage: 'secure',
+        imported: false,
+        records: [],
+      })
+      .mockResolvedValueOnce(
+        localModelList([
+          { id: 57, provider_name: 'openai', key_state: 'needed' },
+        ])
+      );
+    mocks.importEarlier.mockResolvedValue(true);
+
+    const inventory = await fetchConfiguredModelInventory();
+    expect(inventory.records.map((record) => record.id)).toEqual([57]);
+    expect(inventory.records[0].key_state).toBe('needed');
+    expect(inventory.keyStorage).toBe('secure');
+    expect(mocks.importEarlier).toHaveBeenCalledTimes(1);
+  });
+  it('does not take a list over again, or over models saved on this device', async () => {
+    mocks.list.mockResolvedValue({
+      storage: 'session',
+      imported: true,
+      records: [],
     });
-  });
-  it('supports local proxy array responses', async () => {
-    mocks.get.mockResolvedValue([{ id: 5, provider_name: 'ollama' }]);
+    expect((await fetchConfiguredModelInventory()).keyStorage).toBe('session');
+    mocks.list.mockResolvedValue({
+      storage: 'secure',
+      imported: false,
+      records: [localModelRecord({ id: 2147483648, provider_name: 'openai' })],
+    });
     expect(await fetchConfiguredProviders()).toHaveLength(1);
-    expect(mocks.get).toHaveBeenCalledTimes(1);
+    expect(mocks.importEarlier).not.toHaveBeenCalled();
   });
-  it('rejects error envelopes instead of treating them as an empty inventory', async () => {
-    mocks.get.mockResolvedValue({ code: 1, text: 'Server unavailable' });
+  it('keeps an empty list when there is no earlier list to take over', async () => {
+    mocks.list.mockResolvedValue({
+      storage: 'secure',
+      imported: false,
+      records: [],
+    });
+    expect(await fetchConfiguredProviders()).toEqual([]);
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+  });
+  it('reports a store that cannot be read instead of an empty inventory', async () => {
+    mocks.list.mockRejectedValue(new Error('store unavailable'));
     await expect(fetchConfiguredProviders()).rejects.toThrow(
-      'Configured providers request failed'
+      'store unavailable'
     );
-    mocks.get.mockResolvedValue({ code: 1, items: [] });
-    await expect(fetchConfiguredProviders()).rejects.toThrow(
-      'Configured providers request failed'
+  });
+  it('saves on this device and only then tells the server the plain settings', async () => {
+    const saved = localModelRecord({
+      id: 2147483648,
+      provider_name: 'openai',
+      api_key: 'unit-test-model-key-0001',
+    });
+    mocks.save.mockResolvedValue(saved);
+    const changed = vi.fn();
+    window.addEventListener('eigent:model-configurations-changed', changed);
+    const input = {
+      provider_name: 'openai',
+      model_type: 'gpt-test',
+      endpoint_url: 'https://models.example.test/v1',
+      api_key: 'unit-test-model-key-0001',
+      config: {},
+      is_valid: true,
+    };
+
+    expect(await saveConfiguredProvider(input)).toBe(saved);
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 7 }),
+      input
     );
-    mocks.get.mockResolvedValue({ detail: 'Server unavailable' });
-    await expect(fetchConfiguredProviders()).rejects.toThrow(
-      'Invalid configured providers response'
+    // What goes to the server is the saved view, which holds no key.
+    expect(mocks.register).toHaveBeenCalledWith(saved);
+    expect(JSON.stringify(mocks.register.mock.calls)).not.toContain(
+      'unit-test-model-key-0001'
     );
+    expect(mocks.http).not.toHaveBeenCalled();
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener('eigent:model-configurations-changed', changed);
+  });
+  it('does not tell the server about a model that could not be saved', async () => {
+    mocks.save.mockRejectedValue(new Error('no secure storage'));
+    await expect(
+      saveConfiguredProvider({
+        provider_name: 'openai',
+        model_type: 'gpt-test',
+        endpoint_url: '',
+        config: {},
+        is_valid: true,
+      })
+    ).rejects.toThrow('no secure storage');
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+  it('removes a model from this device and from what the server knows', async () => {
+    await deleteConfiguredProvider({ id: 57, server_id: 57 });
+    expect(mocks.remove).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 7 }),
+      57
+    );
+    expect(mocks.unregister).toHaveBeenCalledWith(57);
   });
   it('keeps repeated provider and model names distinct by record ID', () => {
     const choices = selectableConfiguredModels({
@@ -132,26 +243,32 @@ describe('Configured model identity', () => {
     ]);
   });
 
-  it('names what sets repeated configurations apart', () => {
-    const record = (id: number, endpoint_url: string, api_key: string) => ({
-      id,
-      provider_name: 'openai',
-      model_type: 'gpt-5',
-      api_key,
-      endpoint_url,
-    });
-    const work = record(11, 'https://work.example.test/v1', 'sk-work-1111');
-    const personal = record(12, 'https://api.example.test/v1', 'sk-home-2222');
-    const backup = record(13, 'https://api.example.test/v1', 'sk-back-3333');
-    const keyless = record(14, 'https://api.example.test/v1', 'not-required');
+  it('names what sets repeated configurations apart without showing a key', () => {
+    const record = (id: number, endpoint_url: string, api_key: string) =>
+      localModelRecord({
+        id,
+        provider_name: 'openai',
+        model_type: 'gpt-5',
+        api_key,
+        endpoint_url,
+      });
+    const work = record(11, 'https://work.example.test/v1', 'unit-work-1111');
+    const personal = record(
+      12,
+      'https://api.example.test/v1',
+      'unit-home-2222'
+    );
+    const backup = record(13, 'https://api.example.test/v1', 'unit-back-3333');
     const other = { ...work, id: 15, model_type: 'gpt-4.1' };
     const records = [work, personal, backup, other];
 
     expect(configurationHint(other, records)).toBe('');
     expect(configurationHint(work, records)).toBe('work.example.test');
-    expect(configurationHint(personal, records)).toBe('…2222');
-    expect(configurationHint(backup, records)).toBe('…3333');
-    expect(configurationHint(keyless, [personal, keyless])).toBe('#14');
+    // Same host: told apart by position, never by part of a key.
+    expect(configurationHint(personal, records)).toBe('#2');
+    expect(configurationHint(backup, records)).toBe('#3');
+    for (const item of records)
+      expect(configurationHint(item, records)).not.toMatch(/1111|2222|3333/);
   });
   it('excludes paid Eigent choices until the account plan is known', () => {
     const choices = selectableConfiguredModels({
@@ -211,25 +328,29 @@ describe('Configured model identity', () => {
       'GPT-5.5',
     ]);
   });
-  it('fails safely when a paginated endpoint repeats the same page', async () => {
-    mocks.get.mockResolvedValue({ items: [{ id: 1 }], total: 200, pages: 2 });
-    // Repeated IDs cannot be mistaken for two separate configurations.
-    await expect(fetchConfiguredProviders()).rejects.toThrow(
-      'Provider pagination did not advance'
+  it('sets the default on this device and then tells the server', async () => {
+    const record = localModelRecord({
+      id: 6,
+      provider_name: 'ollama',
+      model_type: 'qwen',
+    });
+    await setConfiguredProviderDefault(record);
+    expect(mocks.setDefault).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 7 }),
+      6
     );
+    expect(mocks.registerDefault).toHaveBeenCalledWith(record);
+    expect(mocks.setModelType).toHaveBeenCalledWith('local');
   });
-  it('does not change the model category when preference save fails', async () => {
-    mocks.post.mockRejectedValueOnce(new Error('offline'));
+  it('does not change the model category when the default cannot be saved', async () => {
+    mocks.setDefault.mockRejectedValueOnce(new Error('store unavailable'));
     await expect(
-      setConfiguredProviderDefault({
-        id: 6,
-        provider_name: 'ollama',
-        model_type: 'qwen',
-        api_key: '',
-        endpoint_url: '',
-      })
-    ).rejects.toThrow('offline');
+      setConfiguredProviderDefault(
+        localModelRecord({ id: 6, provider_name: 'ollama', model_type: 'qwen' })
+      )
+    ).rejects.toThrow('store unavailable');
     expect(mocks.setModelType).not.toHaveBeenCalled();
+    expect(mocks.registerDefault).not.toHaveBeenCalled();
   });
   it('isolates frontend visibility preferences by account', () => {
     useModelVisibilityStore.getState().setHidden('one', 'gpt', true);

@@ -616,5 +616,6 @@
   "workspace-blocked-failed": "Couldn't resolve the blocked operation. Try again.",
   "notice-space-folder-home": "Eigent can’t work directly in your home folder.",
   "notice-space-folder-app-data": "Eigent can’t work in a folder that holds its own app data.",
-  "notice-space-folder-description": "Create a Space from a folder inside your home folder, such as Documents."
+  "notice-space-folder-description": "Create a Space from a folder inside your home folder, such as Documents.",
+  "model-key-needed": "The key for this model is not saved on this device. Enter it again in Settings > Models."
 }

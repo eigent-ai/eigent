@@ -32,7 +32,16 @@
     "missing-configuration": "La configurazione del modello di questa sessione non è disponibile. Seleziona un altro modello o ripristinala in Impostazioni → Modelli.",
     "no-results": "Nessun modello o fornitore corrispondente.",
     "availability-unknown": "Stato del piano non disponibile",
-    "pinned-load-failed": "Impossibile caricare il modello salvato per questa sessione. Controlla la connessione e riprova."
+    "pinned-load-failed": "Impossibile caricare il modello salvato per questa sessione. Controlla la connessione e riprova.",
+    "key-needed": "Chiave necessaria",
+    "enter-key": "Inserisci chiave",
+    "keys-needed-note": "Inserisci di nuovo la chiave per ogni modello contrassegnato come «Chiave necessaria». Ora le chiavi vengono salvate solo su questo dispositivo, quindi una chiave aggiunta in precedenza non è disponibile qui.",
+    "device-keys-note": "Le chiavi dei tuoi modelli vengono salvate solo su questo dispositivo.",
+    "session-keys-note": "Questo dispositivo non ha un archivio sicuro per le chiavi, quindi le chiavi vengono conservate solo fino alla chiusura di Eigent.",
+    "key-saved-placeholder": "Salvata su questo dispositivo. Inserisci una nuova chiave per sostituirla.",
+    "secret-saved-placeholder": "Salvato su questo dispositivo",
+    "key-needed-for-address": "Inserisci di nuovo la chiave per usarla con un indirizzo diverso.",
+    "address-partly-hidden": "Una parte di questo indirizzo è salvata su questo dispositivo e non viene mostrata. Inserisci l’indirizzo completo per modificarlo."
   },
   "settings": "Impostazioni",
   "general": "Generale",

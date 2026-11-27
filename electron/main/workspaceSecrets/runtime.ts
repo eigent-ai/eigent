@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getDefaultModelConfigurationStore } from '../modelConfigurations/runtime';
 import { WorkspaceSecretBroker } from './broker';
 import type { WorkspaceSecretBrokerRuntime } from './types';
 import { WorkspaceSecretVault } from './vault';
@@ -27,7 +28,11 @@ export function getDefaultWorkspaceSecretVault(): WorkspaceSecretVault {
 
 export function ensureWorkspaceSecretBroker(): Promise<WorkspaceSecretBrokerRuntime> {
   if (!brokerStart) {
-    defaultBroker = new WorkspaceSecretBroker(getDefaultWorkspaceSecretVault());
+    defaultBroker = new WorkspaceSecretBroker(
+      getDefaultWorkspaceSecretVault(),
+      undefined,
+      getDefaultModelConfigurationStore()
+    );
     brokerStart = defaultBroker.start().catch((error) => {
       defaultBroker = null;
       brokerStart = null;

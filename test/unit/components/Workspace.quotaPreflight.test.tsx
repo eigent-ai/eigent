@@ -36,6 +36,7 @@ import {
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { modelCredential } from '../helpers/localModels';
 
 const mocks = vi.hoisted(() => ({
   auth: {} as any,
@@ -53,6 +54,26 @@ const mocks = vi.hoisted(() => ({
   realTransport: false,
 }));
 
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+const savedModels = vi.hoisted(() => ({
+  rows: (): any[] => [],
+  error: null as Error | null,
+  reads: 0,
+}));
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../helpers/localModels');
+  const inventory = async () => {
+    savedModels.reads += 1;
+    if (savedModels.error) throw savedModels.error;
+    const list = localModelList(savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/api/http', () => ({
   fetchGet: (url: string, ...args: unknown[]) => {
     if (url === '/executions/capabilities')
@@ -270,6 +291,9 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       is_valid: 2,
       encrypted_config: { api_mode: 'responses' },
     };
+    // The one saved model is also the account's default own model.
+    savedModels.rows = () => [{ ...provider, prefer: true }];
+    savedModels.error = null;
     const space = {
       id: 'space-1',
       userId: 'account-a',
@@ -360,7 +384,6 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       throw new Error(`Unexpected local request: ${url}`);
     });
     mocks.get.mockImplementation(async (url) => {
-      if (url === '/api/v1/providers') return { items: [provider], pages: 1 };
       if (url === '/api/v1/cloud-models')
         return { models: [cloud('global'), cloud('space-model')] };
       if (url === '/api/v1/user/key')
@@ -667,9 +690,14 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       expect(mocks.sse.mock.calls[0][0].body).toMatchObject({
         model_type: 'deployment',
         model_platform: platform,
-        api_key: 'synthetic-custom-key',
+        // The request names the saved model; it carries no key.
+        api_key: '',
+        model_credential: modelCredential(42),
         workspace_model_selection: installed,
       });
+      expect(JSON.stringify(mocks.sse.mock.calls[0][0].body)).not.toContain(
+        'synthetic-custom-key'
+      );
       expect(createdProject().metadata.modelSelection).toMatchObject({
         modelType: category,
         provider_id: 42,
@@ -769,7 +797,8 @@ describe('Workspace quota preview through real Space creation and Chat startup',
       expect(mocks.sse.mock.calls[0][0].body).toMatchObject({
         model_type: 'deployment',
         model_platform: 'azure',
-        api_key: 'synthetic-custom-key',
+        api_key: '',
+        model_credential: modelCredential(42),
       });
       expect(createdProject().metadata.modelSelection).toMatchObject({
         modelType: 'custom',

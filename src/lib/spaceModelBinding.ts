@@ -20,6 +20,7 @@ import {
   type StoredModelProvider,
 } from '@/lib/modelConfig';
 import { getProviderValid } from '@/lib/providerStatus';
+import { fetchSavedModels } from '@/lib/savedModels';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import type {
   ThinkingEffort,
@@ -99,32 +100,19 @@ type RuntimeProvider = StoredModelProvider & {
   is_vaild?: unknown;
 };
 
+/** The user's own models, read from this device. They carry no key. */
 export async function fetchRuntimeModelProviders(
   assertCurrent: () => void
 ): Promise<RuntimeProvider[]> {
-  const providers = new Map<number, RuntimeProvider>();
-  for (let page = 1; page <= 6; page++) {
-    assertCurrent();
-    const response = await proxyFetchGet('/api/v1/providers', {
-      page,
-      size: 100,
-    });
-    assertCurrent();
-    const items = Array.isArray(response) ? response : response?.items;
-    if (!Array.isArray(items)) throw spaceModelError('unavailable');
-    for (const provider of items) {
-      if (Number.isInteger(provider.id)) providers.set(provider.id, provider);
-    }
-    if (providers.size > 512) throw spaceModelError('unavailable');
-    if (
-      Array.isArray(response) ||
-      (typeof response.pages === 'number'
-        ? page >= response.pages
-        : items.length < 100)
-    )
-      return [...providers.values()];
+  assertCurrent();
+  let providers: RuntimeProvider[];
+  try {
+    providers = await fetchSavedModels();
+  } catch {
+    throw spaceModelError('unavailable');
   }
-  throw spaceModelError('unavailable');
+  assertCurrent();
+  return providers;
 }
 
 export interface ResolvedSpaceModel {

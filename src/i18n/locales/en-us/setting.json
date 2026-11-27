@@ -32,7 +32,16 @@
     "missing-configuration": "This Session’s model configuration is unavailable. Select another model or restore the configuration in Settings → Models.",
     "no-results": "No matching models or providers.",
     "availability-unknown": "Plan status unavailable",
-    "pinned-load-failed": "Could not load this Session's saved model. Check your connection and retry."
+    "pinned-load-failed": "Could not load this Session's saved model. Check your connection and retry.",
+    "key-needed": "Key needed",
+    "enter-key": "Enter key",
+    "keys-needed-note": "Enter the key again for each model marked as Key needed. Keys are now saved on this device only, so a key you added before is not available here.",
+    "device-keys-note": "Keys for your own models are saved on this device only.",
+    "session-keys-note": "This device has no secure key storage, so keys are kept only until you quit Eigent.",
+    "key-saved-placeholder": "Saved on this device. Enter a new key to replace it.",
+    "secret-saved-placeholder": "Saved on this device",
+    "key-needed-for-address": "Enter the key again to use it with a different address.",
+    "address-partly-hidden": "Part of this address is saved on this device and is not shown. Enter the full address to change it."
   },
   "settings": "Settings",
   "general": "General",

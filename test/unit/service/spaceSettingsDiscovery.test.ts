@@ -13,12 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { localModelRecord } from '../helpers/localModels';
 
-const { fetchGetMock, proxyGetMock, auth } = vi.hoisted(() => ({
+const { fetchGetMock, proxyGetMock, auth, savedModels } = vi.hoisted(() => ({
   auth: { token: 'fixture-token', user_id: 7, email: 'fixture@example.com' },
   fetchGetMock: vi.fn(),
   proxyGetMock: vi.fn(),
+  savedModels: vi.fn(async (): Promise<unknown[]> => []),
 }));
+// The user's own models are read from this device, not from the server.
+vi.mock('@/lib/savedModels', () => ({ fetchSavedModels: savedModels }));
 
 vi.mock('@/store/authStore', () => ({ getAuthStore: () => auth }));
 
@@ -108,42 +112,29 @@ describe('Space Settings metadata discovery', () => {
               { id: 'broken', kind: 'chat' },
             ],
           }
-        : [
-            {
-              category: 'custom',
-              model_platform: 'azure',
-              model_type: 'custom-a',
-              available: true,
-              id: 193,
-              api_key: 'fixture-secret',
-              endpoint_url: 'https://private.example',
-            },
-            {
-              category: 'local',
-              model_platform: 'ollama',
-              model_type: 'org/model:8b',
-              available: true,
-            },
-            {
-              category: 'custom',
-              model_platform: 'openai',
-              model_type: 'unavailable',
-              available: false,
-            },
-            {
-              category: 'custom',
-              model_platform: 'openai',
-              model_type: 'duplicate',
-              available: true,
-            },
-            {
-              category: 'custom',
-              model_platform: 'openai',
-              model_type: 'duplicate',
-              available: true,
-            },
-          ]
+        : []
     );
+    const model = (
+      id: number,
+      provider_name: string,
+      model_type: string,
+      more: Record<string, unknown> = {}
+    ) =>
+      localModelRecord({
+        id,
+        provider_name,
+        model_type,
+        api_key: 'fixture-secret',
+        endpoint_url: 'https://private.example',
+        ...more,
+      });
+    savedModels.mockResolvedValue([
+      model(193, 'azure', 'custom-a'),
+      model(194, 'ollama', 'org/model:8b', { api_key: 'not-required' }),
+      model(195, 'openai', 'unavailable', { is_valid: 1 }),
+      model(196, 'openai', 'duplicate'),
+      model(197, 'openai', 'duplicate'),
+    ]);
     const { items: result, unavailableSources } = await discoverSpaceModels();
     expect(unavailableSources).toEqual([]);
     expect(result.map((item) => item.value)).toEqual([
@@ -169,20 +160,22 @@ describe('Space Settings metadata discovery', () => {
       reason: 'model_ambiguous',
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /fixture-secret|private|193|endpoint_url|api_key/
+      /fixture-secret|private|193|endpoint_url|api_key|model_credential/
     );
+    // Own models come from this device: only the Cloud catalog is requested.
     expect(proxyGetMock.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/cloud-models',
-      '/api/v1/provider-models',
     ]);
     expect(fetchGetMock).not.toHaveBeenCalled();
     proxyGetMock.mockImplementation(async (url) =>
       url === '/api/v1/cloud-models' ? { models: [] } : []
     );
+    savedModels.mockResolvedValue([]);
     expect(
       (await discoverSpaceModels()).items.map((item) => item.value)
     ).toEqual(['provider://default']);
     proxyGetMock.mockRejectedValue(new Error('offline'));
+    savedModels.mockRejectedValue(new Error('store unreadable'));
     expect((await discoverSpaceModels()).unavailableSources).toEqual([
       'cloud_catalog',
       'provider_catalog',

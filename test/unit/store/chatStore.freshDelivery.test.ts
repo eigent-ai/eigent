@@ -34,7 +34,25 @@ const mocks = vi.hoisted(() => ({
   capabilities: vi.fn(),
   lateHeader: vi.fn(),
   lateURL: vi.fn(),
+  savedModels: {
+    rows: (): any[] => [],
+    error: null as Error | null,
+  },
 }));
+// The user's own models are saved on the device. The app window lists them
+// without a key and a run names one by reference.
+vi.mock('@/lib/savedModels', async () => {
+  const { localModelList } = await import('../helpers/localModels');
+  const inventory = async () => {
+    if (mocks.savedModels.error) throw mocks.savedModels.error;
+    const list = localModelList(mocks.savedModels.rows());
+    return { records: list.records, keyStorage: list.storage };
+  };
+  return {
+    fetchSavedModelInventory: inventory,
+    fetchSavedModels: async () => (await inventory()).records,
+  };
+});
 vi.mock('@/host/createHost', () => ({
   createHost: () => ({
     electronAPI: {
@@ -191,6 +209,8 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
       thinking_effort: 'high',
     };
     providers = [provider];
+    mocks.savedModels.rows = () => providers;
+    mocks.savedModels.error = null;
     mocks.projectStore = {
       activeProjectId: 'session-1',
       getProjectById: () => project,
@@ -243,7 +263,6 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
           value: 'synthetic-cloud-key',
           api_url: 'https://cloud.example.test',
         };
-      if (url === '/api/v1/providers') return { items: providers, pages: 1 };
       return [];
     });
     mocks.post.mockImplementation(async (url: string) =>

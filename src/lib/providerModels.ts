@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPost } from '@/api/http';
+import type { ModelCredentialReference } from '@/shared/modelConfiguration';
 import i18next from 'i18next';
 
 /**
@@ -84,14 +85,18 @@ function splitProviderPrefix(id: string): [string, string] {
  * the third-party request out of the renderer avoids provider CORS policies.
  *
  * Throws on network failure or non-2xx response with a user-readable message.
+ *
+ * When no key is typed, `savedKey` names a configuration saved on this
+ * device; the local backend then uses its key, for the same host only.
  */
 export async function fetchProviderModels(
   apiHost: string,
   modelsEndpoint: string,
   apiKey: string,
-  modelIdPrefix?: string
+  modelIdPrefix?: string,
+  savedKey?: ModelCredentialReference
 ): Promise<ProviderModelGroup[]> {
-  if (!apiKey) {
+  if (!apiKey && !savedKey) {
     throw new Error(
       i18next.t('setting.models-api-key-required', {
         defaultValue: 'API key is required to fetch the model list.',
@@ -103,7 +108,7 @@ export async function fetchProviderModels(
     payload = await fetchPost('/model/list', {
       api_host: apiHost,
       models_endpoint: modelsEndpoint,
-      api_key: apiKey,
+      ...(apiKey ? { api_key: apiKey } : { model_credential: savedKey }),
     });
   } catch (error: unknown) {
     const status =

@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => ({
   fetchCloudModels: vi.fn().mockResolvedValue([]),
   auth: { user_id: 1, email: '', token: 'first' },
 }));
-vi.mock('@/api/http', () => ({ proxyFetchGet: mocks.get }));
+// The inventory is read from this device, not from the server.
+vi.mock('@/lib/configuredModels', () => ({
+  MODEL_CONFIGURATIONS_CHANGED: 'eigent:model-configurations-changed',
+  fetchConfiguredModelInventory: mocks.get,
+}));
 vi.mock('@/store/authStore', () => ({
   useAuthStore: () => mocks.auth,
   getAuthStore: () => mocks.auth,
@@ -47,7 +51,7 @@ function Reader({ id }: { id: string }) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.auth.user_id = 1;
-  mocks.get.mockResolvedValue({ items: [{ id: 11 }] });
+  mocks.get.mockResolvedValue({ records: [{ id: 11 }], keyStorage: 'secure' });
 });
 
 describe('configured model inventory', () => {
@@ -64,7 +68,7 @@ describe('configured model inventory', () => {
     expect(screen.getByTestId('picker')).toHaveTextContent('11');
     expect(mocks.get).toHaveBeenCalledTimes(1);
 
-    mocks.get.mockRejectedValueOnce(new Error('offline'));
+    mocks.get.mockRejectedValueOnce(new Error('store unreadable'));
     fireEvent.focus(window);
     expect(screen.getByTestId('settings')).toHaveTextContent('11');
     await waitFor(() =>

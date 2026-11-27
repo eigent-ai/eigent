@@ -12,7 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Use the existing server/account/device credential channel, in memory only."""
+"""Account configuration from the server; the model key from this device.
+
+The server confirms which provider a Session is pinned to. It holds no model
+key: the key is read from the desktop app on this device, in memory only.
+"""
 
 from __future__ import annotations
 
@@ -73,6 +77,41 @@ class CredentialResolution(ConfigurationSnapshot):
     api_key: SecretStr = Field(repr=False)
 
 
+class _ServerConfirmation(ConfigurationSnapshot):
+    """The server's answer to a credential check. It carries no key.
+
+    Unknown top-level fields are dropped while parsing, so a key that an
+    older server still includes is never read, kept or used.
+    """
+
+    model_config = ConfigDict(
+        extra="ignore", frozen=True, strict=True, hide_input_in_errors=True
+    )
+
+
+def _device_model_key(principal_ref: str, provider_id: int, api_url: str):
+    """Key saved on this device for one provider record of the account."""
+
+    from app.model.local_model_configuration import (
+        account_scope_for,
+        resolve_local_model_configuration_for_provider,
+        same_model_host,
+    )
+
+    account_scope = account_scope_for(principal_ref)
+    if account_scope is None:
+        raise ValueError("no local model account")
+    saved = resolve_local_model_configuration_for_provider(
+        account_scope, provider_id
+    )
+    # A key is only used with the host it was saved for on this device.
+    if not saved.api_key.strip() or not same_model_host(
+        api_url, saved.api_url
+    ):
+        raise ValueError("model key unavailable")
+    return saved.api_key
+
+
 def server_authority(value: str) -> str:
     parsed = urlsplit(value)
     if (
@@ -99,7 +138,9 @@ class AccountConfigurationSource:
         configuration: Callable[[], CloudSyncConfiguration | None],
         *,
         transport=None,
+        device_key: Callable[[str, int, str], str] | None = None,
     ):
+        self.device_key = device_key or _device_model_key
         self.authority = server_authority(server_url)
         self.authority_ref = "authority:" + canonical_digest(self.authority)
         self.configuration = configuration
@@ -195,13 +236,32 @@ class AccountConfigurationSource:
         )
 
     async def resolve(self, snapshot: ConfigurationSnapshot):
-        result, configuration = await self._request(
+        confirmed, configuration = await self._request(
             f"/projects/{snapshot.project_id}/credentials:resolve",
-            CredentialResolution,
+            _ServerConfirmation,
             body={
                 "provider_ref": snapshot.provider.provider_ref,
                 "space_id": snapshot.space_id,
                 "session_mode": snapshot.session_mode,
             },
         )
+        try:
+            api_key = await asyncio.to_thread(
+                self.device_key,
+                self.origin(confirmed).principal_ref,
+                int(confirmed.provider.provider_ref.split(":")[1]),
+                confirmed.provider.api_url,
+            )
+            result = CredentialResolution(
+                **{
+                    name: getattr(confirmed, name)
+                    for name in ConfigurationSnapshot.model_fields
+                },
+                api_key=SecretStr(api_key),
+            )
+        except Exception:
+            # Never echo a key, a lookup error or Pydantic input.
+            raise AgentConfigurationUnavailable(
+                "authentication_or_configuration_required"
+            ) from None
         return result, configuration

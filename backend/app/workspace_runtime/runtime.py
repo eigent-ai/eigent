@@ -52,6 +52,7 @@ def initialize_execution_service(
     workspace_store=None,
     configuration_reader=None,
     transport=None,
+    device_key=None,
 ):
     """Explicit trusted deployment initialization; never called by capability.
 
@@ -103,6 +104,7 @@ def initialize_execution_service(
             document["server_url"],
             configuration_reader or current_control_configuration,
             transport=transport,
+            device_key=device_key,
         )
         tokenizers = load_tokenizer_assets(
             Path(document["tokenizer_asset_directory"])

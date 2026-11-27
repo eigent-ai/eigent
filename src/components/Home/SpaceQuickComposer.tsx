@@ -79,7 +79,7 @@ export function SpaceQuickComposer({
   // Space rather than the active one.
   const { token, user_id, modelType } = useAuthStore();
   const space = useSpaceStore((state) => state.spaces[spaceId]);
-  const { hasModel } = useModelConfigCheck();
+  const { hasModel, modelKeyNeeded } = useModelConfigCheck();
   const canResolveSpaceModelAtLaunch = Boolean(
     token &&
     space &&
@@ -222,6 +222,7 @@ export function SpaceQuickComposer({
         state="input"
         footerSpaceId={spaceId}
         noModelOverlay={!readOnly && !canStartWithModel && !modelQuota.blocked}
+        modelKeyNeeded={modelKeyNeeded}
         onSelectModel={() => openSettings('models')}
         usageLimitBanner={usageLimitBanner}
         inputProps={{
